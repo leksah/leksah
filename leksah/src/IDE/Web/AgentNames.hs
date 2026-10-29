@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Every Claude Code session leksah sees gets a NAME — an animal: "Wren",
@@ -21,20 +22,22 @@ module IDE.Web.AgentNames
   , renameAgent
   , resolveAgentName
   , sessionOfRunKey
+  , adoptContinuation
+  , agentContinuations
   ) where
 
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import Control.Exception (catch, SomeException)
-import Control.Monad (when)
+import Control.Monad (mfilter, when)
 
 import Data.Aeson
-       (FromJSON(..), ToJSON(..), object, (.=), (.:), withObject, encode, decode')
+       (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject, encode, decode')
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isAlphaNum, isHexDigit, ord, toUpper)
 import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Ord (Down(..))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -62,13 +65,19 @@ agentAnimals =
 data NameRec = NameRec
   { nrName :: Text
   , nrSeen :: Double
+  , nrContinuedIn :: Maybe Text
+                     -- ^ this session carried on under another id (Claude
+                     --   Code backgrounding it, or a fork-resume that replaces
+                     --   it): that id is the same agent, and has its name
   } deriving (Eq, Show)
 
 instance ToJSON NameRec where
-  toJSON r = object [ "name" .= nrName r, "seen" .= nrSeen r ]
+  toJSON r = object [ "name" .= nrName r, "seen" .= nrSeen r
+                    , "continuedIn" .= nrContinuedIn r ]
 
 instance FromJSON NameRec where
-  parseJSON = withObject "NameRec" $ \o -> NameRec <$> o .: "name" <*> o .: "seen"
+  parseJSON = withObject "NameRec" $ \o ->
+    NameRec <$> o .: "name" <*> o .: "seen" <*> o .:? "continuedIn"
 
 -- | How long a name stays reserved for a session that has gone quiet.
 reserveFor :: Double
@@ -133,7 +142,7 @@ touch :: Double -> Map Text NameRec -> Text -> Map Text NameRec
 touch now m sid = case M.lookup sid m of
   Just r | now - nrSeen r < seenSlack -> m
          | otherwise                  -> M.insert sid r { nrSeen = now } m
-  Nothing -> M.insert sid (NameRec (pick now m sid) now) m
+  Nothing -> M.insert sid (NameRec (pick now m sid) now Nothing) m
 
 -- | A name for a new session: an animal no other session holds (seen within
 -- 'reserveFor'), the one whose last use is oldest — so a name that has just
@@ -146,7 +155,9 @@ pick now m sid = case sortOn order free of
     (n : _) -> n
     []      -> numbered (2 :: Int)
   where
-    held    = [ nrName r | r <- M.elems m, now - nrSeen r < reserveFor ]
+    -- (A session that continued elsewhere has handed its name on.)
+    held    = [ nrName r | r <- M.elems m, now - nrSeen r < reserveFor
+                         , isNothing (nrContinuedIn r) ]
     free    = [ a | a <- rotated, a `notElem` held ]
     lastUse = M.fromListWith max [ (nrName r, nrSeen r) | r <- M.elems m ]
     rotated = let (a, b) = splitAt (hashOf sid `mod` length agentAnimals) agentAnimals
@@ -168,10 +179,10 @@ renameAgent sid raw
   | otherwise = withNames $ \now m ->
       let clash = [ s | (s, r) <- M.toList m, s /= sid
                       , T.toLower (nrName r) == T.toLower name
-                      , now - nrSeen r < reserveFor ]
+                      , now - nrSeen r < reserveFor, isNothing (nrContinuedIn r) ]
       in case clash of
            (_ : _) -> (m, Left (name <> " is already another agent's name"))
-           []      -> (M.insert sid (NameRec name now) m, Right name)
+           []      -> (M.insert sid (NameRec name now Nothing) m, Right name)
   where
     name = capitalise . T.filter (\c -> isAlphaNum c || c == '-') $ T.strip raw
     capitalise t = case T.uncons t of
@@ -191,7 +202,8 @@ resolveAgentName :: [Text] -> Text -> IO (Either Text Text)
 resolveAgentName live arg0 = withNames $ \_ m -> (m, resolve m)
   where
     arg = T.strip arg0
-    resolve m
+    resolve m = followOn m <$> resolve0 m
+    resolve0 m
       | arg `elem` live || arg `M.member` m = Right arg
       | (s : _) <- byName m = Right s
       | T.length arg >= 6, T.all (\c -> isHexDigit c || c == '-') arg =
@@ -204,8 +216,39 @@ resolveAgentName live arg0 = withNames $ \_ m -> (m, resolve m)
       where known = M.keys (M.fromList [ (s, ()) | s <- live ] <> (() <$ m))
     -- Live holders first, then the most recently seen.
     byName m = map fst . sortOn (\(s, r) -> (s `notElem` live, Down (nrSeen r)))
-      $ [ (s, r) | (s, r) <- M.toList m, T.toLower (nrName r) == T.toLower arg ]
+      $ [ (s, r) | (s, r) <- M.toList m, T.toLower (nrName r) == T.toLower arg
+                 , isNothing (nrContinuedIn r) ]
     label m s = maybe s (\r -> nrName r <> " (" <> s <> ")") (M.lookup s m)
+
+-- | Where a session carried on, following a chain of continuations (bounded,
+-- in case of a cycle in a hand-edited file) — the session itself if it did not.
+followOn :: Map Text NameRec -> Text -> Text
+followOn m = go (8 :: Int)
+  where go 0 s = s
+        go k s = maybe s (go (k - 1)) (M.lookup s m >>= nrContinuedIn)
+
+-- | Record that session @old@ carried on as @new@ — the same agent under a new
+-- id (Claude Code wrote @continued-in@ at the end of @old@'s transcript).
+-- @new@ takes @old@'s name (dropping any it was given meanwhile, which is how
+-- a backgrounded "Mole" stops being a new "Monkey"), and @old@ stops holding
+-- it.  Answers @old@'s name, if it had one.
+adoptContinuation :: Text -> Text -> IO (Maybe Text)
+adoptContinuation old new = withNames $ \now m ->
+  let oldName = nrName <$> M.lookup old m
+      m1 = M.alter (\case
+             Just r  -> Just r { nrContinuedIn = Just new }
+             Nothing -> Just (NameRec "" now (Just new))) old m
+      m2 = case oldName of
+             Just nm | not (T.null nm) -> M.insert new (NameRec nm now Nothing) m1
+             _                         -> m1
+  in (m2, mfilter (not . T.null) oldName)
+
+-- | Every session that carried on elsewhere, as @old → new@ (chains followed to
+-- the end).  The live-session readers leave the old ids out: their process is
+-- only the host that started the new one.
+agentContinuations :: IO (Map Text Text)
+agentContinuations = withNames $ \_ m ->
+  (m, M.fromList [ (s, followOn m s) | (s, r) <- M.toList m, isJust (nrContinuedIn r) ])
 
 -- | The session a Claude pane's @\@leksah_run@ key names — the
 -- @\<dir\>#claude#\<id\>@ shape a pinned @--session-id@ launch gets.  A @#fork#@

@@ -53,12 +53,13 @@ module IDE.Web.Claude
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
-import Control.Monad (void, forM, mfilter, when)
+import Control.Monad (void, filterM, forM, forM_, mfilter, unless, when)
 
 import Data.Bits ((.&.), (.|.))
 import Data.Char (isAlphaNum)
 import Data.Foldable (toList)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import qualified Data.Set as S
 import Data.List (intercalate, sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -101,7 +102,8 @@ import Text.Read (readMaybe)
 import IDE.App (appUi, getGlobalApp)
 import IDE.Reactive (readCell)
 import IDE.Web.Model (WebUi(_leksahWindows))
-import IDE.Web.AgentNames (agentNameFor, sessionOfRunKey)
+import IDE.Web.AgentNames
+       (adoptContinuation, agentContinuations, agentNameFor, sessionOfRunKey)
 import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
         liveRunPanes, livePanePids, tmuxCmd, sendKeysTo, findRunPane,
@@ -176,7 +178,59 @@ data ClaudeLive = ClaudeLive
 -- folder, an older CLI that doesn't write these, unreadable JSON — so callers
 -- just fall back to the transcript's first prompt.
 claudeLiveSessions :: IO [ClaudeLive]
-claudeLiveSessions = (`catch` \(_ :: SomeException) -> return []) $ do
+claudeLiveSessions = claudeSessionFiles >>= dropContinued
+
+-- | A session that has carried on under another id (Claude Code backgrounding
+-- it writes @{"type":"continued-in","continuedInSessionId":…}@ as the last
+-- line of the old transcript) is the SAME agent: the new id takes its name
+-- ('adoptContinuation'), and the old id is left out of the live sessions — its
+-- process is only the host that started the new one, and still reports itself
+-- busy.  Each session is checked once, the first time it is seen.
+dropContinued :: [ClaudeLive] -> IO [ClaudeLive]
+dropContinued ls = (`catch` \(_ :: SomeException) -> return ls) $ do
+  checked <- readIORef continuationChecked
+  let fresh = [ l | l <- ls, clSession l `S.notMember` checked ]
+  unless (null fresh) $ do
+    atomicModifyIORef' continuationChecked
+      (\c -> (foldr (S.insert . clSession) c fresh, ()))
+    forM_ fresh $ \l -> continuedFrom l >>=
+      mapM_ (\old -> adoptContinuation old (clSession l))
+  conts <- agentContinuations
+  return [ l | l <- ls, clSession l `M.notMember` conts ]
+
+{-# NOINLINE continuationChecked #-}
+continuationChecked :: IORef (S.Set Text)
+continuationChecked = unsafePerformIO (newIORef S.empty)
+
+-- | The session @l@ carried on from, if one did: a recent transcript in its
+-- project folder whose last line says it continued in @l@.
+continuedFrom :: ClaudeLive -> IO (Maybe Text)
+continuedFrom l = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  home <- getHomeDirectory
+  now  <- getCurrentTime
+  let pdir = home </> ".claude" </> "projects" </> encodeClaudeDir (clDir l)
+      own  = T.unpack (clSession l) <> ".jsonl"
+  ok <- doesDirectoryExist pdir
+  if null (clDir l) || not ok then return Nothing else do
+    fs <- filter (\f -> takeExtension f == ".jsonl" && f /= own) <$> listDirectory pdir
+    recent <- filterM (\f -> (\t -> diffUTCTime now t < 2 * 86400)
+                                <$> getModificationTime (pdir </> f)) fs
+    hits <- forM recent $ \f -> do
+      tl <- withFile (pdir </> f) ReadMode $ \h -> do
+        size <- hFileSize h
+        let back = min size 4096
+        hSeek h SeekFromEnd (negate back)
+        BS.hGet h (fromIntegral back)
+      let says = [ () | ln <- BS.lines tl, "\"continued-in\"" `BS.isInfixOf` ln
+                      , Just v <- [decodeStrict' ln]
+                      , objField "continuedInSessionId" v == Just (clSession l) ]
+      return [ T.pack (takeBaseName f) | not (null says) ]
+    return (listToMaybe (concat hits))
+
+-- | Every @~\/.claude\/sessions\/*.json@ as a 'ClaudeLive' (pid liveness and
+-- continuations not considered yet).
+claudeSessionFiles :: IO [ClaudeLive]
+claudeSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
   home <- getHomeDirectory
   let sdir = home </> ".claude" </> "sessions"
   ex <- doesDirectoryExist sdir

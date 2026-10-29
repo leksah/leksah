@@ -43,7 +43,8 @@ module IDE.Web.AgentInfo
 
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import Control.Exception (catch, SomeException)
-import Control.Monad (forM)
+import Control.Applicative ((<|>))
+import Control.Monad (forM, when)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
@@ -74,7 +75,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
-import IDE.Web.AgentNames (agentNames)
+import IDE.Web.AgentNames (agentContinuations, agentNames)
 import IDE.Web.Claude
        (ClaudeLive(..), claudeLatestActivity, claudeLiveBySession, claudeSessionLabel,
         claudeTranscriptPath)
@@ -278,6 +279,42 @@ describeAgent sid mtitle mhtml mbio = do
            <> [ "  description: " <> T.take 200 d | Just d <- [aiDesc cur'] ]
            <> [ "  bio: " <> T.take 200 b | Just b <- [aiBio cur'] ] )
 
+-- | A session that carried on under a new id ('agentContinuations' — Claude
+-- Code backgrounding it, say) is the same agent: what leksah knows about the
+-- old id — its title, description, bio, role, manager flag, where it came
+-- from — moves to the new id (filling in, never overwriting, what the new id
+-- has already said), and the agents it started are re-pointed at the new id.
+-- A no-op, without a write, when there is nothing to move.
+migrateContinued :: IO ()
+migrateContinued = do
+  conts <- agentContinuations
+  infos <- peekInfos
+  let pending = any (`M.member` infos) (M.keys conts)
+             || any (maybe False (`M.member` conts) . aiParent) (M.elems infos)
+  when pending . withInfos $ \m -> (M.map (reparent conts) (moveAll conts m), ())
+  where
+    moveAll conts m = M.foldrWithKey move m conts
+      where
+        move old new acc = case M.lookup old acc of
+          Nothing -> acc
+          Just o  -> M.insert new (maybe o { aiSession = new } (`merge` o) (M.lookup new acc))
+                              (M.delete old acc)
+    reparent conts i =
+      i { aiParent = (\p -> M.findWithDefault p p conts) <$> aiParent i }
+    merge n o = n
+      { aiParent  = aiParent n <|> aiParent o
+      , aiDir     = if null (aiDir n) then aiDir o else aiDir n
+      , aiTitle   = aiTitle n <|> aiTitle o
+      , aiDesc    = aiDesc n <|> aiDesc o
+      , aiWhen    = aiWhen n <|> aiWhen o
+      , aiBorn    = aiBorn o <|> aiBorn n
+      , aiDone    = aiDone n <|> aiDone o
+      , aiDoneAt  = aiDoneAt n <|> aiDoneAt o
+      , aiRole    = aiRole n <|> aiRole o
+      , aiBio     = aiBio n <|> aiBio o
+      , aiBioAt   = aiBioAt n <|> aiBioAt o
+      , aiManager = aiManager n || aiManager o }
+
 -- | An agent saying it has finished (@agent done@), with what it would like
 -- the user — and the agent that started it — to know.
 markAgentDone :: Text -> Text -> IO ()
@@ -466,6 +503,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   }
 #else
 agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
+  migrateContinued
   st    <- claudeStatusNow
   infos <- readInfos
   now   <- getCurrentTime
