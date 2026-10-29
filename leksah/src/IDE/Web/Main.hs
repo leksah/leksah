@@ -9138,10 +9138,11 @@ main showMenubar macTitlebar wid ctx = mdo
           -- metadata feature is deleted); renders nothing and the post-build
           -- close event prunes any restored tab.
           MetadataKey    -> toDM MetadataTab <$> (never <$ blank)
-          -- The top card is the agent you are working with: the first agent
-          -- pane in the flip MRU, whose front is the active pane.
+          -- The agents in flip-MRU order (the flipper's: the active pane
+          -- first) — the Agents pane's top card, and its tie-break within a
+          -- state group.
           AgentsKey      -> toDM AgentsTab <$> (agentsWidget =<< holdUniqDyn
-            ((\mru tree -> listToMaybe
+            ((\mru tree -> nubOrd
                 [ a | FlipPane s w p <- mru
                     , Just (_, wins) <- [M.lookup s tree]
                     , win <- wins, twIndex win == w

@@ -45,7 +45,7 @@ import Data.Bool (bool)
 import Data.List (find, sortOn)
 
 import Data.Map (Map)
-import qualified Data.Map as M (fromList)
+import qualified Data.Map as M (fromList, fromListWith, findWithDefault)
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -118,14 +118,15 @@ agentCardActions toast refresh = CardActions
   , caLastSaid = agentLastSaid . anSession
   }
 
--- | The pane.  @topNameD@ is the name of the agent in the active pane (else
--- the most recently used agent pane) — its card leads, in full.
+-- | The pane.  @mruNamesD@ are the agents' names in flip-MRU order (the
+-- flipper's order: the active pane first) — the first one's card leads, in
+-- full, and the rest of the order breaks ties within a state group.
 --
 -- Polls 'agentForest' (cheap — it reads the status poll's cache), and renders
 -- it with a keyed list so a poll that changes one agent's state leaves every
 -- other card — and whichever the user opened — exactly as it was.
-agentsWidget :: forall t m . MonadWidget t m => Dynamic t (Maybe Text) -> m (Event t ())
-agentsWidget topNameD = do
+agentsWidget :: forall t m . MonadWidget t m => Dynamic t [Text] -> m (Event t ())
+agentsWidget mruNamesD = do
   (root, _) <- elClass' "div" "agents leksah-nav" $ mdo
     pb   <- getPostBuild
     tick <- tickLossyFromPostBuildTime 2
@@ -212,7 +213,7 @@ agentsWidget topNameD = do
       divClass "agents-empty" $ text
         "Type a task below to start an agent, or start one from a Claude \
         \session with `leksah-cmd agent fork 'do this'`."
-    let shownD = shape <$> forestD <*> stateD <*> searchD <*> flatD <*> topNameD
+    let shownD = shape <$> forestD <*> stateD <*> searchD <*> flatD <*> mruNamesD
     cardE <- divClass "agents-list" $ do
       e <- listViewWithKey shownD $ \_ cD ->
         elDynAttr "div" (slotAttrs <$> cD) $
@@ -249,30 +250,56 @@ agentsWidget topNameD = do
             , ("suspended", "❚", "suspended",       colourOf "suspended") ]
 
     -- What the list shows, as session → slot.  The top agent first (always in
-    -- full), then the manager, then the rest: the tree pruned to the agents
-    -- that match (an agent stays when anything under it does, so the match
-    -- keeps its context) with children indented, or — in list mode — every
-    -- matching agent, flat, needs-you first.  The top and manager cards are
+    -- full), then the manager, then the rest.  The top and manager cards are
     -- shown whatever the filters say: they are the ones you are working with.
-    shape forest mst q flat mtop =
+    --
+    -- Both layouts order agents the same way ('order'): by state group —
+    -- needs you, working, idle, done, suspended, exited — then most recently
+    -- used first (the flipper's order), then by name.  The list is every
+    -- matching agent, flat, in that order.  The tree applies it at every level,
+    -- pruned to the agents that match (an agent stays when anything under it
+    -- does, so the match keeps its context), children indented under the agent
+    -- that started them — a pinned card's children come up with it.
+    shape forest mst q flat mru =
       M.fromList [ (anSession n, Slot i d (Just (anSession n) == topSid) n)
-                 | (i, (d, n)) <- zip [0 ..] (pinned <> rest) ]
+                 | (i, (d, n)) <- zip [0 ..] (dedupe (pinned <> rest)) ]
       where
         everyone = flatten forest
-        topNode  = mtop >>= \nm -> find (\n -> anName n == nm && anLive n) everyone
-                                 `orElse` find ((== nm) . anName) everyone
+        mruIx    = M.fromListWith min (zip mru [0 :: Int ..])
+        order n  = ( rankOf (anState n)
+                   , M.findWithDefault maxBound (anName n) mruIx
+                   , T.toLower (anName n), T.toLower (anTitle n) )
+        topNode  = listToMaybe
+          [ n | nm <- mru
+              , Just n <- [ find (\x -> anName x == nm && anLive x) everyone
+                              `orElse` find ((== nm) . anName) everyone ] ]
         topSid   = anSession <$> topNode
         manager  = find anManager everyone
-        pinned   = [ (0 :: Int, n) | Just n <- [topNode] ]
-                <> [ (0, n) | Just n <- [manager], Just (anSession n) /= topSid ]
-        pinnedIds = map (anSession . snd) pinned
-        rest = filter ((`notElem` pinnedIds) . anSession . snd) $
-          if flat
-            then [ (0, n) | n <- sortOn listOrder everyone, ok n ]
-            else withDepth 0 (prune forest)
+        pinnedNodes = [ n | Just n <- [topNode] ]
+                   <> [ n | Just n <- [manager], Just (anSession n) /= topSid ]
+        pinnedIds = map anSession pinnedNodes
+        -- A pinned card, and (in the tree) the matching agents it started.
+        pinned = concat
+          [ (0 :: Int, p) : (if flat then [] else withDepth 1 (sortTree (prune (anChildren p))))
+          | p <- pinnedNodes ]
+        rest
+          | flat      = [ (0, n) | n <- sortOn order everyone, ok n
+                                 , anSession n `notElem` pinnedIds ]
+          | otherwise = withDepth 0 (sortTree (prune (without pinnedIds forest)))
+        -- Pinned agents (and so their subtrees) come out of the tree: they
+        -- are shown at the top, children and all.
+        without ids ns = [ n { anChildren = without ids (anChildren n) }
+                         | n <- ns, anSession n `notElem` ids ]
+        sortTree ns = sortOn order [ n { anChildren = sortTree (anChildren n) } | n <- ns ]
         prune ns = [ n { anChildren = ks } | n <- ns
                    , let ks = prune (anChildren n), ok n || not (null ks) ]
         withDepth d = concatMap (\n -> (d, n) : withDepth (d + 1) (anChildren n))
+        -- An agent appears once (the manager may be in the top card's tree).
+        dedupe = go []
+          where go _ [] = []
+                go seen (x@(_, n) : xs)
+                  | anSession n `elem` seen = go seen xs
+                  | otherwise               = x : go (anSession n : seen) xs
         ok n = maybe True (`inState` n) mst && all (`T.isInfixOf` haystack n) terms
         terms = T.words (T.toLower q)
         haystack n = T.toLower $ T.unwords
@@ -281,7 +308,6 @@ agentsWidget topNameD = do
           , fromMaybe "" (anBranch n), maybe "" (\(k, _) -> "#" <> T.pack (show k)) (anPr n)
           , T.pack (anDir n), fromMaybe "" (anActivity n)
           , fromMaybe "" (anRole n), fromMaybe "" (anDone n), T.unwords (anWorktrees n) ]
-        listOrder n = (rankOf (anState n), T.toLower (anName n <> anTitle n))
         orElse a b = maybe b Just a
 
     -- The chips' groups: "working" takes the shell and starting states too.
