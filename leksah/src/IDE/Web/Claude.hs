@@ -384,6 +384,12 @@ data AgentSpec = AgentSpec
                             --   the child so it can report back
   , asRoleNote :: Maybe Text -- ^ the instructions of the role it was started in
                             --   ("IDE.Web.AgentRoles"), for its system prompt
+  , asResume  :: Bool       -- ^ continue session 'asSession' itself
+                            --   (@--resume@ it) rather than start a new one —
+                            --   how a suspended or exited agent comes back with
+                            --   its notes and permissions intact
+  , asManager :: Bool       -- ^ it is the workspace's manager: 'managerNote',
+                            --   and the wider allow-list that job needs
   } deriving (Eq, Show)
 
 -- | A fresh RFC 4122 version-4 UUID, the shape @claude --session-id@ wants.
@@ -446,7 +452,8 @@ claudeCommandLine (ClaudeNew d) = do
   sid <- newAgentSessionId
   claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Nothing
-    , asParent = Nothing, asRoleNote = Nothing }
+    , asParent = Nothing, asRoleNote = Nothing, asResume = False
+    , asManager = False }
 claudeCommandLine (ClaudePrompt d p) = do
   -- Pinned for the same reason, and so a queued task's agent has a name (and
   -- an Agents-pane identity) from the moment it starts.  The run key keeps the
@@ -454,7 +461,8 @@ claudeCommandLine (ClaudePrompt d p) = do
   sid <- newAgentSessionId
   claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Just p
-    , asParent = Nothing, asRoleNote = Nothing }
+    , asParent = Nothing, asRoleNote = Nothing, asResume = False
+    , asManager = False }
 claudeCommandLine cmd = do
   let d = dropTrailingPathSeparator dir
   mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
@@ -481,6 +489,7 @@ claudeCommandLine cmd = do
     notes = case cmd of
       ClaudeAgent s -> [ agentNote p (asSession s) | Just p <- [asParent s] ]
                        <> maybe [] (: []) (asRoleNote s)
+                       <> [ managerNote | asManager s ]
       _             -> []
     -- Two things a leksah-launched session may do without stopping to ask,
     -- because in both cases the thing asking is leksah itself:
@@ -505,6 +514,14 @@ claudeCommandLine cmd = do
           "Bash(leksah-cmd agent register:*)" :
           "Bash(leksah-cmd agent done:*)" :
           case cmd of
+            -- The manager runs the team: everything `agent` does except
+            -- forgetting agents (there is no such verb) — still only leksah's
+            -- own commands, so nothing outside the IDE is pre-approved.
+            ClaudeAgent s | asManager s ->
+              [ "Bash(leksah-cmd agent " <> v <> ":*)"
+              | v <- [ "fork", "send", "suspend", "resume", "refresh", "find"
+                     , "list", "read", "status", "wait", "roles", "show"
+                     , "rename", "manager" ] ]
             ClaudeAgent s | Just _ <- asParent s -> ["Bash(leksah-cmd agent send:*)"]
             _                                    -> []
     (dir, keyTag, line) = case cmd of
@@ -528,9 +545,12 @@ claudeCommandLine cmd = do
       ClaudeAgent s        ->
         ( asDir s
         , "claude#" <> asSession s
-        , T.unwords $ [ "claude", "--session-id", asSession s ]
-                   <> maybe [] (\f -> ["--resume", f, "--fork-session"]) (asFrom s)
-                   <> maybe [] ((:[]) . shq) (asPrompt s) )
+        , T.unwords $
+            (if asResume s
+               then [ "claude", "--resume", asSession s ]
+               else [ "claude", "--session-id", asSession s ]
+                    <> maybe [] (\f -> ["--resume", f, "--fork-session"]) (asFrom s))
+            <> maybe [] ((:[]) . shq) (asPrompt s) )
     key = T.pack (dropTrailingPathSeparator dir) <> "#" <> keyTag
 
 -- | Single-quote for the shell tmux runs the window command through, so a
@@ -571,6 +591,38 @@ agentNote parent me = T.unlines
     \changed): that session cannot see your screen. Your own session id is "
     <> me <> ", which it can use to read your transcript or send you more \
     \work. Do not fork further agents unless you are asked to."
+  ]
+
+-- | What the manager agent is for, and how it goes about it.
+managerNote :: Text
+managerNote = T.unlines
+  [ "You are the MANAGER of the Claude Code agents running in this Leksah IDE. \
+    \Your job is to keep the team effective — not to do the coding yourself. \
+    \The user talks to you; you get the work to the right agent."
+  , ""
+  , "How you work (all through `leksah-cmd agent …`, or the matching MCP tools):"
+  , "- When the user gives you a task, run `agent find 'topic'` first. If an \
+    \agent already has the context, hand it over with `agent send NAME --submit \
+    \'…'` (self-contained: it cannot see your conversation). Start a new one only \
+    \when nobody fits — `agent fork --fresh --tab 'task'`, or `agent fork --as \
+    \ROLE --tab 'task'` when a role (`agent roles`) matches. Tell the user who \
+    \took it."
+  , "- Keep an eye on the team with `agent list`: tell the user about agents \
+    \blocked on an approval prompt (state waiting) — they need a human."
+  , "- Agents report back to you with `NAME is done: …` messages. Summarise \
+    \those for the user, and follow up if more work is needed."
+  , "- Keep the team's descriptions current: every so often, and whenever the \
+    \user asks about the team, `agent refresh NAME` the agents whose title, \
+    \description or bio is missing or stale (a couple of hours old). An agent \
+    \answers a refresh by describing itself; you do not need to write it."
+  , "- Suspend agents that are idle with nothing left to do when the user agrees \
+    \or asks (`agent suspend NAME` — it ends the process but keeps the agent and \
+    \its conversation), and `agent resume NAME` them when their work comes \
+    \back. Never suspend a busy agent without asking."
+  , "- Use `agent read NAME` to catch up on what an agent said, and `agent wait \
+    \NAME` only when you genuinely need the answer before going on."
+  , ""
+  , "Keep your own replies short: who is doing what, what needs the user."
   ]
 
 -- | Tell an agent the name leksah gave it ("IDE.Web.AgentNames"), which is

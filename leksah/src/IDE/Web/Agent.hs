@@ -53,11 +53,17 @@ module IDE.Web.Agent
   , agentFind
   , agentDone
   , agentRoleList
+  , agentSuspend
+  , agentResume
+  , agentRefresh
+  , agentManagerStatus
+  , agentManagerStart
   , newAgentSessionId
   , showAgentPane
   ) where
 
 import Control.Applicative ((<|>))
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (catch, SomeException)
 import Control.Monad (filterM, forM, when)
 
@@ -65,7 +71,7 @@ import Data.Char (isAlphaNum)
 import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -81,8 +87,9 @@ import System.IO
 
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentInfo
-       (AgentNode(..), agentForest, agentParentOf, agentTitles, markAgentDone,
-        recordAgentFork, setAgentRole)
+       (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
+        agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
+        recordAgentFork, setAgentManager, setAgentRole, setAgentSuspended)
 import IDE.Web.AgentNames
        (agentNameFor, agentNames, renameAgent, resolveAgentName, touchAgentNames)
 import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, roleNote)
@@ -90,7 +97,7 @@ import IDE.Web.Claude
        (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
         claudeCommandLine, claudeLiveBySession, claudeLiveOwners,
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
-        paneForSession,
+        paneForSession, runClaudeCmd,
         showLiveSession, showTmuxPane)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
@@ -121,12 +128,14 @@ data ForkRequest = ForkRequest
   , frCwd    :: FilePath       -- ^ the caller's cwd (the dir of last resort)
   , frRole   :: Maybe Text     -- ^ start it in this role ("IDE.Web.AgentRoles");
                                --   a role agent is always fresh
+  , frManager :: Bool          -- ^ start it as the workspace's manager
   } deriving (Eq, Show)
 
 emptyForkRequest :: FilePath -> ForkRequest
 emptyForkRequest cwd = ForkRequest
   { frPlace = PlaceBeside, frDir = Nothing, frFrom = Nothing, frFresh = False
-  , frPrompt = Nothing, frParent = Nothing, frCwd = cwd, frRole = Nothing }
+  , frPrompt = Nothing, frParent = Nothing, frCwd = cwd, frRole = Nothing
+  , frManager = False }
 
 -- | Start a child agent, and answer with its session id and a line the parent
 -- can act on.
@@ -191,7 +200,9 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                                   , asFrom    = from
                                   , asPrompt  = frPrompt fr
                                   , asParent  = parent
-                                  , asRoleNote = roleNote <$> mrole }
+                                  , asRoleNote = roleNote <$> mrole
+                                  , asResume  = False
+                                  , asManager = frManager fr }
              (_, key, line) <- claudeCommandLine (ClaudeAgent spec)
              place live spec key line
 
@@ -205,6 +216,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
       -- (already chosen by 'claudeCommandLine', which told the agent its name)
       ownName <- agentNameFor (asSession spec)
       mapM_ (setAgentRole (asSession spec) . roleName) mrole
+      when (frManager fr) $ setAgentManager (asSession spec) (asDir spec)
       mPane <- case (frPlace fr, asParent spec `orElse` asFrom spec) of
         (PlaceTab, _)     -> return Nothing
         (_, Just p)       -> paneForSession p
@@ -305,7 +317,10 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
           \pane: it is probably waiting at a first-run prompt (the folder-trust \
           \question, which only a human can answer)"
         , p ] <> "\n"
-    Nothing -> return "gone\tthat session is not running\n"
+    Nothing -> agentInfoOf sid >>= \case
+      Just i | isJust (aiSuspended i) ->
+        return "suspended\tits process was ended on purpose; `agent resume` brings it back\n"
+      _ -> return "gone\tthat session is not running\n"
   Just l  -> do
     pane <- M.lookup sid <$> panesBySession
     return $ T.intercalate "\t"
@@ -472,6 +487,107 @@ agentRoleList cwd = agentRoles cwd >>= \case
                \with name: and description: in its front matter.\n"
   rs -> return . T.unlines $
           [ roleName ro <> "\t" <> roleDescription ro <> "\t" <> T.pack (roleFile ro) | ro <- rs ]
+
+-- | @agent suspend@: end an agent's process on purpose, keeping the agent.  It
+-- is marked suspended (the Agents and Team panes keep it, as "suspended", with
+-- no age limit), then asked to quit the way a user would — the composer
+-- cleared, @/exit@ typed and submitted — so it exits 0 and its pane closes
+-- (the launch wrapper only keeps a shell after a FAILED exit).  A pane still
+-- alive a few seconds later is killed, which ends claude with a hangup.
+--
+-- A BUSY agent is refused unless @force@: suspending it would throw away the
+-- turn it is in the middle of.
+agentSuspend :: Text -> Bool -> IO Text
+agentSuspend sid force = do
+  live <- claudeLiveBySession
+  name <- agentNameFor sid
+  case M.lookup sid live of
+    Nothing -> agentInfoOf sid >>= \case
+      Just i | isJust (aiSuspended i) -> return (name <> " is already suspended.\n")
+      _ -> return (name <> " is not running, so there is nothing to suspend.\n")
+    Just l
+      | not force, clStatus l `elem` [Just "busy", Just "shell", Just "waiting"] ->
+          return $ name <> " is " <> fromMaybe "busy" (clStatus l)
+                <> "; suspending it now would lose what it is doing. Wait for it \
+                   \to go idle, or pass --force.\n"
+      | otherwise -> paneForSession sid >>= \case
+          Nothing -> return $ name <> " is not in a pane leksah can reach, so it \
+                                     \cannot be suspended from here.\n"
+          Just (_, _, pane) -> do
+            setAgentSuspended sid True
+            _ <- sendKeysTo pane ["C-u"]
+            _ <- sendKeysTo pane ["-l", "/exit"]
+            _ <- sendKeysTo pane ["Enter"]
+            _ <- forkIO $ do
+              threadDelay 6000000
+              still <- M.member sid <$> claudeLiveBySession
+              when still $ tmuxCmd ["kill-pane", "-t", T.unpack pane]
+            return $ "Suspended " <> name <> ". Resume it with: leksah-cmd agent \
+                     \resume " <> T.toLower name <> "\n"
+
+-- | @agent resume@: bring a suspended (or exited) agent back — its own
+-- conversation (@claude --resume@), in a tab named after it, and with what it
+-- was launched with: the note about the agent that started it (and permission
+-- to report back to it), its role's instructions, and the manager's brief if it
+-- is the manager.  A plain @claude --resume@ would lose all three.
+agentResume :: Text -> IO (Either Text Text)
+agentResume sid = do
+  live <- claudeLiveBySession
+  name <- agentNameFor sid
+  if sid `M.member` live
+    then do
+      _ <- showAgentPane sid
+      return (Right (name <> " is already running; showing it.\n"))
+    else agentInfoOf sid >>= \case
+      Nothing -> return . Left $
+        "leksah does not know where " <> name <> " ran, so it cannot resume it \
+        \(resume it from the workspace tree's Agents node instead)"
+      Just i | null (aiDir i) -> return . Left $
+        "leksah does not know where " <> name <> " ran, so it cannot resume it"
+      Just i -> do
+        mrole <- case aiRole i of
+          Nothing -> return Nothing
+          Just ro -> either (const Nothing) Just <$> findAgentRole (aiDir i) ro
+        setAgentSuspended sid False
+        runClaudeCmd . ClaudeAgent $ AgentSpec
+          { asDir = aiDir i, asSession = sid, asFrom = Nothing, asPrompt = Nothing
+          , asParent = aiParent i, asRoleNote = roleNote <$> mrole
+          , asResume = True, asManager = aiManager i }
+        return (Right ("Resuming " <> name <> " in its own tab.\n"))
+
+-- | @agent refresh@: ask an agent to rewrite its title, description and bio
+-- (what the Agents pane's ⟳ does).
+agentRefresh :: Text -> IO Text
+agentRefresh sid = agentSend sid True agentRefreshPrompt
+
+-- | @agent manager@: who the manager is, and what state it is in.
+agentManagerStatus :: IO Text
+agentManagerStatus = agentManager >>= \case
+  Nothing -> return "There is no manager. Start one with: leksah-cmd agent manager start\n"
+  Just i  -> do
+    live <- claudeLiveBySession
+    name <- agentNameFor (aiSession i)
+    let st = case M.lookup (aiSession i) live of
+          Just l  -> fromMaybe "idle" (clStatus l)
+          Nothing | isJust (aiSuspended i) -> "suspended"
+                  | otherwise              -> "not running"
+    return (name <> "\t" <> aiSession i <> "\t" <> st <> "\t" <> T.pack (aiDir i) <> "\n")
+
+-- | @agent manager start@: start the workspace's manager in @dir@ — or bring
+-- the existing one back (resume it if it is not running, show it if it is):
+-- there is one manager.
+agentManagerStart :: FilePath -> IO (Either Text Text)
+agentManagerStart dir = agentManager >>= \case
+  Just i -> agentResume (aiSession i)
+  Nothing -> forkAgent (emptyForkRequest dir)
+      { frFresh = True, frDir = Just dir, frPlace = PlaceTab, frManager = True
+      , frPrompt = Just "Introduce yourself to the user in two or three lines \
+                        \as the team's manager, then run `leksah-cmd agent list` \
+                        \and say briefly who is on the team and what needs \
+                        \attention." }
+      >>= \case
+        Left err       -> return (Left err)
+        Right (_, msg) -> return (Right msg)
 
 -- | The last thing a session said (its latest assistant text), for the Agents
 -- pane's "last said" peek — 'Nothing' if it has said nothing yet.

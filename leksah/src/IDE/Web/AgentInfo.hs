@@ -29,6 +29,10 @@ module IDE.Web.AgentInfo
   , dismissAgent
   , markAgentDone
   , setAgentRole
+  , setAgentSuspended
+  , setAgentManager
+  , agentManager
+  , agentInfoOf
   , agentParentOf
   , agentForest
   , agentTitles
@@ -56,7 +60,7 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ord (Down(..))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -99,6 +103,15 @@ data AgentInfo = AgentInfo
                                --   again
   , aiDoneAt  :: Maybe Double  -- ^ when it said so (POSIX seconds)
   , aiRole    :: Maybe Text    -- ^ the role it was started in (@--as ROLE@)
+  , aiBio     :: Maybe Text    -- ^ its bio, as sanitized HTML: a few sentences on
+                               --   what it has worked on and is good for — the
+                               --   Team pane's card (@agent describe --bio@)
+  , aiBioAt   :: Maybe Double  -- ^ when it last wrote the bio (POSIX seconds) —
+                               --   how the manager spots a stale one
+  , aiSuspended :: Maybe Double -- ^ when it was suspended (@agent suspend@): its
+                               --   process ended on purpose, and it stays on the
+                               --   team until it is resumed
+  , aiManager :: Bool          -- ^ it is the workspace's manager agent
   } deriving (Eq, Show)
 
 instance ToJSON AgentInfo where
@@ -106,13 +119,16 @@ instance ToJSON AgentInfo where
     [ "session" .= aiSession i, "parent" .= aiParent i, "dir" .= aiDir i
     , "title" .= aiTitle i, "desc" .= aiDesc i, "when" .= aiWhen i
     , "born" .= aiBorn i, "done" .= aiDone i, "doneAt" .= aiDoneAt i
-    , "role" .= aiRole i ]
+    , "role" .= aiRole i, "bio" .= aiBio i, "bioAt" .= aiBioAt i
+    , "suspended" .= aiSuspended i, "manager" .= aiManager i ]
 
 instance FromJSON AgentInfo where
   parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
     <$> o .: "session" <*> o .:? "parent" <*> (fromMaybe "" <$> o .:? "dir")
     <*> o .:? "title" <*> o .:? "desc" <*> o .:? "when" <*> o .:? "born"
     <*> o .:? "done" <*> o .:? "doneAt" <*> o .:? "role"
+    <*> o .:? "bio" <*> o .:? "bioAt" <*> o .:? "suspended"
+    <*> (fromMaybe False <$> o .:? "manager")
 
 -- | One row of the Agents pane: an agent, and the agents it forked.
 data AgentNode = AgentNode
@@ -140,6 +156,11 @@ data AgentNode = AgentNode
                               --   (`agent register` \/ register_worktree),
                               --   pre-rendered one per line — shown under the
                               --   checkout line
+  , anBio      :: Maybe Text  -- ^ its bio (sanitized HTML), if it wrote one
+  , anManager  :: Bool        -- ^ it is the workspace's manager
+  , anBorn     :: Maybe Double -- ^ when leksah started it (POSIX seconds)
+  , anParentName :: Maybe Text -- ^ the name of the agent that started it
+  , anChildNames :: [Text]    -- ^ the names of the agents it started
   , anChildren :: [AgentNode] -- ^ the agents it forked
   } deriving (Eq, Show)
 
@@ -235,23 +256,27 @@ recordAgentFork parent child dir mprompt = do
 -- Either may be omitted to leave that half alone.  Creates the entry if leksah
 -- has never seen this session before — a top-level session nobody forked can
 -- describe itself too.
-describeAgent :: Text -> Maybe Text -> Maybe Text -> IO Text
-describeAgent sid mtitle mhtml = do
+describeAgent :: Text -> Maybe Text -> Maybe Text -> Maybe Text -> IO Text
+describeAgent sid mtitle mhtml mbio = do
   live <- claudeLiveBySession
   now  <- getCurrentTime
   let dir = maybe "" clDir (M.lookup sid live)
       stamp = T.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M" now)
+      posix = realToFrac (utcTimeToPOSIXSeconds now) :: Double
   withInfos $ \m ->
     let cur  = fromMaybe (blank sid dir) (M.lookup sid m)
         cur' = cur { aiTitle = maybe (aiTitle cur) (Just . T.strip) mtitle
                    , aiDesc  = maybe (aiDesc cur) (Just . sanitizeAgentHtml) mhtml
+                   , aiBio   = maybe (aiBio cur) (Just . sanitizeAgentHtml) mbio
+                   , aiBioAt = maybe (aiBioAt cur) (const (Just posix)) mbio
                    , aiWhen  = Just stamp
                    , aiDir   = if null (aiDir cur) then dir else aiDir cur }
     in ( M.insert sid cur' m
        , T.unlines $
            [ "Recorded. The Agents pane now shows " <> sid <> " as:" ]
            <> [ "  title: " <> t | Just t <- [aiTitle cur'] ]
-           <> [ "  description: " <> T.take 200 d | Just d <- [aiDesc cur'] ] )
+           <> [ "  description: " <> T.take 200 d | Just d <- [aiDesc cur'] ]
+           <> [ "  bio: " <> T.take 200 b | Just b <- [aiBio cur'] ] )
 
 -- | An agent saying it has finished (@agent done@), with what it would like
 -- the user — and the agent that started it — to know.
@@ -267,6 +292,32 @@ markAgentDone sid summary = do
 clearAgentDone :: Text -> IO ()
 clearAgentDone sid = withInfos $ \m ->
   (M.adjust (\i -> i { aiDone = Nothing, aiDoneAt = Nothing }) sid m, ())
+
+-- | Mark an agent suspended (its process is about to be ended on purpose), or
+-- clear the mark when it is resumed.
+setAgentSuspended :: Text -> Bool -> IO ()
+setAgentSuspended sid on = do
+  now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
+  live <- claudeLiveBySession
+  let dir = maybe "" clDir (M.lookup sid live)
+  withInfos $ \m ->
+    let cur = fromMaybe (blank sid dir) (M.lookup sid m)
+    in (M.insert sid cur { aiSuspended = if on then Just now else Nothing } m, ())
+
+-- | Make @sid@ the workspace's manager (and nobody else).
+setAgentManager :: Text -> FilePath -> IO ()
+setAgentManager sid dir = withInfos $ \m ->
+  let m' = M.map (\i -> i { aiManager = False }) m
+      cur = fromMaybe (blank sid dir) (M.lookup sid m')
+  in (M.insert sid cur { aiManager = True } m', ())
+
+-- | The manager's session, if there is one.
+agentManager :: IO (Maybe AgentInfo)
+agentManager = listToMaybe . filter aiManager . M.elems <$> peekInfos
+
+-- | Everything leksah remembers about one agent.
+agentInfoOf :: Text -> IO (Maybe AgentInfo)
+agentInfoOf sid = M.lookup sid <$> peekInfos
 
 -- | Remember which role an agent was started in.
 setAgentRole :: Text -> Text -> IO ()
@@ -287,7 +338,8 @@ blank sid dir = AgentInfo
   { aiSession = sid, aiParent = Nothing
   , aiDir = dropTrailingPathSeparator dir
   , aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
-  , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing }
+  , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing
+  , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False }
 
 --------------------------------------------------------------------------------
 -- the tree
@@ -369,7 +421,7 @@ demoForestRef = unsafePerformIO (newIORef Nothing)
 
 -- | One page-seeded row (children nest the same shape).
 data DemoAgent = DemoAgent Text Text Text Text FilePath (Maybe Text) Text
-                           (Maybe Text) (Maybe (Int, Text)) [DemoAgent] (Maybe Text)
+                           (Maybe Text) (Maybe Text) (Maybe (Int, Text)) [DemoAgent] (Maybe Text)
                            (Maybe Text)
 
 instance FromJSON DemoAgent where
@@ -386,9 +438,10 @@ instance FromJSON DemoAgent where
     <*> (fromMaybe [] <$> o .:? "children")
     <*> o .:? "name"
     <*> o .:? "activity"
+    <*> o .:? "bio"
 
 demoNode :: DemoAgent -> AgentNode
-demoNode (DemoAgent s title state detail dir desc age br pr kids name activity) = AgentNode
+demoNode (DemoAgent s title state detail dir desc age br pr kids name activity bio) = AgentNode
   { anSession  = s
   , anName     = fromMaybe "" name
   , anTitle    = title
@@ -404,6 +457,11 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity) 
   , anBranch   = br
   , anPr       = pr
   , anWorktrees = []
+  , anBio      = sanitizeAgentHtml <$> bio
+  , anManager  = False
+  , anBorn     = Nothing
+  , anParentName = Nothing
+  , anChildNames = map (\(DemoAgent _ _ _ _ _ _ _ _ _ _ nm _ _) -> fromMaybe "" nm) kids
   , anChildren = map demoNode kids
   }
 #else
@@ -432,11 +490,18 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   -- Decorate every row with the worktree relationships its session registered
   -- (cheap: 'claimsBySession' is an MVar peek per node over a small map).
   -- (And with its name: an exited agent keeps the one it had.)
+  -- And with what agents.json knows that the CLI does not: its bio, whether it
+  -- is the manager, when it was born, and who started it.
   names <- agentNames
   decorated <- forM (liveNodes <> exited) $ \(s, n) -> do
     wls <- worktreeClaimLines now s
+    let i = M.lookup s infos
     return (s, n { anWorktrees = wls
-                 , anName = M.findWithDefault (anName n) s names })
+                 , anName = M.findWithDefault (anName n) s names
+                 , anBio = i >>= aiBio
+                 , anManager = maybe False aiManager i
+                 , anBorn = i >>= aiBorn
+                 , anParentName = (i >>= aiParent) >>= (`M.lookup` names) })
   let nodes = M.fromList decorated
       -- The parent of x, skipping over agents that aren't shown (dismissed, or
       -- exited long ago) so their children stay visible under the nearest
@@ -449,8 +514,10 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       kids p = ordered [ n | (s, n) <- M.toList nodes, parentOf s == Just p ]
       build seen s n
         | s `elem` seen = n { anChildren = [] }
-        | otherwise     = n { anChildren =
-            [ build (s : seen) (anSession k) k | k <- kids s ] }
+        | otherwise     =
+            let ks = [ build (s : seen) (anSession k) k | k <- kids s ]
+            in n { anChildren = ks
+                 , anChildNames = filter (not . T.null) (map anName ks) }
   return [ build [] (anSession n) n
          | n <- ordered [ n | (s, n) <- M.toList nodes, isNothing (parentOf s) ] ]
   where
@@ -484,6 +551,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anBranch  = Nothing
       , anPr      = Nothing
       , anWorktrees = []
+      , anBio = Nothing, anManager = False, anBorn = Nothing
+      , anParentName = Nothing, anChildNames = []
       , anChildren = [] }
 
     -- Stored agents that are NOT running: either exited (their transcript's mtime
@@ -500,7 +569,9 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           if not ex then return (starting now i) else do
             t <- getModificationTime p
             let age = realToFrac (diffUTCTime now t) :: Double
-            return $ if age > exitedMaxAge then Nothing else Just (Right (t, i))
+            -- A suspended agent is still on the team: no age limit.
+            return $ if age > exitedMaxAge && isNothing (aiSuspended i)
+                       then Nothing else Just (Right (t, i))
       startedNodes <- forM [ i | Left i <- cands ] $ \i -> do
         (br, pr) <- agentGit posix (aiDir i)
         return . (,) (aiSession i) $ AgentNode
@@ -521,8 +592,14 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anBranch  = br
           , anPr      = pr
           , anWorktrees = []
+          , anBio = Nothing, anManager = False, anBorn = Nothing
+          , anParentName = Nothing, anChildNames = []
           , anChildren = [] }
-      goneNodes <- forM (take exitedMaxRows (sortOn (Down . fst) [ x | Right x <- cands ])) $ \(t, i) -> do
+      let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
+          (suspendedCands, goneCands) =
+            ( [ x | x@(_, i) <- exitedCands, isJust (aiSuspended i) ]
+            , [ x | x@(_, i) <- exitedCands, isNothing (aiSuspended i) ] )
+      goneNodes <- forM (suspendedCands <> take exitedMaxRows goneCands) $ \(t, i) -> do
         title <- case aiTitle i of
           Just x | not (T.null (T.strip x)) -> return (T.strip x)
           _ -> fromMaybe "" <$> claudeSessionLabel (aiDir i) (aiSession i)
@@ -532,11 +609,13 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anName    = ""
           , anTitle   = firstNonEmpty [ T.takeWhile (/= '\n') title
                                       , T.take 8 (aiSession i) ]
-          , anState   = "gone"
+          , anState   = if isJust (aiSuspended i) then "suspended" else "gone"
           , anActivity = Nothing
           , anDone    = aiDone i
           , anRole    = aiRole i
-          , anDetail  = "Exited — click to resume it here"
+          , anDetail  = if isJust (aiSuspended i)
+                          then "Suspended — resume it to carry on where it left off"
+                          else "Exited — click to resume it here"
           , anDir     = aiDir i
           , anDesc    = aiDesc i
           , anAge     = humanAge now t
@@ -544,6 +623,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anBranch  = br
           , anPr      = pr
           , anWorktrees = []
+          , anBio = Nothing, anManager = False, anBorn = Nothing
+          , anParentName = Nothing, anChildNames = []
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 
@@ -628,7 +709,7 @@ agentRefreshPrompt :: Text
 agentRefreshPrompt = T.intercalate "\n"
   [ "Leksah's Agents pane is asking you to refresh how you appear in it. Do "
     <> "just this, then stop: call the describe_agent tool (or run `leksah-cmd "
-    <> "agent describe --title '…' --html '…'`)."
+    <> "agent describe --title '…' --html '…' --bio '…'`)."
   , ""
   , "The title is a few words naming what you are working on. The description "
     <> "is an HTML fragment that renders in about FOUR LINES in a narrow side "
@@ -636,6 +717,12 @@ agentRefreshPrompt = T.intercalate "\n"
     <> "the work is in, and include <a href=\"…\">links</a> to any pull request, "
     <> "CI/Hydra build or issue involved. Allowed tags: p, br, a, code, b, "
     <> "strong, i, em, ul, li, span."
+  , ""
+  , "Also give a bio (--bio '…', or the bio argument): two to four sentences, "
+    <> "in the third person, for the Team pane's card about you — what you have "
+    <> "worked on in this session, what you now know well about this codebase, "
+    <> "and what kind of task you would be good to hand next. Same HTML tags; "
+    <> "links welcome."
   ]
 
 --------------------------------------------------------------------------------

@@ -75,8 +75,9 @@ import IDE.App (App(..), getGlobalApp)
 import IDE.Reactive (readCell)
 import IDE.Workspace (WorkspaceService(..), activeProject, prDir)
 import IDE.Web.Agent
-       (ForkPlace(..), ForkRequest(..), agentLastSaid, agentSend, emptyForkRequest,
-        forkAgent, renameAgentEverywhere, showAgentPane)
+       (ForkPlace(..), ForkRequest(..), agentLastSaid, agentResume, agentSend,
+        agentSuspend, emptyForkRequest, forkAgent, renameAgentEverywhere,
+        showAgentPane)
 import IDE.Web.ClaudeQueue (queueAdd)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentInfo
@@ -312,8 +313,12 @@ agentNodeW open refresh toast selectedD inD =
       -- where it left off — its transcript is still there, so --resume picks the
       -- thread up rather than starting over.  Either way the row is selected.
       let open' n =
-            if anState n == "gone"
-              then runClaudeCmd (ClaudeResume (anDir n) (anSession n))
+            if not (anLive n) && anState n /= "starting"
+              -- Resumed as it was launched (its parent, role, manager brief);
+              -- an agent leksah has no record of falls back to a plain resume.
+              then agentResume (anSession n) >>= \case
+                Right _ -> return ()
+                Left _  -> runClaudeCmd (ClaudeResume (anDir n) (anSession n))
               else showAgentPane (anSession n) >>= \found -> if found
                 then return ()
                 else toast $ displayName n <> " is running, but not in a terminal \
@@ -342,6 +347,9 @@ agentNodeW open refresh toast selectedD inD =
         , ffor nD $ \n -> ( if anLive n then "Refresh Title and Description"
                                         else "Forget Agent"
                          , manage n )
+        , ffor nD $ \n -> if anLive n
+            then ("Suspend Agent", agentSuspend (anSession n) False >>= toast . T.strip)
+            else ("Resume Agent", void (agentResume (anSession n)))
         , constDyn ("Rename…", fireRename ())
         , ffor nD $ \n -> ("Copy Session Id", copySessionId (anSession n)) ]
       performEvent_ $ ffor menuE $ liftIO . void . forkIO

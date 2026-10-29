@@ -131,6 +131,10 @@ usage = T.unlines
   , "  leksah-cmd agent find QUERY        which agent fits this work? (ranked, free ones first)"
   , "  leksah-cmd agent done --summary T  say you have finished (tells whoever started you)"
   , "  leksah-cmd agent rename [SID] NAME give an agent (default: you) another name"
+  , "  leksah-cmd agent suspend|resume|refresh SID"
+  , "                                     end its process but keep it / bring it back /"
+  , "                                     ask it to rewrite its title, description and bio"
+  , "  leksah-cmd agent manager [start]   the team's manager agent: who it is / start it"
   , "                                     (every SID may also be the agent's name, e.g. wren)"
   , "  leksah-cmd agent wait SID [--timeout S]"
   , "                                     block until that agent is idle (or needs a human)"
@@ -901,8 +905,28 @@ mcpTools =
       \request, CI/Hydra build or issue: the user opens them from the pane."
       [ ("title",   "string", "A few words naming what you are working on")
       , ("html",    "string", "HTML fragment, ~4 rendered lines. Allowed tags: p, br, a, code, b, strong, i, em, ul, li, span.")
+      , ("bio",     "string", "Your bio for the Team pane: 2-4 sentences, third person — what you have worked on, what you know well here, what you would be good for next. Same tags.")
       , ("session", "string", "Whose entry to set (default: your own)") ]
       []
+  , mcpTool "suspend_agent"
+      "Suspend an agent: end its claude process but keep it on the team \
+      \(its pane closes; the Agents and Team panes show it as suspended) — for \
+      \agents that are idle with nothing left to do. Refused for a busy agent \
+      \unless force is set, since that would lose the turn it is in."
+      [ ("session", "string", "The agent's name (e.g. wren) or session id")
+      , ("force",   "boolean", "Suspend even if it is busy") ]
+      ["session"]
+  , mcpTool "resume_agent"
+      "Bring a suspended or exited agent back, in its own tab, with its \
+      \conversation and with the notes it was launched with (its parent, its \
+      \role)."
+      [ ("session", "string", "The agent's name (e.g. wren) or session id") ]
+      ["session"]
+  , mcpTool "refresh_agent"
+      "Ask an agent to rewrite how it appears in the Agents and Team panes — \
+      \its title, description and bio. It answers by describing itself."
+      [ ("session", "string", "The agent's name (e.g. wren) or session id") ]
+      ["session"]
   , mcpTool "register_worktree"
       "Record YOUR relationship with a git worktree, so the IDE's worktree map \
       \stays accurate. Call it whenever you create a worktree, start working in \
@@ -1036,12 +1060,22 @@ mcpCall params = do
         Nothing -> return (Left "missing required argument: session")
       -- describe_agent: the session argument is optional because the wire format
       -- already says who is calling, so the usual call is title + html only.
-      "describe_agent" -> case (mcpText "title" args, mcpText "html" args) of
-        (Nothing, Nothing) -> return (Left "pass a title and/or html")
-        (mt, mh) -> sock $ ["agent", "describe"]
+      "describe_agent" -> case (mcpText "title" args, mcpText "html" args, mcpText "bio" args) of
+        (Nothing, Nothing, Nothing) -> return (Left "pass a title, html and/or bio")
+        (mt, mh, mb) -> sock $ ["agent", "describe"]
                         <> maybe [] ((:[]) . T.unpack) (mcpText "session" args)
                         <> maybe [] (\t -> ["--title", T.unpack t]) mt
                         <> maybe [] (\h -> ["--html",  T.unpack h]) mh
+                        <> maybe [] (\b -> ["--bio",   T.unpack b]) mb
+      "suspend_agent" -> case mcpText "session" args of
+        Just a  -> sock $ ["agent", "suspend", T.unpack a] <> [ "--force" | mcpBool "force" args ]
+        Nothing -> return (Left "missing required argument: session")
+      "resume_agent" -> case mcpText "session" args of
+        Just a  -> sock ["agent", "resume", T.unpack a]
+        Nothing -> return (Left "missing required argument: session")
+      "refresh_agent" -> case mcpText "session" args of
+        Just a  -> sock ["agent", "refresh", T.unpack a]
+        Nothing -> return (Left "missing required argument: session")
       -- register_worktree: like describe, the caller is identified by the wire
       -- format, so every argument is optional.
       "register_worktree" -> sock $ ["agent", "register"]

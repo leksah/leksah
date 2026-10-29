@@ -136,8 +136,9 @@ import IDE.Utils.RemotePath (isRemotePath)
 import IDE.LSP (requestTerminalHover)
 import IDE.Web.Agent
        (ForkPlace(..), ForkRequest(..), agentDone, agentFind, agentList,
-        agentRead, agentRoleList, agentSend, agentStatus, emptyForkRequest,
-        forkAgent, renameAgentEverywhere, resolveAgent)
+        agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
+        agentResume, agentRoleList, agentSend, agentStatus, agentSuspend,
+        emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent)
 import IDE.Web.AgentInfo (describeAgent)
 import IDE.Web.WorktreeRegistry
        (ClaimRole, parseRole, recordBranchMove, registerWorktree)
@@ -788,12 +789,25 @@ handleConn app conn = do
           _ -> reply ("agent rename: give a new name (and, from outside an agent, "
                       <> "which agent)\n\n" <> agentUsage)
         ("roles" : _) -> agentRoleList cwd >>= reply
+        -- Ending an agent's process on purpose, keeping the agent; and
+        -- bringing it back with what it was launched with.
+        ("suspend" : who : rest) | not (T.null who) -> withAgent who $ \sid ->
+            agentSuspend sid ("--force" `elem` rest) >>= reply
+        ("resume" : who : _) | not (T.null who) -> withAgent who $ \sid ->
+            agentResume sid >>= either (\e -> reply ("agent resume: " <> e <> "\n")) reply
+        -- Ask an agent to rewrite how it appears (title, description, bio).
+        ("refresh" : who : _) | not (T.null who) -> withAgent who $ \sid ->
+            agentRefresh sid >>= reply
+        -- The workspace's one manager agent.
+        ("manager" : "start" : _) -> agentManagerStart cwd >>=
+            either (\e -> reply ("agent manager: " <> e <> "\n")) reply
+        ("manager" : _) -> agentManagerStatus >>= reply
         -- How an agent says what it is doing, for the Agents pane: a title and
         -- a small HTML description.  The session defaults to the CALLER, so the
         -- usual call names no session at all.
         ("describe" : rest) -> case parseDescribe me rest of
           Left err          -> reply ("agent describe: " <> err <> "\n\n" <> agentUsage)
-          Right (who, t, h) -> withAgent who $ \sid -> describeAgent sid t h >>= reply
+          Right (who, t, h, b) -> withAgent who $ \sid -> describeAgent sid t h b >>= reply
         -- How a session (or a hook acting for one) records its relationship
         -- with a git worktree — the Worktrees tree node and the Agents pane
         -- read these back.  The worktree defaults to the CALLER's cwd, the
@@ -860,23 +874,24 @@ handleConn app conn = do
     -- @agent describe@'s arguments: an optional leading session id (default:
     -- the caller), then --title / --html.  Values are taken verbatim — an HTML
     -- fragment is full of punctuation, so nothing in it may be read as a flag.
-    parseDescribe me = go Nothing Nothing Nothing
+    parseDescribe me = go Nothing Nothing Nothing Nothing
       where
-        go msid t h [] = case msid `orElse` me of
+        go msid t h b [] = case msid `orElse` me of
           -- (This module is compiled with CPP, which splices backslash-continued
           -- lines — so long strings here are concatenated, never string gaps.)
           Nothing  -> Left ("no session: run this from a Claude session, or name"
                               <> " one — `agent describe SID --title …`")
           Just sid
-            | t == Nothing && h == Nothing ->
-                Left "nothing to record: pass --title and/or --html"
-            | otherwise -> Right (sid, t, h)
-        go msid t h (a : as) = case a of
-          "--title" -> val as $ \v as' -> go msid (Just v) h as'
-          "--html"  -> val as $ \v as' -> go msid t (Just v) as'
-          "--desc"  -> val as $ \v as' -> go msid t (Just v) as'
+            | t == Nothing && h == Nothing && b == Nothing ->
+                Left "nothing to record: pass --title, --html and/or --bio"
+            | otherwise -> Right (sid, t, h, b)
+        go msid t h b (a : as) = case a of
+          "--title" -> val as $ \v as' -> go msid (Just v) h b as'
+          "--html"  -> val as $ \v as' -> go msid t (Just v) b as'
+          "--desc"  -> val as $ \v as' -> go msid t (Just v) b as'
+          "--bio"   -> val as $ \v as' -> go msid t h (Just v) as'
           _ | "-" `T.isPrefixOf` a -> Left ("unknown option " <> a)
-            | msid == Nothing      -> go (Just a) t h as
+            | msid == Nothing      -> go (Just a) t h b as
             | otherwise            -> Left ("unexpected argument " <> a)
         val (v : as) k = k v as
         val []       _ = Left "missing value for an option"
@@ -941,6 +956,10 @@ handleConn app conn = do
       , "  done --summary TEXT   say you have finished (✓ in the Agents pane; the"
       , "                        summary goes to the agent that started you)"
       , "  rename [SID] NAME     give an agent (default: you) another name"
+      , "  suspend SID [--force] end its process but keep it (resume brings it back)"
+      , "  resume SID            reopen a suspended or exited agent, as it was launched"
+      , "  refresh SID           ask it to rewrite its title, description and bio"
+      , "  manager [start]       who the team's manager is / start (or resume) it"
       , "  me                    the session id of the caller"
       , "  (SID: a session id, a unique prefix of one, or the agent's name)"
       , "  status SID            one line: state, detail, pane, dir"
@@ -948,7 +967,8 @@ handleConn app conn = do
       , "  read SID [--last N]   SID's last N answers, newest last"
       , "  send SID [--submit] TEXT   type TEXT into SID (--submit presses Enter)"
       , "  show SID              bring SID's pane to the front in the UI"
-      , "  describe [SID] --title T --html H   how you appear in the Agents pane"
+      , "  describe [SID] --title T --html H --bio B   how you appear in the Agents"
+      , "                        and Team panes"
       , "                        (SID defaults to the calling session)"
       , "  register [--worktree DIR] [--role created|working|reviewing|abandoned]"
       , "           [--branch B] [--note TEXT] [--session SID]"
