@@ -101,12 +101,12 @@ import Data.List (find, intercalate, nub)
 import Data.Map (Map)
 import qualified Data.Map as M
        (empty, singleton, fromList, fromListWith, unionWith, toAscList, toList,
-        map, lookup, findWithDefault, traverseWithKey)
+        map, lookup, findWithDefault, traverseWithKey, elems, notMember)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
        (unpack, pack, splitOn, stripPrefix, intercalate, strip, words, lines,
-        null, breakOn, drop, isPrefixOf, replace, all)
+        null, breakOn, breakOnEnd, drop, dropEnd, isPrefixOf, replace, all)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Text.Read (readMaybe)
 
@@ -157,8 +157,8 @@ import System.Process (readProcessWithExitCode, createProcess, proc)
 import System.Exit (ExitCode(ExitSuccess))
 
 import IDE.Web.Claude
-       (claudeSessionsFor, csId, csTitle, claudeLiveOwners, ClaudeLive(..))
-import IDE.Web.AgentNames (agentNames)
+       (claudeSessionsFor, csId, csTitle, claudePaneSessions, ClaudeLive(..))
+import IDE.Web.AgentNames (agentContinuations, agentNames)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
@@ -1291,7 +1291,8 @@ renameLock = unsafePerformIO (newMVar ())
 -- about instead of the bare window name "claude".  Other panes are left
 -- untouched, and with no Claude pane at all this costs nothing.
 --
--- Resolution is PER PANE and by pid ('claudeLiveOwners'), which is exact even
+-- Resolution is PER PANE ('claudePaneSessions': by pid, or by title for a pane
+-- attached to a background session), which is exact even
 -- with two sessions open in one directory (or in one window).  Fallbacks, in
 -- order, for a pane whose process we can't see (its claude exited, @ps@
 -- unavailable, a remote tmux with no pane pid): the session id in the pane's own
@@ -1304,11 +1305,14 @@ enrichClaudeTitles
 enrichClaudeTitles tree
   | null claudeDirs = return tree
   | otherwise = do
-      owners <- claudeLiveOwners
+      -- Which conversation each pane shows — by its process, or for a pane
+      -- attached to a background session, by its title ('claudePaneSessions').
+      owners <- M.fromList . map (\((_, _, pid), l) -> (pid, l)) <$> claudePaneSessions
       byDir  <- M.fromList <$> mapM (\d -> (,) d <$> claudeSessionsFor d) claudeDirs
       names  <- agentNames
-      M.traverseWithKey renameAfterAgent $ M.map (\(nm, ws) ->
-          (nm, [ w { twPanes = map (fillPane owners byDir names) (twPanes w) }
+      conts  <- agentContinuations
+      M.traverseWithKey (renameAfterAgent names) $ M.map (\(nm, ws) ->
+          (nm, [ w { twPanes = map (fillPane owners conts byDir names) (twPanes w) }
                | w <- ws ])) tree
   where
     claudeDirs = nub (mapMaybe claudePaneDir
@@ -1316,60 +1320,82 @@ enrichClaudeTitles tree
     -- A tmux session still called @claude@ / @claude-N@ — one opened before its
     -- agent had a name (@claude -c@, the resume picker, a session from before
     -- names existed) — is renamed after the agent in it, once, so its tab and
-    -- its bell say "Wren" too.  Only when exactly one named agent is in it:
+    -- its bell say "Wren" too.  So is one named after an agent that is no
+    -- longer the one in it (the pane was switched to another conversation in
+    -- Claude Code's agent view).  Only when exactly one named agent is in it:
     -- with two, neither name describes the session.
     --
     -- Every OS window polls this tree, so two polls can both have seen the old
     -- name: the rename re-reads the CURRENT name under a process-wide lock and
     -- only acts if it is still the default — otherwise the second poll would
     -- find "Wren" taken and rename the same session again, to "Wren-2".
-    renameAfterAgent tsid (nm, ws)
-      | isClaudeDefault nm
-      , [a] <- nub [ n | w <- ws, p <- twPanes w, Just n <- [tpAgentName p] ] =
+    renameAfterAgent names tsid (nm, ws)
+      | [a] <- nub [ n | w <- ws, p <- twPanes w, Just n <- [tpAgentName p] ]
+      , renameable a nm =
           withMVar renameLock $ \_ -> do
             mcur <- fmap T.strip <$> tmuxOut
                       ["display-message", "-p", "-t", T.unpack tsid, "#{session_name}"]
             case mcur of
-              Just cur | isClaudeDefault cur -> do
-                new <- freshSessionName a
-                tmuxCmd ["rename-session", "-t", T.unpack tsid, T.unpack new]
-                return (new, ws)
+              Just cur | renameable a cur -> do
+                fresh <- freshSessionName a
+                tmuxCmd ["rename-session", "-t", T.unpack tsid, T.unpack fresh]
+                return (fresh, ws)
               Just cur -> return (cur, ws)
               Nothing  -> return (nm, ws)
       | otherwise = return (nm, ws)
+      where
+        known = M.elems names
+        renameable a cur = isClaudeDefault cur
+          || (agentBase cur `elem` known && agentBase cur /= a)
+    -- "Wren-2" is still named after Wren.
+    agentBase nm = case T.breakOnEnd "-" nm of
+      (pre, ds) | not (T.null pre), not (T.null ds), T.all isDigit ds -> T.dropEnd 1 pre
+      _ -> nm
     isClaudeDefault nm = case T.stripPrefix "claude" nm of
       Just ""   -> True
       Just rest -> case T.stripPrefix "-" rest of
                      Just ds -> not (T.null ds) && T.all isDigit ds
                      Nothing -> False
       Nothing   -> False
-    fillPane owners byDir names p = case claudePaneDir p of
-      Nothing  -> p
+    fillPane owners conts byDir names p = case claudePaneDir p of
+      -- Not one leksah started Claude in — but it may still show a Claude
+      -- session (@claude attach@ in a plain terminal): then it is that agent's.
+      Nothing -> case M.lookup (tpId p) owners of
+        Nothing -> p
+        Just l  -> p { tpAgentName    = M.lookup (clSession l) names
+                     , tpClaudeTitle  = clName l
+                     , tpClaudeStatus = clStatus l }
       Just dir ->
         let ss    = M.findWithDefault [] dir byDir
-            title = case M.lookup (tpPid p) owners of
+            owner = M.lookup (tpId p) owners
+            -- The session its run key names — unless that one has carried on
+            -- elsewhere (moved to the background): then this pane is showing
+            -- the agent view, or another conversation, not it.
+            keySid = mfilter (`M.notMember` conts) (claudePaneSession p)
+            title = case owner of
               -- Its own session: prefer the transcript row (same name source,
               -- plus the first-prompt fallback), else the bare live name.
               Just l  -> case find ((== clSession l) . csId) ss of
                            Just s  -> Just (csTitle s)
                            Nothing -> clName l
-              Nothing -> case claudePaneSession p of
+              Nothing -> case keySid of
                            Just sid -> csTitle <$> find ((== sid) . csId) ss
-                           Nothing  -> csTitle <$> listToMaybe ss
-            ownSid = (clSession <$> M.lookup (tpPid p) owners) <|> claudePaneSession p
+                           Nothing  -> Nothing
+            ownSid = (clSession <$> owner) <|> keySid
         in p { tpAgentName   = ownSid >>= (`M.lookup` names)
              , tpClaudeTitle = case title of
                  -- An unnamed session with no user prompt yet has no title.
                  Just t | t /= "(untitled session)" -> Just t
                  _                                   -> Nothing
-             , tpClaudeStatus = clStatus =<< M.lookup (tpPid p) owners }
+             , tpClaudeStatus = clStatus =<< owner }
 #endif
 
--- | Is this pane running a Claude Code session — i.e. does its @\@leksah_run@
--- marker have the Claude shape ('claudePaneDir')?  True even before a title is
+-- | Is this pane running a Claude Code session — does its @\@leksah_run@
+-- marker have the Claude shape ('claudePaneDir'), or is a named agent showing
+-- in it (a @claude attach@ in a plain terminal)?  True even before a title is
 -- known, so the tab row can show the robot icon straight away.
 isClaudePane :: TmuxPane -> Bool
-isClaudePane = isJust . claudePaneDir
+isClaudePane p = isJust (claudePaneDir p) || isJust (tpAgentName p)
 
 -- | The working directory of a Claude Code pane from its @\@leksah_run@ marker
 -- (@\<dir\>#claude@, @…#claude#\<id\>@, @…#claude#ask#\<file\>@, …), or 'Nothing'

@@ -21,6 +21,7 @@ module IDE.Web.ReplTmux
   , liveRunKeys
   , liveRunPanes
   , livePanePids
+  , livePaneTitles
   , isBackingRunKey
   , selectTmuxWindowById
   , ensureCommandWindow
@@ -49,6 +50,8 @@ import Control.Exception (catch, try, SomeException)
 import Control.Monad (void, mfilter, forM_)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.List (find, isPrefixOf, sortOn)
+import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Ord (Down(..))
 import Data.Text (Text)
@@ -324,6 +327,21 @@ livePanePids = (`catch` \(_ :: SomeException) -> return []) $
                    | l <- T.lines (T.pack out)
                    , [sid, wid, pid, ppidT] <- [T.splitOn "\t" l]
                    , Just ppid <- [readMaybe (T.unpack ppidT) :: Maybe Int] ]
+
+-- | Every pane's id and title (@#{pane_title}@ — what the program in it set with
+-- an OSC title; Claude Code puts the title of the conversation it is showing
+-- there).
+livePaneTitles :: IO (Map Text Text)
+livePaneTitles = (`catch` \(_ :: SomeException) -> return M.empty) $
+    findExecutable "tmux" >>= \case
+        Nothing   -> return M.empty
+        Just tmux -> do
+            (_, out, _) <- readProcessWithExitCode tmux
+                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
+                , "#{pane_id}\t#{pane_title}" ] ""
+            return $ M.fromList
+                [ (pid, T.intercalate "\t" t)
+                | l <- T.lines (T.pack out), (pid : t) <- [T.splitOn "\t" l] ]
 
 -- | Select a tmux window by its unique window id (@\@N@) — repl window names
 -- contain ':' (@pkg:lib:name@), so id targeting is the only unambiguous form.

@@ -109,11 +109,11 @@ import IDE.Web.AgentNames
 import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, roleNote)
 import IDE.Web.Claude
        (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
-        claudeCommandLine, claudeLiveBySession, claudeLiveOwners,
+        claudeCommandLine, claudeLiveBySession,
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
         showLiveSession, showTmuxPane, claudeProcessOf, nameNote, agentNote,
-        managerNote, describeToolUse)
+        managerNote, describeToolUse, claudePaneSessions)
 import IDE.Web.AgentEvents
        (SessionEvents(..), editedRecently, eventsFor, sessionEvents, recordCwd, recordEdit, recordFailure, recordPermission,
         recordToolEnd, recordToolStart, recordTurnEnd)
@@ -121,7 +121,7 @@ import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
-       (freshSessionName, liveRunPanes, livePanePids, newSessionWindow, pasteTo,
+       (freshSessionName, liveRunPanes, newSessionWindow, pasteTo,
         sendKeysTo, splitPane, tmuxCmd, tmuxOut)
 
 -- | Where the child's pane goes.
@@ -665,10 +665,8 @@ agentLastSaid sid = transcriptFor sid >>= \case
 -- for a @ps@ and a tmux listing per session).
 panesBySession :: IO (Map Text Text)
 panesBySession = do
-  owners <- claudeLiveOwners
-  panes  <- livePanePids
-  return $ M.fromList
-    [ (clSession l, p) | (_, _, p, ppid) <- panes, Just l <- [M.lookup ppid owners] ]
+  ps <- claudePaneSessions
+  return $ M.fromList [ (clSession l, p) | ((_, _, p), l) <- ps ]
 
 -- | The pane a not-yet-registered agent is starting in, found by its run key
 -- (@\<dir\>#claude#\<session id\>@, set when the pane was made — which is why

@@ -33,6 +33,7 @@ module IDE.Web.Claude
   , claudeLatestActivity
   , describeToolUse
   , claudeProcessOf
+  , claudePaneSessions
   , nameNote
   , agentNote
   , managerNote
@@ -112,7 +113,7 @@ import IDE.Web.AgentNames
        (adoptContinuation, agentContinuations, agentNameFor, sessionOfRunKey)
 import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
-        liveRunPanes, livePanePids, tmuxCmd, sendKeysTo, findRunPane,
+        liveRunPanes, livePanePids, livePaneTitles, tmuxCmd, sendKeysTo, findRunPane,
         newSessionWindow, freshSessionName)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.NewLwRequest (requestNewLw)
@@ -171,6 +172,12 @@ data ClaudeLive = ClaudeLive
                                 --   input).  'Nothing' on an older CLI.
   , clWaitingFor :: Maybe Text  -- ^ what a @waiting@ session is blocked on
                                 --   (e.g. the tool name), when the CLI says
+  , clJob        :: Maybe Text  -- ^ a background session's job (short) id — what
+                                --   @claude attach \<id\>@ names
+  , clKind       :: Maybe Text  -- ^ @bg@ for a background session (run by Claude
+                                --   Code's daemon, shown in whichever terminal
+                                --   is attached to it — see
+                                --   'claudePaneSessions'); else interactive
   } deriving (Eq, Show)
 
 -- | Every Claude Code session running right now.
@@ -254,7 +261,9 @@ claudeSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
                                        (v >>= objField "cwd")
                 , clName       = mfilter (not . T.null) (v >>= objField "name")
                 , clStatus     = mfilter (not . T.null) (v >>= objField "status")
-                , clWaitingFor = mfilter (not . T.null) (v >>= objField "waitingFor") } ]
+                , clWaitingFor = mfilter (not . T.null) (v >>= objField "waitingFor")
+                , clJob        = mfilter (not . T.null) (v >>= objField "jobId")
+                , clKind       = mfilter (not . T.null) (v >>= objField "kind") } ]
           _ -> []
 
 -- | Live sessions keyed by session id, with dead leftovers dropped: a session
@@ -290,20 +299,94 @@ claudeSessionNames = do
 --
 -- One @ps@ call, and none at all when nothing is running.  'M.empty' if @ps@
 -- fails (callers fall back to the per-directory guess).
+--
+-- A BACKGROUND session (@kind: bg@) claims only its own pid: it runs under
+-- Claude Code's daemon, whose ancestry leads to whichever terminal happened
+-- to start the daemon — not to the pane showing the session.  Which pane that
+-- is, 'claudePaneSessions' works out from the pane's title.
 claudeLiveOwners :: IO (Map Int ClaudeLive)
 claudeLiveOwners = (`catch` \(_ :: SomeException) -> return M.empty) $ do
   ls <- claudeLiveSessions
   if null ls then return M.empty else do
     parents <- readParentPids
     return $ M.fromList
-      [ (p, l) | l <- ls, p <- clPid l : ancestors parents (clPid l) ]
-  where
-    -- Up to the session leader; bounded so a cycle in a garbled table can't spin.
-    ancestors parents = go (12 :: Int)
-      where go 0 _ = []
-            go n p = case M.lookup p parents of
-              Just q | q > 1 -> q : go (n - 1) q
-              _              -> []
+      [ (p, l) | l <- ls
+               , p <- clPid l : (if clKind l == Just "bg" then []
+                                  else pidAncestors parents (clPid l)) ]
+
+-- | A pid's ancestors, up to the session leader; bounded so a cycle in a
+-- garbled table can't spin.
+pidAncestors :: Map Int Int -> Int -> [Int]
+pidAncestors parents = go (12 :: Int)
+  where go 0 _ = []
+        go n p = case M.lookup p parents of
+          Just q | q > 1 -> q : go (n - 1) q
+          _              -> []
+
+-- | Every tmux pane running a live Claude session, as @((tmux session,
+-- window, pane), session)@ — the one place that answers "which conversation
+-- is in this pane?".
+--
+--   * A pane whose process tree runs an interactive session's @claude@ shows
+--     that session ('claudeLiveOwners').
+--   * A pane running @claude attach \<job id\>@ (what @claude --resume@ of a
+--     running background session becomes) shows that job's session.
+--   * Otherwise, a pane hosting a Claude front end whose own session moved to
+--     the background (← on an empty prompt, /bg) may be ATTACHED to any
+--     background session — the agent view lets you switch between them —
+--     and nothing in the process table says which.  Claude Code titles the
+--     pane after the conversation it shows (@#{pane_title}@, a status glyph
+--     first), and a background session's file carries the same name, so a
+--     unique match on that is the attached session.  The agent view's own
+--     title (@N awaiting input · claude agents@) matches nothing.
+claudePaneSessions :: IO [((Text, Text, Text), ClaudeLive)]
+claudePaneSessions = (`catch` \(_ :: SomeException) -> return []) $ do
+  owners  <- claudeLiveOwners
+  panes   <- livePanePids
+  live    <- claudeLiveBySession
+  if M.null live then return [] else do
+    titles  <- livePaneTitles
+    files   <- claudeSessionFiles
+    procs   <- readProcessArgs
+    let parents = fst <$> procs
+        -- @claude attach \<job\>@ processes, by the pids they run under
+        attachJobs = M.fromList
+          [ (q, job) | (p, (_, args)) <- M.toList procs
+                     , (exe : "attach" : job : _) <- [words args]
+                     , takeFileName exe == "claude"
+                     , q <- p : pidAncestors parents p ]
+        bgByJob = M.fromList [ (j, l) | l <- M.elems live, clKind l == Just "bg"
+                                      , Just j <- [clJob l] ]
+        attachedProc ppid = M.lookup ppid attachJobs >>= \j -> M.lookup (T.pack j) bgByJob
+        -- pids that run (or are the ancestors of) a Claude front end, live or
+        -- not: the panes worth reading a title from
+        hosts = S.fromList [ p | f <- files, clKind f /= Just "bg"
+                               , p <- clPid f : pidAncestors parents (clPid f) ]
+        bgByName = M.fromListWith (\_ _ -> Nothing)
+          [ (T.toLower n, Just l) | l <- M.elems live, clKind l == Just "bg"
+                                  , Just n <- [clName l] ]
+        attached p ppid
+          | ppid `S.member` hosts
+          , Just t <- M.lookup p titles
+          , Just (Just l) <- M.lookup (T.toLower (paneTitleText t)) bgByName = Just l
+          | otherwise = Nothing
+    return [ ((s, w, p), l)
+           | (s, w, p, ppid) <- panes
+           , Just l <- [ M.lookup ppid owners <|> attachedProc ppid <|> attached p ppid ] ]
+
+-- | A Claude pane's title without the status glyph Claude Code puts in front
+-- (@✳@, a spinner frame, …).
+paneTitleText :: Text -> Text
+paneTitleText = T.strip . T.dropWhile (\c -> not (isAlphaNum c) && c /= '(')
+
+-- | @pid -> (ppid, command line)@ for every process on the machine.
+readProcessArgs :: IO (Map Int (Int, String))
+readProcessArgs = (`catch` \(_ :: SomeException) -> return M.empty) $ do
+  out <- readProcess "ps" ["-Ao", "pid=,ppid=,args="] ""
+  return $ M.fromList
+    [ (p, (q, unwords rest)) | l <- lines out
+                             , (pT : qT : rest) <- [words l]
+                             , Just p <- [readMaybe pT], Just q <- [readMaybe qT] ]
 
 -- | @pid -> ppid@ for every process on the machine.
 readParentPids :: IO (Map Int Int)
@@ -1053,22 +1136,16 @@ mruClaudeUnclaimed sid dir = do
 -- (not running at all, on a remote host, or in a terminal outside leksah).
 paneForSession :: Text -> IO (Maybe (Text, Text, Text))
 paneForSession sid = do
-  owners <- claudeLiveOwners
-  panes  <- livePanePids
-  return $ listToMaybe
-    [ (s, w, p) | (s, w, p, ppid) <- panes
-                , Just l <- [M.lookup ppid owners], clSession l == sid ]
+  ps <- claudePaneSessions
+  return $ listToMaybe [ pane | (pane, l) <- ps, clSession l == sid ]
 
 -- | The live session running in tmux pane @pid@ (@%7@), if any — the reverse of
 -- 'paneForSession', for asking "is THIS pane a Claude session?".  A pane whose
 -- own session is the obvious AI target needs no stored binding.
 sessionForPaneId :: Text -> IO (Maybe Text)
 sessionForPaneId pid = do
-  owners <- claudeLiveOwners
-  panes  <- livePanePids
-  return $ listToMaybe
-    [ clSession l | (_, _, p, ppid) <- panes, p == pid
-                  , Just l <- [M.lookup ppid owners] ]
+  ps <- claudePaneSessions
+  return $ listToMaybe [ clSession l | ((_, _, p), l) <- ps, p == pid ]
 
 -- | The live session that process @pid@ is running UNDER — walk up its parents
 -- until one of them is a @claude@ process we know.  Note the direction:
