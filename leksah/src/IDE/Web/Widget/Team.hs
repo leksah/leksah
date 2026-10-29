@@ -26,7 +26,7 @@ import qualified Data.Text as T
 import Clay (Css, (?), (-:))
 
 import Reflex
-       (Event, constDyn, ffor, fmapMaybe, getPostBuild, holdDyn,
+       (Event, constDyn, ffor, getPostBuild, holdDyn,
         holdUniqDyn, leftmost, listViewWithKey, never, newTriggerEvent,
         tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
@@ -37,8 +37,7 @@ import qualified Data.Set as S
 import System.FilePath ((</>), takeDirectory, takeFileName, dropTrailingPathSeparator)
 
 import IDE.Web.AgentInfo (AgentNode(..), agentForest)
-import IDE.Web.Agent (showAgentPane)
-import IDE.Web.Widget.AgentCard (CardEvent(..), agentCard)
+import IDE.Web.Widget.AgentCard (agentCard)
 import IDE.Web.Widget.Agents (agentCardActions)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 
@@ -71,13 +70,9 @@ teamWidget = do
     void . listViewWithKey (sections <$> forestD) $ \_ secD -> do
       divClass "team-section" $ do
         elClass "h2" "team-section-title" . dynText $ fst <$> secD
-        cardE <- divClass "team-grid" . listViewWithKey (snd <$> secD) $ \_ nD ->
-          agentCard acts (constDyn True) True (constDyn Nothing) nD
-        -- "Message" from a bio means "take me to them".
-        performEvent_ $ ffor (fmapMaybe (\m -> case M.elems m of
-                                          (CardMessage s : _) -> Just s
-                                          _                   -> Nothing) cardE) $ \s ->
-          liftIO . void . forkIO . void $ showAgentPane s
+        void . divClass "team-grid" . listViewWithKey (snd <$> secD) $ \_ nD -> do
+          agentCard acts (constDyn True) True nD
+          return (never :: Event t ())
         return (never :: Event t ())
     return ()
   pb <- getPostBuild

@@ -18,10 +18,10 @@
 --     it is doing — with a ⋯ that opens it.
 --
 -- Above the cards: a count per state that doubles as a filter, a search box
--- (@/@ focuses it), and a toggle between the lineage TREE (children indented
--- under the agent that started them) and a flat needs-you-first list.  Below
--- them: the dispatch box, which starts a new agent or messages the selected
--- one.
+-- (@/@ focuses it), a toggle between the lineage TREE (children indented
+-- under the agent that started them) and a flat needs-you-first list, ＋ for a
+-- new agent and 👥 for the Team pane.  There is no message box: clicking a
+-- card brings the agent's own pane up, and that is where you talk to it.
 --
 -- Links in a description or bio open in the OS browser; hold ⌥ (⌥⇧ for the
 -- other direction) to open one in a leksah browser pane split instead.  The
@@ -46,7 +46,7 @@ import Data.List (find, sortOn)
 
 import Data.Map (Map)
 import qualified Data.Map as M (fromList, fromListWith, findWithDefault)
-import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -58,36 +58,30 @@ import Clay
 import Clay.Stylesheet (key)
 
 import Reflex
-       (Dynamic, Event, attach, current, ffor, fmapMaybe, foldDyn, getPostBuild,
-        holdDyn, holdUniqDyn, leftmost, listViewWithKey, never, newTriggerEvent,
-        tag, tickLossyFromPostBuildTime, updated)
+       (Dynamic, Event, ffor, foldDyn, getPostBuild, holdDyn, holdUniqDyn,
+        leftmost, listViewWithKey, never, newTriggerEvent,
+        tickLossyFromPostBuildTime, updated)
 import Reflex.Dom.Core
        (blank, def, divClass, domEvent, dyn_, dynText, elAttr, elAttr', elClass,
         elClass', elDynAttr, elDynAttr', elementConfig_initialAttributes,
-        inputElement, inputElementConfig_elementConfig, text, textAreaElement,
-        textAreaElementConfig_elementConfig, textAreaElementConfig_setValue,
-        EventName(..), (=:), _element_raw, _inputElement_value,
-        _textAreaElement_value)
+        inputElement, inputElementConfig_elementConfig, text,
+        EventName(..), (=:), _element_raw, _inputElement_value)
 import Language.Javascript.JSaddle (liftJSM, jsg, js1, eval, valToBool)
-
-import System.FilePath (takeFileName)
 
 import IDE.App (App(..), getGlobalApp)
 import IDE.Reactive (readCell)
 import IDE.Workspace (WorkspaceService(..), activeProject, prDir)
 import IDE.Web.Agent
-       (ForkPlace(..), ForkRequest(..), agentLastSaid, agentManagerStart,
-        agentRefresh, agentResume, agentSend, agentSuspend, emptyForkRequest,
-        forkAgent, renameAgentEverywhere, showAgentPane)
-import IDE.Web.ClaudeQueue (queueAdd)
+       (ForkRequest(..), agentLastSaid, agentManagerStart, agentRefresh,
+        agentResume, agentSuspend, emptyForkRequest, forkAgent,
+        renameAgentEverywhere, showAgentPane)
 import IDE.Web.AgentInfo (AgentNode(..), agentForest, dismissAgent)
 import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
         dimColor, fgColor, hoverColor)
 import IDE.Web.Widget.AgentCard
-       (CardActions(..), CardEvent(..), agentCard, agentCardCss, colourOf,
-        displayName)
+       (CardActions(..), agentCard, agentCardCss, colourOf, displayName)
 import IDE.Web.Command (Command(CommandShowTeam))
 import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.Frame (MonadWidget, performEvent_)
@@ -115,6 +109,12 @@ agentCardActions toast refresh = CardActions
   , caRename  = \n new -> renameAgentEverywhere (anSession n) new >>= \case
       Left err -> toast err
       Right _  -> refresh
+    -- A copy of its conversation, beside it — the user asked, so (unlike an
+    -- agent's own fork) the new pane is brought up to type into.
+  , caBranch = \n -> forkAgent (emptyForkRequest (anDir n)) { frFrom = Just (anSession n) }
+      >>= \case
+        Left err       -> toast err
+        Right (sid, _) -> void (showAgentPane sid) >> refresh
   , caLastSaid = agentLastSaid . anSession
   }
 
@@ -135,7 +135,7 @@ agentsWidget mruNamesD = do
     -- agents, and a synchronous performEvent would hitch the whole UI.
     let refresh = void . forkIO $ agentForest >>= fireForest
     forestD <- holdUniqDyn =<< holdDyn [] forestE
-    -- One-line notices (a click that finds no pane, a dispatch that started an
+    -- One-line notices (a click that finds no pane, an agent that started or
     -- agent or failed): fired from whichever thread knows, shown as a toast on
     -- the frame thread.
     (toastE, toast) <- newTriggerEvent
@@ -179,6 +179,13 @@ agentsWidget mruNamesD = do
         performEvent_ $ ffor (updated flatD') $ \fl -> liftJSM . void . eval $
           ("try{localStorage.setItem('leksahAgentsFlat','" <> (if fl then "1" else "0")
              <> "')}catch(e){}" :: Text)
+        -- A new agent: its own tab in the active project, where you then tell
+        -- it what to do.
+        newE <- actionBtn "＋" "Start a new agent in the active project, in its own tab"
+        performEvent_ $ ffor newE $ \_ -> liftIO . void . forkIO $
+          activeProjectDir >>= \case
+            Nothing -> toast "Open a project first: a new agent starts in the active project"
+            Just d  -> runClaudeCmd (ClaudeNew d) >> refresh
         teamE <- actionBtn "👥" "Open the Team pane: a bio card for every agent"
         performEvent_ $ liftIO (requestKeymapCommand CommandShowTeam) <$ teamE
         h <- actionBtn "⟳" "Re-read the agent list"
@@ -211,28 +218,15 @@ agentsWidget mruNamesD = do
     -- Nothing running: say how one starts, rather than showing an empty box.
     dyn_ $ ffor (null <$> forestD) $ \empty' -> if not empty' then blank else
       divClass "agents-empty" $ text
-        "Type a task below to start an agent, or start one from a Claude \
-        \session with `leksah-cmd agent fork 'do this'`."
+        "Start one with ＋ above, or from a Claude session with \
+        \`leksah-cmd agent fork 'do this'`."
     let shownD = shape <$> forestD <*> stateD <*> searchD <*> flatD <*> mruNamesD
-    cardE <- divClass "agents-list" $ do
-      e <- listViewWithKey shownD $ \_ cD ->
-        elDynAttr "div" (slotAttrs <$> cD) $
-          agentCard acts (slotTop <$> cD) False selectedD (slotNode <$> cD)
-      return (fmapMaybe (listToMaybe . foldr (:) []) e)
-    -- The selection: the agent the dispatch box talks to.  Clicking a card
-    -- selects it (and brings its pane up); "Message" also jumps to the box;
-    -- ✕ in the box clears it.
-    let pickE = ffor cardE $ \case
-          CardSelect s  -> s
-          CardMessage s -> s
-        messageE = fmapMaybe (\case CardMessage s -> Just s; _ -> Nothing) cardE
-    selectedD <- holdDyn Nothing (leftmost [Just <$> pickE, Nothing <$ clearE])
-    clearE <- dispatchW toast refresh selectedD forestD
-    performEvent_ $ ffor messageE $ \_ -> liftJSM . void . eval $
-      ("setTimeout(function(){var t=document.querySelector(\
-       \'.agents.leksah-nav .agents-dispatch-text');if(t)t.focus()},0)" :: Text)
+    divClass "agents-list" . void . listViewWithKey shownD $ \_ cD -> do
+      elDynAttr "div" (slotAttrs <$> cD) $
+        agentCard acts (slotTop <$> cD) False (slotNode <$> cD)
+      return (never :: Event t ())
     return ()
-  -- Arm the pane's JS (description links, Enter-to-dispatch, / to search) on
+  -- Arm the pane's JS (description links, / to search) on
   -- THIS pane's root element.  The handle, never document.querySelector: at
   -- postBuild the div isn't attached in wkwebview's batched DOM, and setting a
   -- property on null aborts the build batch (which shows up as a blank UI, not
@@ -349,96 +343,6 @@ rankOf = \case
   "suspended" -> 4
   _           -> 5
 
--- | The dispatch box under the list: say what you want, then send it to the
--- selected agent, or start a new one with it (here, in a fresh worktree, or
--- branched off the selected agent's conversation).  Enter does the
--- highlighted action — "Send" while an agent is selected, "New agent"
--- otherwise; Shift+Enter is a newline.  Answers the "clear the selection"
--- clicks.
-dispatchW
-  :: forall t m . MonadWidget t m
-  => (Text -> IO ()) -> IO () -> Dynamic t (Maybe Text) -> Dynamic t [AgentNode]
-  -> m (Event t ())
-dispatchW toast refresh selectedD forestD = divClass "agents-dispatch" $ mdo
-  let selNodeD = (\ms f -> ms >>= \s -> listToMaybe [ n | n <- flatten f, anSession n == s ])
-                   <$> selectedD <*> forestD
-  clearE <- divClass "agents-dispatch-target" $ do
-    dynText $ ffor selNodeD $ \case
-      Just n  -> "To " <> displayName n
-      Nothing -> "New agent"
-    (x, _) <- elDynAttr' "button"
-      (ffor selNodeD $ \m -> "class" =: "agents-action"
-                          <> "title" =: "Talk to nobody in particular (start a new agent)"
-                          <> maybe ("style" =: "display:none") (const mempty) m)
-      (text "✕")
-    return (domEvent Click x)
-  ta <- textAreaElement $ def
-    & textAreaElementConfig_setValue .~ ("" <$ sentE)
-    & textAreaElementConfig_elementConfig . elementConfig_initialAttributes .~
-        ( "class" =: "agents-dispatch-text" <> "rows" =: "2" <> "spellcheck" =: "false"
-       <> "placeholder" =: "Describe a task, or reply to the selected agent…" )
-  let textB = T.strip <$> current (_textAreaElement_value ta)
-  sentE <- divClass "agents-dispatch-buttons" $ do
-    -- The default (Enter) button carries .agents-dispatch-go, which the pane's
-    -- JS clicks.
-    let btn cls label tip visible = do
-          (b, _) <- elDynAttr' "button"
-            (ffor selNodeD $ \m -> "class" =: ("agents-dispatch-btn" <> cls m)
-                                <> "title" =: tip
-                                <> (if visible m then mempty else "style" =: "display:none"))
-            (dynText (label <$> selNodeD))
-          return (domEvent Click b)
-        go m = if isJust m then "" else " agents-dispatch-go"
-        goSel m = if isJust m then " agents-dispatch-go" else ""
-        liveSel = maybe False anLive
-    sendE <- btn goSel (\m -> "Send to " <> maybe "" displayName m)
-               "Type this into the selected agent's prompt and submit it" liveSel
-    newE  <- btn go (const "New agent")
-               "Start a new agent in the active project with this as its task" (const True)
-    wtE   <- btn (const "") (const "New in worktree")
-               "Queue this task: it gets its own git worktree and agent (see the Tasks pane)"
-               (const True)
-    forkE <- btn (const "") (\m -> "Branch off " <> maybe "" displayName m)
-               "Start an agent that continues the selected agent's conversation, beside it"
-               liveSel
-    let act k e = fmapMaybe (\(t, m) -> if T.null t then Nothing else Just (k, m, t))
-                    (attach textB (tag (current selNodeD) e))
-        actionsE = leftmost [ act Send sendE, act New newE, act Worktree wtE, act Branch forkE ]
-    performEvent_ $ ffor actionsE $ \(k, m, t) -> liftIO . void . forkIO $
-      dispatch k m t >> refresh
-    return (() <$ actionsE)
-  return clearE
-  where
-    dispatch k m t = case (k, m) of
-      (Send, Just n) -> do
-        _ <- agentSend (anSession n) True t
-        toast ("Sent to " <> displayName n)
-      (Branch, Just n) -> do
-        r <- forkAgent (emptyForkRequest (anDir n))
-               { frFrom = Just (anSession n), frPrompt = Just t }
-        report r
-      (Worktree, _) -> withDir m $ \d -> do
-        queueAdd d t 1
-        toast ("Queued: a new worktree of " <> T.pack (takeFileName d)
-               <> " and an agent for it (see the Tasks pane)")
-      _ -> withDir m $ \d -> do
-        r <- forkAgent (emptyForkRequest d)
-               { frFresh = True, frDir = Just d, frPlace = PlaceTab, frPrompt = Just t }
-        report r
-    report = \case
-      Left err      -> toast err
-      Right (_, ln) -> toast (T.takeWhile (/= '(') (T.takeWhile (/= '\n') ln))
-    -- Where a new agent goes: the active project, else the selected agent's
-    -- checkout.
-    withDir m k = activeProjectDir >>= \case
-      Just d  -> k d
-      Nothing -> case m of
-        Just n  -> k (anDir n)
-        Nothing -> toast "Open a project first: a new agent starts in the active project"
-
-data DispatchKind = Send | New | Worktree | Branch
-  deriving (Eq, Show)
-
 -- | The active project's directory, if there is one.
 activeProjectDir :: IO (Maybe FilePath)
 activeProjectDir = getGlobalApp >>= \case
@@ -476,19 +380,11 @@ agentLinksJs = T.unlines
   , "      try { if (window.__leksahOpenExtUrl)"
   , "              window.__leksahOpenExtUrl(u, !!e.altKey, !!e.shiftKey); } catch(_) {}"
   , "    }, true);"
-    -- Enter in the dispatch box does the highlighted action (Shift+Enter is a
-    -- newline), and / anywhere else in the pane jumps to the search box.  In
-    -- JS because preventDefault from a Haskell handler arrives too late under
-    -- wkwebview's asynchronous event dispatch.
+    -- / anywhere in the pane (outside a text field) jumps to the search box.
+    -- In JS because preventDefault from a Haskell handler arrives too late
+    -- under wkwebview's asynchronous event dispatch.
   , "    root.addEventListener('keydown', function(e){"
   , "      var t = e.target, tag = t && t.tagName;"
-  , "      if (t && t.classList && t.classList.contains('agents-dispatch-text')"
-  , "          && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {"
-  , "        e.preventDefault();"
-  , "        var b = root.querySelector('.agents-dispatch-go');"
-  , "        if (b) setTimeout(function(){ b.click(); }, 0);"
-  , "        return;"
-  , "      }"
   , "      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {"
   , "        var s = root.querySelector('.agents-search');"
   , "        if (s) { e.preventDefault(); s.focus(); }"
@@ -503,7 +399,7 @@ agentsCss :: Css
 agentsCss = do
     -- The cards themselves (shared with the Team pane).
     agentCardCss
-    -- Head, cards, dispatch box: only the cards scroll.
+    -- Head and cards: only the cards scroll.
     ".agents" ? do
         height (pct 100)
         overflow hidden
@@ -590,41 +486,6 @@ agentsCss = do
         "gap" -: "5px"
         "padding" -: "1px 1px 6px 1px"
     ".agents .agents-slot" ? ("flex" -: "0 0 auto")
-    -- The dispatch box, pinned under the cards.
-    ".agents .agents-dispatch" ? do
-        "flex" -: "0 0 auto"
-        "border-top" -: "1px solid var(--leksah-border-faint)"
-        padding (px 4) (px 4) (px 6) (px 2)
-    ".agents .agents-dispatch-target" ? do
-        display flex
-        "align-items" -: "center"
-        "gap" -: "4px"
-        fontSize (px 11)
-        color dimColor
-        "margin-bottom" -: "3px"
-    ".agents .agents-dispatch-text" ? do
-        "width" -: "calc(100% - 10px)"
-        "resize" -: "vertical"
-        fontSize (px 12)
-        padding (px 3) (px 4) (px 3) (px 4)
-        color fgColor
-        "background" -: "var(--leksah-surface-alt)"
-        "border" -: "1px solid var(--leksah-border-faint)"
-        borderRadius (px 3) (px 3) (px 3) (px 3)
-        "outline" -: "none"
-        "font-family" -: "inherit"
-    ".agents .agents-dispatch-text:focus" ?
-        ("border-color" -: "var(--leksah-selection)")
-    ".agents .agents-dispatch-buttons" ? do
-        display flex
-        "flex-wrap" -: "wrap"
-        "gap" -: "4px"
-        "margin-top" -: "4px"
-    ".agents .agents-dispatch-btn" ? do
-        fontSize (px 11)
-        padding (px 1) (px 6) (px 1) (px 6)
-    ".agents .agents-dispatch-go" ?
-        ("box-shadow" -: "0 0 0 1px var(--leksah-selection)")
     -- An agent's face in the workspace tree's session rows.
     ".tree-face" ? do
         "display" -: "inline-flex"

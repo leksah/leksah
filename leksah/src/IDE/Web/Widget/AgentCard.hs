@@ -22,7 +22,6 @@
 -- full" 'Dynamic' — the Agents pane's top card) and to the user (⋯).
 module IDE.Web.Widget.AgentCard
   ( CardActions(..)
-  , CardEvent(..)
   , agentCard
   , agentCardCss
   , colourOf
@@ -68,30 +67,27 @@ data CardActions = CardActions
   , caResume  :: AgentNode -> IO ()
   , caForget  :: AgentNode -> IO ()          -- ^ drop an exited agent
   , caRename  :: AgentNode -> Text -> IO ()
+  , caBranch  :: AgentNode -> IO ()          -- ^ start a copy of its
+                                             --   conversation beside it
   , caLastSaid :: AgentNode -> IO (Maybe Text)
   }
 
--- | What a card tells its pane.
-data CardEvent
-  = CardSelect Text   -- ^ the user clicked it: select this session
-  | CardMessage Text  -- ^ "Message": select it AND go to the dispatch box
-  deriving (Eq, Show)
-
 -- | One card.  @fullD@: this card must be shown in full (the user's ⋯ opens
 -- any other).  @startOpen@: how a card the user has not touched starts.
+-- Everything a card does, it does through 'CardActions': clicking it brings
+-- the agent's pane up, which is where you talk to it.
 agentCard
   :: forall t m . MonadWidget t m
-  => CardActions -> Dynamic t Bool -> Bool -> Dynamic t (Maybe Text)
-  -> Dynamic t AgentNode -> m (Event t CardEvent)
-agentCard acts mustD startOpen selectedD nD = mdo
+  => CardActions -> Dynamic t Bool -> Bool -> Dynamic t AgentNode -> m ()
+agentCard acts mustD startOpen nD = mdo
   openD <- holdDyn startOpen (not <$> tag (current openD) moreE)
   fullD <- holdUniqDyn ((||) <$> mustD <*> openD)
   renamingD <- holdDyn False (leftmost [True <$ renameE, False <$ doneRenameE])
   (moreE, headE, doneRenameE, bodyE) <-
-    elDynAttr "div" (cardAttrs <$> nD <*> fullD <*> selectedD) $ do
+    elDynAttr "div" (cardAttrs <$> nD <*> fullD) $ do
       (hd, mE, dE) <- divClass "agent-card-top" $ do
         -- The face and the three lines are the card's handle: a click there
-        -- selects it and brings its agent up.  The ⋯ sits OUTSIDE it, so
+        -- brings its agent up.  The ⋯ sits OUTSIDE it, so
         -- opening a card is not also a click on it.
         (h, d) <- elAttr' "div" ("class" =: "agent-card-handle") $ do
           -- The face, three text lines tall, with its state glyph as a badge.
@@ -123,14 +119,10 @@ agentCard acts mustD startOpen selectedD nD = mdo
       bE <- switchHold never =<< dyn (ffor fullD $ \full ->
         if full then fullBody else return never)
       return (mE, hd, dE, bE)
-  let renameE  = ffilter (== BodyRename) bodyE
-      messageE = ffilter (== BodyMessage) bodyE
-      clickE   = gate (not <$> current renamingD) headE
+  let renameE = bodyE
+      clickE  = gate (not <$> current renamingD) headE
   performEvent_ $ ffor (tagPromptlyDyn nD clickE) $ \n ->
     liftIO . void . forkIO $ caOpen acts n
-  return $ leftmost
-    [ CardMessage . anSession <$> tagPromptlyDyn nD messageE
-    , CardSelect . anSession <$> tagPromptlyDyn nD clickE ]
   where
     -- The inline rename field: Enter keeps the name, Esc or leaving it gives
     -- up.  (No modal prompt — a browser dialog blocks every event in the
@@ -158,7 +150,8 @@ agentCard acts mustD startOpen selectedD nD = mdo
         liftIO . void . forkIO $ caRename acts n new
       return (leftmost [() <$ commitE, cancelE])
 
-    fullBody :: m (Event t BodyEvent)
+    -- The full card's body; answers its Rename button.
+    fullBody :: m (Event t ())
     fullBody = do
       -- The bio (else the description): sanitized HTML, straight into
       -- innerHTML — sanitized once, where it was stored.
@@ -199,7 +192,7 @@ agentCard acts mustD startOpen selectedD nD = mdo
       -- The actions.
       divClass "agent-card-actions" $ do
         showE    <- btn "Show" (const True)
-        msgE     <- btn "Message" anLive
+        branchE  <- btn "Branch off" anLive
         refreshE <- btn "Refresh" anLive
         suspendE <- btn "Suspend" anLive
         resumeE  <- btn "Resume" (not . anLive)
@@ -208,11 +201,12 @@ agentCard acts mustD startOpen selectedD nD = mdo
         let run f e = performEvent_ $ ffor (tagPromptlyDyn nD e) $ \n ->
               liftIO . void . forkIO $ f n
         run (caOpen acts) showE
+        run (caBranch acts) branchE
         run (caRefresh acts) refreshE
         run (caSuspend acts) suspendE
         run (caResume acts) resumeE
         run (caForget acts) forgetE
-        return $ leftmost [BodyMessage <$ msgE, BodyRename <$ renE]
+        return renE
 
     btn :: Text -> (AgentNode -> Bool) -> m (Event t ())
     btn label visible = do
@@ -222,19 +216,14 @@ agentCard acts mustD startOpen selectedD nD = mdo
         (text label)
       return (domEvent Click b)
 
--- | What the full card's own buttons ask of the card.
-data BodyEvent = BodyMessage | BodyRename
-  deriving (Eq, Show)
-
 -- | The card's own attributes: its state and mode as classes.
-cardAttrs :: AgentNode -> Bool -> Maybe Text -> Map Text Text
-cardAttrs n full sel =
+cardAttrs :: AgentNode -> Bool -> Map Text Text
+cardAttrs n full =
   "class" =: T.unwords
     ([ "agent-card", if full then "agent-card-full" else "agent-card-compact"
      , "agent-card-" <> anState n ]
      <> [ "agent-card-gone" | not (anLive n) ]
-     <> [ "agent-card-manager" | anManager n ]
-     <> [ "agent-card-selected" | sel == Just (anSession n) ])
+     <> [ "agent-card-manager" | anManager n ])
   <> "data-session" =: anSession n
   <> "title" =: (anDetail n <> "\n" <> T.pack (anDir n) <> "\n" <> anSession n)
 
@@ -354,8 +343,6 @@ agentCardCss = do
     "font-size" -: "12px"
     "line-height" -: "1.35"
     "min-width" -: "0"
-  ".agent-card.agent-card-selected" ?
-    ("box-shadow" -: "0 0 0 1px var(--leksah-selection)")
   ".agent-card.agent-card-manager" ?
     ("border-color" -: "#a371f7")
   ".agent-card.agent-card-gone" ? ("opacity" -: "0.6")
