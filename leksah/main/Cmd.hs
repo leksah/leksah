@@ -128,7 +128,7 @@ usage = T.unlines
   , "                                     --fresh gives it no context, --dir DIR (with"
   , "                                     --fresh) picks its directory, --as ROLE starts"
   , "                                     a fresh agent in a role (agent roles)"
-  , "  leksah-cmd agent list              live Claude sessions: id, name, state, pane, dir, title"
+  , "  leksah-cmd agent list              live Claude sessions: id, name, state, detail, pane, dir, title"
   , "  leksah-cmd agent find QUERY        which agent fits this work? (ranked, free ones first)"
   , "  leksah-cmd agent done --summary T  say you have finished (tells whoever started you)"
   , "  leksah-cmd agent rename [SID] NAME give an agent (default: you) another name"
@@ -892,7 +892,8 @@ mcpTools =
       [] []
   , mcpTool "list_agents"
       "The Claude Code sessions running in this IDE right now — id, name, state \
-      \(waiting/busy/idle), pane, directory, title — with your own row marked. \
+      \(waiting/busy/idle), what it is doing (e.g. 'running a shell command' — \
+      \still busy, not ended), pane, directory, title — with your own row marked. \
       \How to find the agents you forked, or a peer to hand something to."
       [] []
   , mcpTool "send_to_agent"

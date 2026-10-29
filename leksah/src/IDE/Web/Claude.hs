@@ -667,7 +667,11 @@ managerNote = T.unlines
     \ROLE --tab 'task'` when a role (`agent roles`) matches. Tell the user who \
     \took it."
   , "- Keep an eye on the team with `agent list`: tell the user about agents \
-    \blocked on an approval prompt (state waiting) — they need a human."
+    \blocked on an approval prompt (state waiting) — they need a human. The \
+    \states are waiting, busy (working; its detail says when that is a shell \
+    \command, which may run for a long time — the agent is still there) and \
+    \idle (ready for input). An agent that has exited is not in the list at \
+    \all: never resume one that is listed."
   , "- Agents report back to you with `NAME is done: …` messages. Summarise \
     \those for the user, and follow up if more work is needed."
   , "- Keep the team's descriptions current: every so often, and whenever the \

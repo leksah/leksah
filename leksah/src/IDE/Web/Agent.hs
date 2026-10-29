@@ -279,11 +279,11 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
       Just n  -> " (" <> n <> ")"
       Nothing -> ""
 
--- | The live sessions, one tab-separated row each: session id, name, state, tmux
--- pane (@-@ when it isn't in one of leksah's), directory, title.  The caller's own
--- session is marked, so an agent reading this can tell itself apart from its
--- peers.  Ordered like the status surfaces: needs-you first, then working, then
--- idle.
+-- | The live sessions, one tab-separated row each: session id, name, state
+-- ('liveState'), what it is doing ('liveDetail'), tmux pane (@-@ when it isn't
+-- in one of leksah's), directory, title.  The caller's own session is marked,
+-- so an agent reading this can tell itself apart from its peers.  Ordered like
+-- the status surfaces: needs-you first, then working, then idle.
 agentList :: Maybe Text -> IO Text
 agentList me = do
   live  <- claudeLiveBySession
@@ -300,13 +300,14 @@ agentList me = do
       return $ T.intercalate "\t"
         [ clSession l
         , M.findWithDefault "-" (clSession l) names
-        , fromMaybe "idle" (clStatus l)
+        , liveState l
+        , liveDetail l
         , fromMaybe "-" (M.lookup (clSession l) panes)
         , T.pack (clDir l)
         , T.takeWhile (/= '\n') title
         , if me == Just (clSession l) then "(you)" else "" ]
     return . T.unlines $
-      "# session\tname\tstate\tpane\tdir\ttitle" : rows
+      "# session\tname\tstate\tdetail\tpane\tdir\ttitle" : rows
   where
     rank l = case clStatus l of
       Just "waiting" -> 0 :: Int
@@ -314,9 +315,31 @@ agentList me = do
       Just "shell"   -> 1
       _              -> 2
 
+-- | A live session's state, in the few words every reader can act on:
+-- @waiting@ (blocked on an approval prompt — it needs a human), @busy@
+-- (working — including while it runs a shell command, which the CLI reports
+-- as @shell@: printed raw, that read as "the session ended, a shell is left",
+-- which it is not), or @idle@ (ready for input).
+liveState :: ClaudeLive -> Text
+liveState l = case clStatus l of
+  Just "waiting" -> "waiting"
+  Just "busy"    -> "busy"
+  Just "shell"   -> "busy"
+  _              -> "idle"
+
+-- | What a live session is doing, spelled out — where the shell-command case
+-- is still told apart from the rest of @busy@ (a shell running for hours may
+-- be a forgotten watcher).
+liveDetail :: ClaudeLive -> Text
+liveDetail l = case clStatus l of
+  Just "waiting" -> "waiting for approval" <> maybe "" (": " <>) (clWaitingFor l)
+  Just "busy"    -> "working"
+  Just "shell"   -> "running a shell command"
+  _              -> "ready for input"
+
 -- | One line for one session: its state, then what it is doing.  The state is
 -- the first word so a poller can match on it — @waiting@ (blocked on an
--- approval prompt, and it needs a human), @busy@ / @shell@ (working), @idle@
+-- approval prompt, and it needs a human), @busy@ (working), @idle@
 -- (ready for input, i.e. finished), @gone@ (not running any more).  This is
 -- what @leksah-cmd agent wait@ polls.
 agentStatus :: Text -> IO Text
@@ -338,15 +361,10 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
   Just l  -> do
     pane <- M.lookup sid <$> panesBySession
     return $ T.intercalate "\t"
-        [ fromMaybe "idle" (clStatus l)
-        , fromMaybe (detail l) (clWaitingFor l)
+        [ liveState l
+        , liveDetail l
         , fromMaybe "-" pane
         , T.pack (clDir l) ] <> "\n"
-  where
-    detail l = case clStatus l of
-      Just "busy"  -> "working"
-      Just "shell" -> "running a shell command"
-      _            -> "ready for input"
 
 -- | Bring an agent's pane to the front — whether or not its session has
 -- registered yet.  A fork parked on a first-run question ('agentStatus'\'s
@@ -520,8 +538,8 @@ agentSuspend sid force = do
       Just i | isJust (aiSuspended i) -> return (name <> " is already suspended.\n")
       _ -> return (name <> " is not running, so there is nothing to suspend.\n")
     Just l
-      | not force, clStatus l `elem` [Just "busy", Just "shell", Just "waiting"] ->
-          return $ name <> " is " <> fromMaybe "busy" (clStatus l)
+      | not force, liveState l /= "idle" ->
+          return $ name <> " is " <> liveDetail l
                 <> "; suspending it now would lose what it is doing. Wait for it \
                    \to go idle, or pass --force.\n"
       | otherwise -> paneForSession sid >>= \case
