@@ -49,6 +49,7 @@ module IDE.Web.Agent
   , agentRead
   , agentLastSaid
   , renameAgentEverywhere
+  , agentConversation
   , resolveAgent
   , agentFind
   , agentDone
@@ -75,7 +76,7 @@ import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Data.Aeson (Value(..), decodeStrict', withObject, (.:))
+import Data.Aeson (Value(..), decodeStrict', parseJSON, withObject, (.:), (.:?))
 import Data.Aeson.Types (parseMaybe)
 import qualified Data.ByteString.Char8 as BS
 
@@ -641,6 +642,48 @@ transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
         listToMaybe <$> filterM doesFileExist [ root </> d </> leaf | d <- ds ]
 
 -- | The assistant's text messages from the tail of a transcript, oldest first.
+-- | The tail of a session's conversation as @(fromUser, text)@ turns, oldest
+-- first: what the user typed (or another agent sent it) and what it answered —
+-- tool calls, tool results, and the CLI's own command and reminder messages
+-- left out.  For the Manager pane, which shows its conversation as a chat.
+agentConversation :: Text -> Int -> IO [(Bool, Text)]
+agentConversation sid n = transcriptFor sid >>= \case
+  Nothing   -> return []
+  Just path -> (`catch` \(_ :: SomeException) -> return []) $ do
+    ls <- withFile path ReadMode $ \h -> do
+      size <- hFileSize h
+      let back = min size (512 * 1024)
+      hSeek h SeekFromEnd (negate back)
+      BS.lines <$> BS.hGet h (fromIntegral back)
+    let turns = [ t | l <- ls, Just t <- [decodeStrict' l >>= parseMaybe turnP]
+                    , not (T.null (T.strip (snd t))) ]
+    return (drop (max 0 (length turns - n)) turns)
+  where
+    turnP = withObject "line" $ \o -> do
+      ty <- o .: "type"
+      meta <- o .:? "isMeta"
+      m  <- o .: "message"
+      case ty :: Text of
+        "assistant" -> do
+          cs <- m .: "content"
+          return (False, T.intercalate "\n" (mapMaybe (parseMaybe (textOf "text")) (cs :: [Value])))
+        "user" | meta /= Just True -> do
+          c <- m .: "content"
+          txt <- case c of
+            String t -> return t
+            Array _  -> T.intercalate "\n" . mapMaybe (parseMaybe (textOf "text"))
+                          <$> parseJSON' c
+            _        -> fail "no text"
+          -- The CLI's own messages (slash-command echoes, reminders) start
+          -- with a tag; they are not things anybody said.
+          if "<" `T.isPrefixOf` T.stripStart txt then fail "cli message"
+            else return (True, txt)
+        _ -> fail "not a turn"
+    textOf want = withObject "content" $ \c -> do
+      t <- c .: "type"
+      if t == (want :: Text) then c .: "text" else fail "not text"
+    parseJSON' v = maybe (fail "content") return (parseMaybe parseJSON v :: Maybe [Value])
+
 assistantTail :: FilePath -> IO [Text]
 assistantTail path = (`catch` \(_ :: SomeException) -> return []) $ do
   ls <- withFile path ReadMode $ \h -> do

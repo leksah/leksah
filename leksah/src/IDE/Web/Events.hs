@@ -180,6 +180,8 @@ type CompareEvents = ()
 type ShortcutsEvents = ()
 -- | The Team pane acts through IO (the cards' actions) — nothing outward.
 type TeamEvents = ()
+-- | The Manager pane talks to the manager through IO — nothing outward.
+type ManagerEvents = ()
 -- | The Welcome pane acts entirely through the process-global request hooks
 -- (open panels, new window, preferences) — nothing outward.
 type WelcomeEvents = ()
@@ -212,6 +214,7 @@ data TabEvents e where
   PreferencesTab :: TabEvents PreferencesEvents
   ShortcutsTab :: TabEvents ShortcutsEvents
   TeamTab      :: TabEvents TeamEvents
+  ManagerTab   :: TabEvents ManagerEvents
   WelcomeTab   :: TabEvents WelcomeEvents
   BrowserTab   :: TabEvents BrowserEvents
   WorkspaceTab :: TabEvents ProjectEvents

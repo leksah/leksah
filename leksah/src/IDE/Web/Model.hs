@@ -90,6 +90,8 @@ data TabKey
   | ShortcutsKey
   -- | The Team pane: a bio card for every agent.
   | TeamKey
+  -- | The Manager pane (bottom bar): the manager agent as a chat.
+  | ManagerKey
   -- | An embedded web browser pane.  The Int is its persistent id (minted by
   -- 'IDE.Web.Widget.Browser.nextBrowserId', never reused); the pane's URL
   -- state lives in that module's registry, not in the key.

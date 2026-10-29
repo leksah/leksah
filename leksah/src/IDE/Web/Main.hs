@@ -301,6 +301,7 @@ import IDE.Web.Widget.NewWorktree (newWorktreeDialog)
 import IDE.Web.Widget.Tasks (tasksCss, tasksWidget)
 import IDE.Web.Widget.Agents (agentsCss, agentsWidget, agentLinksJs)
 import IDE.Web.Widget.Team (teamCss, teamWidget)
+import IDE.Web.Widget.Manager (managerCss, managerWidget)
 import IDE.Web.Widget.Plan (planCss, planWidget)
 import IDE.Web.Widget.Compare (compareCss, compareWidget)
 import IDE.Web.ClaudeQueue
@@ -1977,6 +1978,7 @@ css = render $ do
     terminalsCss
     agentsCss
     teamCss
+    managerCss
     changesCss
     gitLogCss
     reviewCss
@@ -2011,6 +2013,7 @@ tabLabelText k names = case k of
   PreferencesKey -> "Preferences"
   ShortcutsKey   -> "Shortcuts"
   TeamKey        -> "Team"
+  ManagerKey     -> "Manager"
   WelcomeKey _   -> "Welcome"
   BrowserKey n   -> "Browser " <> T.pack (show n)
   GitLogKey _ b  -> "Log: " <> b
@@ -2034,6 +2037,7 @@ tabIconSrc k = case k of
   ChangesKey     -> Just "/pics/changes.svg"
   ShortcutsKey   -> Just "/pics/shortcuts.svg"
   TeamKey        -> Just "/pics/tree-claude.svg"
+  ManagerKey     -> Just "/pics/tree-claude.svg"
   WelcomeKey{}   -> Just "/pics/docs.svg"
   BrowserKey{}   -> Just "/pics/browser.svg"
   GitLogKey{}    -> Just "/pics/tree-git.svg"
@@ -2207,7 +2211,7 @@ orderStyle = maybe mempty (\n -> "style" =: ("order:" <> T.pack (show n)))
 -- what ⌥⌘N / ⌃⌘N navigates to, and what its ⌘-held badge shows.
 numberedTallTabs, numberedWide1Tabs :: [TabKey]
 numberedTallTabs  = [WorkspaceKey, AgentsKey, TerminalsKey]
-numberedWide1Tabs = [ErrorsKey, LogKey, GrepKey, ChangesKey]
+numberedWide1Tabs = [ErrorsKey, LogKey, GrepKey, ChangesKey, ManagerKey]
 
 -- | The ⌘-held navigation badge for a side-/bottom-bar tab button (hidden
 -- until body.leksah-show-badges; see badgesJs).
@@ -2273,6 +2277,7 @@ tabFlipKey k = "tab:" <> case k of
     PreferencesKey -> "preferences"
     ShortcutsKey   -> "shortcuts"
     TeamKey        -> "team"
+    ManagerKey     -> "manager"
     WelcomeKey n   -> "welcome:" <> T.pack (show n)
     BrowserKey n   -> "browser:" <> T.pack (show n)
     TerminalKey s  -> "terminal:" <> s
@@ -6040,6 +6045,7 @@ main showMenubar macTitlebar wid ctx = mdo
             <> LogKey       =: ("wide1", Just ())
             <> GrepKey      =: ("wide1", Just ())
             <> ChangesKey   =: ("wide1", Just ())
+            <> ManagerKey   =: ("wide1", Just ())
             <> TerminalsKey =: ("tall", Just ())
             <> AgentsKey    =: ("tall", Just ())
         initialVisibleTabs =
@@ -9152,6 +9158,7 @@ main showMenubar macTitlebar wid ctx = mdo
           ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
           TeamKey        -> toDM TeamTab <$> teamWidget
+          ManagerKey     -> toDM ManagerTab <$> managerWidget
           ShortcutsKey   -> toDM ShortcutsTab <$> withTabFont k (shortcutsWidget ctx)
           WelcomeKey _   -> toDM WelcomeTab <$>
               withTabFont k (welcomeWidget ctx selectedE recentFilesD)
@@ -9465,6 +9472,7 @@ main showMenubar macTitlebar wid ctx = mdo
             LogKey       -> Just ("wide1", ".log")
             GrepKey      -> Just ("wide1", ".grep")
             ChangesKey   -> Just ("wide1", ".changes")
+            ManagerKey   -> Just ("wide1", ".manager")
             _            -> Nothing
         -- A side/bottom pane becomes active either by mouse-down in its body
         -- (activePaneD) or by the flipper selecting its tab (flipE).  The flipper
