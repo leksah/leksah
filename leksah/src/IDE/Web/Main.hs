@@ -70,7 +70,7 @@ import qualified Data.Map as M
         member, filterWithKey, singleton, mapWithKey, empty, size, null)
 import Data.Map (Map)
 import qualified Data.Set as S
-       (Set, fromList, delete, null, singleton, empty, insert, member, intersection)
+       (Set, fromList, delete, null, singleton, empty, insert, member, intersection, toList)
 import Data.Time.Clock (NominalDiffTime, getCurrentTime)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace)
@@ -96,7 +96,7 @@ import Data.List (sortOn)              -- 'demoSplitCandidates' only
 -- nubOrd, not nub: the workspace file enumeration is big enough for O(n^2)
 -- to be a boot-time hang (see 'enumerateWorkspaceFiles').
 import Data.List.Extra (nubOrd)
-import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing)
+import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing, mapMaybe)
 import System.Exit (ExitCode(..))
 import System.FilePath
        (takeFileName, takeExtension, takeDirectory, (</>),
@@ -182,9 +182,10 @@ import IDE.Web.Model
         hiddenWindows, LeksahWindow(..), PaneContent(..), PaneKind(..),
         LeafId(..), SplitOrientation(..), SplitTree(..), WebUi(..),
         flipMirror, flipMru, AIPaneRef(..), paneAISession, tabFontSize,
-        dragPreview)
+        dragPreview, tabKeyPath)
 import IDE.Workspace
-       (activePackage, wsOpenFile, wsPath, wsProjects)
+       (activePackage, workspaceFollowPath, workspaceSweepTemporary,
+        wsOpenFile, wsPath, wsProjects)
 import IDE.Ws.Types (Package(..), Project(..))
 import IDE.Web.HostFlags (setBrowserHosted, getBrowserHosted, flipHintText)
 import IDE.Web.Bridge
@@ -250,7 +251,8 @@ import IDE.Web.ReplTmux
 import IDE.Web.SaveRequest (requestSaveActiveFileWait)
 import IDE.Web.Claude
        (runClaudeCmd, claudeCommandLine, ClaudeCmd(..), ClaudeLive(..),
-        claudeLiveBySession, paneForSession, sendToSession, showLiveSession)
+        claudeLiveBySession, paneCurrentPath, paneForSession, sendToSession,
+        showLiveSession)
 import IDE.Web.AISession
        (AIChoice(..), AIRow(..), activeAIPaneRef, aiPickerChoices, choiceKey)
 #if !defined(ghcjs_HOST_OS)
@@ -2059,6 +2061,53 @@ fileIconSrc file = "/pics/" <> case takeExtension file of
 
 -- | The active @(window index, pane index)@ of a tmux session (by id), from the
 -- pane tree; falls back to the first window/pane, or 'Nothing' if it has none.
+-- | The path a tab is showing, for the active project to follow: an editor's
+-- file, a git log's or review's checkout, or — for a leksah window — its
+-- focused pane's: a view's path, or a terminal's working directory (as
+-- polled with the tree).
+panePathOfKey :: WebUi -> Map Text (Text, [TmuxWindow]) -> TabKey -> Maybe FilePath
+panePathOfKey ui tree k = case focusedView of
+    Just vk -> tabKeyPath vk
+    Nothing -> case focusedTmuxPane ui tree k of
+      Just p  -> T.unpack (tpPath p) <$ guard (not (T.null (tpPath p)))
+      Nothing -> tabKeyPath k
+  where
+    focusedView = case k of
+      LeksahWinKey n -> do
+        lw <- M.lookup n (ui ^. leksahWindows)
+        PaneContent (PaneView vk) _ <- lwFocused lw >>= (`M.lookup` lwPanes lw)
+        Just vk
+      _ -> Nothing
+
+-- | A leksah window tab's focused terminal pane: the active pane of its
+-- focused tmux window (of its session's active window, before anything is
+-- focused).  'Nothing' when a view is focused, or for any other tab.
+focusedTmuxPane :: WebUi -> Map Text (Text, [TmuxWindow]) -> TabKey -> Maybe TmuxPane
+focusedTmuxPane ui tree k = case k of
+    LeksahWinKey n -> do
+      lw <- M.lookup n (ui ^. leksahWindows)
+      wins <- snd <$> (lwSession lw >>= (`M.lookup` tree))
+      w <- case lwFocused lw >>= (`M.lookup` lwPanes lw) of
+        Just (PaneContent (PaneTmux wid) _) -> find ((== wid) . twId) wins
+        Just (PaneContent (PaneView _) _)   -> Nothing
+        Nothing -> listToMaybe (filter twActive wins ++ wins)
+      listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+    _ -> Nothing
+
+-- | Every path some open pane shows (see 'panePathOfKey'): what keeps a
+-- temporary project in the workspace.  'Nothing' until the tmux tree has
+-- been polled — at boot an empty tree would look like every terminal closed.
+referencedPaths :: WebUi -> Map Text (Text, [TmuxWindow]) -> Maybe (S.Set FilePath)
+referencedPaths ui tree
+  | M.null tree = Nothing
+  | otherwise = Just . S.fromList $
+      mapMaybe tabKeyPath (concatMap _wwWide0 (M.elems (ui ^. webWindows)))
+      ++ [ p | lw <- M.elems (ui ^. leksahWindows)
+             , PaneContent (PaneView vk) _ <- M.elems (lwPanes lw)
+             , Just p <- [tabKeyPath vk] ]
+      ++ [ T.unpack (tpPath p) | (_, wins) <- M.elems tree, w <- wins
+                               , p <- twPanes w, not (T.null (tpPath p)) ]
+
 activePaneOfSession :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe (Int, Int)
 activePaneOfSession n tree = do
   (_, wins) <- M.lookup n tree
@@ -5652,6 +5701,38 @@ main showMenubar macTitlebar wid ctx = mdo
                         , tabLabelText k names, fullOf k ))
           <$> activePaneD <*> leksahWindowsD' <*> terminalNamesD <*> allTreeD
     activePaneInfoD' <- holdUniqDyn activePaneInfoD
+    -- The active PROJECT follows the active pane: the project of whatever the
+    -- key window's focused pane shows becomes the active one — including a
+    -- terminal's working directory, which the tree poll keeps current, so a
+    -- `cd` into another project switches too.  A path in a project the
+    -- workspace doesn't have opens that project as a temporary one, and a
+    -- temporary project goes again once no pane anywhere shows anything in
+    -- it ('workspaceFollowPath' / 'workspaceSweepTemporary').  Both run
+    -- off-frame (detection reads the disk).
+    followD <- holdUniqDyn $
+        (\key mk ui tree -> if key then mk >>= panePathOfKey ui tree else Nothing)
+          <$> windowKeyD <*> activePaneD <*> ide <*> allTreeD
+    followPb <- getPostBuild
+    performEvent_ $ ffor (fmapMaybe id (leftmost [updated followD, tag (current followD) followPb]))
+      $ \p -> liftIO . void . forkIO $ withApp $ \app -> do
+          home <- getHomeDirectory
+          workspaceFollowPath (appWorkspace app) [home] p
+    usedPathsD <- holdUniqDyn $ referencedPaths <$> ide <*> paneTreeD
+    -- A `cd` changes nothing tmux tells leksah about, so the tree would only
+    -- catch up on the next unrelated refresh: while this is the key window
+    -- and its focused pane is a terminal, look at that pane's directory every
+    -- 2s, and re-read the tree (which the two above follow) when it moved.
+    cwdTickE <- tickLossyFromPostBuildTime 2
+    let cwdPaneD = (\key mk ui tree -> if key then mk >>= focusedTmuxPane ui tree else Nothing)
+          <$> windowKeyD <*> activePaneD <*> ide <*> paneTreeD
+    (cwdMovedE, fireCwdMoved) <- newTriggerEvent
+    performEvent_ $ ffor (fmapMaybe id (tag (current cwdPaneD) cwdTickE)) $ \p ->
+      liftIO . void . forkIO $ do
+        now <- paneCurrentPath (tpId p)
+        when (maybe False ((/= tpPath p) . T.pack) now) $ fireCwdMoved ()
+    performEvent_ $ ffor (fmapMaybe id (updated usedPathsD)) $ \ps ->
+      liftIO . void . forkIO $ withApp $ \app ->
+        workspaceSweepTemporary (appWorkspace app) (S.toList ps)
     toolbarE   <- toolbarWidget ctx tallVisD wide1VisD $
       void . dyn $ ffor activePaneInfoD' $ \case
         Nothing -> return ()
@@ -6516,6 +6597,8 @@ main showMenubar macTitlebar wid ctx = mdo
           -- A requested tab may be a freshly-created session/window (e.g. a
           -- workspace repl button): re-read the tree so it shows at once.
           , () <$ termRequestE
+          -- The focused terminal's shell changed directory (polled above).
+          , cwdMovedE
           -- A local CC tab saw a window created/closed.
           , () <$ ffilter (any (not . ("ssh://" `T.isPrefixOf`))) treeChangedTabsE
           -- A session just died (its client exited): re-read + reconcile NOW,

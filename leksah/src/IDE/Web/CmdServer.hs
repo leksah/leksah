@@ -125,8 +125,10 @@ import IDE.Web.Model
        (AIPaneRef(..), TabKey(..), WindowId(..), activeWindow, paneAISession,
         webWindows, wwActive, wwWide0)
 import IDE.Workspace
-       (activeProject, prDir, projectOpenPath, setProjectCmdPrefix,
-        workspaceActivatePackage, wsCell, wsProjectKey, wsProjects, wsSpec)
+       (activeProject, prDir, projectForPath, projectOpenPath,
+        setProjectCmdPrefix, workspaceActivatePackage, workspacePinProject,
+        workspaceRemoveProject, wsActive, wsCell, wsIsTemporary, wsProjectKey,
+        wsProjects, wsSpec, ActiveTarget(..))
 import qualified IDE.Ws.File as WF
 import IDE.Ws.Registry (detectProject)
 import IDE.Ws.Types (Package(..), Project(..), ProjectKey(..), Verb(..))
@@ -343,6 +345,36 @@ handleConn app conn = do
                     (prKey project) (Just (pkgManifest package)) Nothing
                 reply $ "Activated " <> T.pack fp <> "\n"
               [] -> reply $ "No package with cabal file " <> T.pack fp <> " in the workspace\n"
+
+      -- The workspace's projects, one per line: root, type, and whether it
+      -- is the active one and/or only there temporarily (a pane shows
+      -- something in it — see 'IDE.Workspace.workspaceFollowPath').
+      ("project" : "list" : _) -> do
+        ws <- readCell (wsCell (appWorkspace app))
+        let act = atProject <$> view wsActive ws
+        reply $ T.unlines
+          [ T.intercalate "\t" $ [T.pack (WF.wpRoot p), WF.wpType p]
+              <> [ "active" | act == Just k ] <> [ "temporary" | WF.wpTemporary p ]
+          | p <- WF.wsProjects (view wsSpec ws), let k = wsProjectKey p ]
+
+      -- Pin (keep for good) / remove the workspace project a path is in.
+      ("project" : verb : file : _) | verb `elem` ["pin", "remove"] ->
+        resolveInput cwd file >>= \case
+          Left e -> reply e
+          Right fp -> do
+            let svc = appWorkspace app
+            ws <- readCell (wsCell svc)
+            case projectForPath ws fp of
+              Nothing -> reply $ "No workspace project contains " <> T.pack fp <> "\n"
+              Just k
+                | verb == "pin" -> do
+                    let was = wsIsTemporary k ws
+                    workspacePinProject svc k
+                    reply $ (if was then "Pinned " else "Already pinned: ")
+                            <> T.pack (pkRoot k) <> "\n"
+                | otherwise -> do
+                    workspaceRemoveProject svc k
+                    reply $ "Removed " <> T.pack (pkRoot k) <> "\n"
 
       -- Set (or clear, with no prefix argument) the per-project command
       -- prefix — the shell fragment remote tool runs are wrapped in, e.g.

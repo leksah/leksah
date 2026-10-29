@@ -13,6 +13,7 @@ module IDE.Web.Model
     TallVisibility(..)
     -- * Tabs
   , TabKey(..)
+  , tabKeyPath
     -- * OS windows
   , WindowId(..)
   , WebWindow(..)
@@ -117,6 +118,17 @@ data TabKey
   -- minter needs no persistence.
   | WelcomeKey Int
     deriving (Ord, Eq, Show, Generic)
+
+-- | The file or checkout a tab is showing, if it shows one — what decides
+-- which project it belongs to.
+tabKeyPath :: TabKey -> Maybe FilePath
+tabKeyPath k = case k of
+    EditorKey f    -> Just f
+    GitLogKey d _  -> Just d
+    ReviewKey d    -> Just d
+    PlanKey d _    -> Just d
+    CompareKey d _ -> Just d
+    _              -> Nothing
 
 -- | Identifies one native OS window in the multi-window web UI.  Minted
 -- monotonically ('nextWindowId'); a freed id is never reused.

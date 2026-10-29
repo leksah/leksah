@@ -5,6 +5,7 @@
 module IDE.Web.Widget.Menu where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Traversable (forM)
 
 import Clay
@@ -19,7 +20,7 @@ import qualified Clay (display, none)
 import Reflex (leftmost, never, Event, Dynamic, tag, current, attachWith)
 
 import Reflex.Dom.Core
-       (dynText, el', el, elClass, divClass, text,
+       (dynText, el', el, elDynAttr', (=:), elClass, divClass, text,
         HasDomEvent(..), EventName(..), Element, EventResult, DomBuilderSpace)
 
 import IDE.Web.Theme
@@ -92,6 +93,7 @@ menu items =
 
 -- | Like 'menu', but each item's click also carries the (alt, shift) modifier
 -- state — so a menu can offer ⌥-variants of its items (see 'menuSplit').
+-- Items with an empty label are not shown.
 menuMods
   :: MonadWidget t m
   => [Dynamic t (Text, a)]
@@ -100,7 +102,11 @@ menuMods items =
   divClass "menu" $
     el "ul" $
       fmap leftmost . forM items $ \d -> do
-        (li, _) <- el' "li" . dynText $ fst <$> d
+        -- An item whose label is empty is hidden: how a menu leaves out an
+        -- item that only applies sometimes (its list of items is fixed).
+        (li, _) <- elDynAttr' "li"
+          ((\l -> if T.null l then "style" =: "display:none" else mempty) . fst <$> d)
+          (dynText $ fst <$> d)
         modsE <- clickMods li
         return $ attachWith (\v mods -> (mods, v)) (snd <$> current d) modsE
 

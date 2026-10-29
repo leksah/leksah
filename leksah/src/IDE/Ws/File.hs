@@ -82,6 +82,10 @@ data WsProject = WsProject
   , wpCmdPrefix :: Maybe Text
     -- ^ words prepended to every command run for this project (e.g. an
     -- @ssh host@ prefix for a remote root, or a @nix develop -c@ wrapper)
+  , wpTemporary :: Bool
+    -- ^ opened because a pane is showing something in it, not by the user:
+    -- it leaves the workspace again when the last such pane goes, and is
+    -- never written to the file (pinning it clears this)
   } deriving (Eq, Show)
 
 -- | What is currently \"active\" in the UI: a project (by its root), and
@@ -131,6 +135,7 @@ parseProject base = withObject "project" $ \o -> WsProject
   <*> (fmap (resolve base) <$> o .:? "file")
   <*> (o .:? "commandOverrides" .!= KM.empty >>= parseOverrides)
   <*> o .:? "commandPrefix"
+  <*> pure False
  where
   parseOverrides km = Map.fromList . catMaybes
     <$> mapM parseOne (KM.toList km)
@@ -165,9 +170,13 @@ workspaceValue :: FilePath -> Workspace -> Value
 workspaceValue base ws = obj $
   [ ("version", Number 1)
   , ("name", String (wsName ws))
-  , ("projects", toJSON (map (projectValue base) (wsProjects ws)))
+  , ("projects", toJSON (map (projectValue base) kept))
   ] ++
-  [ ("active", activeValue base a) | Just a <- [wsActive ws] ]
+  [ ("active", activeValue base a) | Just a <- [wsActive ws]
+                                   , waProject a `elem` map wpRoot kept ]
+ where
+  -- Temporary projects are the session's, not the workspace's.
+  kept = filter (not . wpTemporary) (wsProjects ws)
 
 projectValue :: FilePath -> WsProject -> Value
 projectValue base p = obj $

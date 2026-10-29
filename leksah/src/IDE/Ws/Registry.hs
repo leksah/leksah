@@ -6,14 +6,16 @@
 module IDE.Ws.Registry
   ( projectTypes
   , detectProject
+  , discoverProject
   , typeById
   , enumerateProject
   ) where
 
 import Data.List (find)
+import Data.Maybe (catMaybes, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import System.FilePath (takeDirectory)
+import System.FilePath (dropTrailingPathSeparator, takeDirectory, (</>))
 
 import IDE.Ws.Cabal (cabalProjectType)
 import IDE.Ws.Cargo (cargoProjectType)
@@ -54,6 +56,40 @@ detectProject eff path = do
     case m of
       Just key -> pure (Just key)
       Nothing  -> go dir pts
+
+-- | The project a path (a file, or a directory a shell is in) belongs to,
+-- for opening one the workspace does not have yet.  Unlike 'detectProject'
+-- this looks UP the tree, and never settles for the catch-all folder type
+-- on the path itself.  Within a git checkout the OUTERMOST claimed directory
+-- up to the checkout root wins (a @cabal.project@ at the root rather than
+-- the package directory a file is in), falling back to the checkout root as
+-- a plain folder project; outside one, the nearest claim.  The directories
+-- in @stops@ (the home directory) and @/@ are never claimed, so a stray
+-- @~/flake.nix@ doesn't turn everything under it into one project.
+discoverProject :: Effects -> [FilePath] -> FilePath -> IO (Maybe ProjectKey)
+discoverProject eff stops path = do
+  isDir <- eIsDir eff path
+  let start = dropTrailingPathSeparator (if isDir then path else takeDirectory path)
+  walk [] start
+ where
+  stops' = "/" : map dropTrailingPathSeparator stops
+  typed = filter ((/= "dir") . ptId) projectTypes
+  claim dir = listToMaybe . catMaybes <$> mapM (\pt -> ptDetect pt eff dir) typed
+  -- @seen@ = the directories below this one, nearest first.
+  walk seen dir
+    | dir `elem` stops' = nearest seen
+    | otherwise = do
+        git <- eDoesExist eff (dir </> ".git")
+        if git
+          then do
+            claims <- catMaybes <$> mapM claim (dir : reverse seen)
+            pure . Just $ case claims of
+              (k:_) -> k
+              []    -> ProjectKey "dir" dir Nothing
+          else let up = takeDirectory dir
+               in if up == dir then nearest seen else walk (seen ++ [dir]) up
+  -- No checkout above: the nearest directory something claims.
+  nearest = fmap (listToMaybe . catMaybes) . mapM claim
 
 -- | Look a project type up by its 'ptId'.
 typeById :: Text -> Maybe ProjectType

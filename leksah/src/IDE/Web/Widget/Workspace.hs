@@ -66,7 +66,7 @@ import Clay
        (pct, hover, width, bold, fontWeight, paddingBottom,
         borderRadius, borderStyle, backgroundImage, vGradient,
         paddingRight, marginBottom, marginTop, marginRight, checked,
-        userSelect, (|+), (-:), absolute, position, left, nil, paddingLeft, px,
+        userSelect, (|+), (|>), (-:), fontStyle, italic, absolute, position, left, nil, paddingLeft, px,
         marginLeft, listStyleType, listStyleImage, middle, color, rgb,
         opacity, nowrap, whiteSpace, inlineBlock, scroll, overflow, height, (?),
         Css, background, none, VerticalAlign(..),
@@ -95,7 +95,8 @@ import IDE.Workspace
        (Ws, WorkspaceService(..), activeComponent, activePackage,
         activeProject, packageIdText, prDir, projectOpenPath,
         workspaceActivatePackage,
-        workspaceRemoveProject, wsProjects, wsSpecFor)
+        workspacePinProject, workspaceRemoveProject, wsIsTemporary, wsProjects,
+        wsSpecFor)
 import IDE.Ws.Cabal (componentTarget)
 import IDE.Ws.File (applyOverrides)
 import IDE.Ws.Registry (typeById)
@@ -197,6 +198,10 @@ workspaceCss = do
         paddingLeft nil
     "li.project" ?
         whiteSpace nowrap
+    -- A temporary project (opened because a pane shows something in it):
+    -- its own row reads as provisional until it is pinned.
+    "li.project.temporary" |> "div" ?
+        fontStyle italic
     "li.package" ?
         whiteSpace nowrap
     "li.component" ? do
@@ -1765,6 +1770,9 @@ workspaceWidget ctx activeFileD revealFileD = do
                 in (tops, kids)) <$> projectsD <*> mainRootsD
         let projectNode nested (_, pKey) projectD = do
               let isActiveProjectD = (== Just pKey) <$> activeProjectKeyD
+              -- Opened only because a pane shows something in it: dimmed, and
+              -- offering "Pin to Workspace" to keep it.
+              isTempD <- holdUniqDyn $ wsIsTemporary pKey <$> cWs ctx
               -- Reveal (expand) the project when the active file is anywhere under it.
               projNodeRevealD <- revealUnder (constDyn (pkRoot pKey)) revealFileD
               -- Current branch + open PR for this project's checkout, scanned once
@@ -1775,8 +1783,10 @@ workspaceWidget ctx activeFileD revealFileD = do
               -- collapses this one (and expands that one).
               initActive <- sample (current isActiveProjectD)
               treeItemDynAttrSet' (updated isActiveProjectD) projNodeRevealD
-                (("class" =:) . (("project" <> (if nested then " worktree-project" else "")) <>)
-                   <$> (bool "" " active" <$> isActiveProjectD)) initActive
+                ((\act temp -> "class" =: ("project" <> (if nested then " worktree-project" else "")
+                                            <> bool "" " active" act <> bool "" " temporary" temp)
+                   <> (if temp then "title" =: "Temporary: open while a pane shows something in it" else mempty))
+                   <$> isActiveProjectD <*> isTempD) initActive
                 (do
                   claudeAvail <- liftIO claudeAvailable
                   -- ⌥-clicking the terminal/Claude items opens them into a split of
@@ -1803,6 +1813,9 @@ workspaceWidget ctx activeFileD revealFileD = do
                         const (openTerminalInDir (pkRoot pKey))
                     , plain . constDyn $ ("Refresh Nix Environment Varialbes", ProjectCommand . CommandIDEAction "" "" $
                         \app -> appNote app "nix env refresh is not reimplemented yet")
+                    , plain $ ffor isTempD $ \temp ->
+                        ( if temp then "Pin to Workspace" else ""
+                        , ProjectCommand (CommandIDEAction "" "" (\app -> workspacePinProject (appWorkspace app) pKey)) )
                     , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandIDEAction "" "" (\app -> workspaceRemoveProject (appWorkspace app) pKey)))
                     , plain $ constDyn ("Project Settings…", ProjectCommand (CommandIDEAction "" "" (const (requestRemoteSettings pKey))))
                     , plain $ ffor prD $ \mpr ->
