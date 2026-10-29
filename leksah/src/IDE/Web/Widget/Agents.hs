@@ -4,70 +4,71 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
--- | The \"Agents\" tree pane (lives on the side, with the Workspace, Terminals
--- and Metadata trees).  It answers "what are my agents doing?" — the question
--- the status light can only answer with a count.
+-- | The \"Agents\" pane (lives on the side, with the Workspace and Terminals
+-- trees).  It answers "what are my agents doing?" — the question the status
+-- light can only answer with a count — as a single column of CARDS
+-- ("IDE.Web.Widget.AgentCard"), the same cards the Team pane lays out as a
+-- grid of bios:
 --
---   * one row per Claude Code session, nested under the agent that FORKED it
---     (the lineage "IDE.Web.AgentInfo" records at fork time), with a status
---     glyph: ▲ needs you, ◆ working, ● idle, ◎ starting, ○ exited;
---   * expand a row and it shows what that agent says it is doing — a small HTML
---     description it wrote itself, links to its PRs and CI builds included;
---   * ⟳ on the right asks that agent to refresh its title and description
---     (a real turn in its conversation — see 'agentRefreshPrompt'); on an exited
---     row it becomes ✕, which forgets it;
---   * clicking a row brings that agent's pane to the front, or — if it has
---     exited — resumes the session where it left off.
+--   * the TOP card is the agent you are working with — the one in the active
+--     pane, else the most recently used one — and is always shown in full:
+--     its bio, its facts, what it last said, its actions;
+--   * the manager comes next (or, without one, the header offers to start it);
+--   * every other agent is a collapsed card — face, name, state, title, what
+--     it is doing — with a ⋯ that opens it.
 --
--- Links in a description open in the OS browser; hold ⌥ (⌥⇧ for the other
--- direction) to open one in a leksah browser pane split instead.  The click is
--- routed in JS ('agentLinksJs' → @window.__leksahOpenExtUrl@, defined in
--- "IDE.Web.Main"), because a description's anchors are deliberately inert: the
+-- Above the cards: a count per state that doubles as a filter, a search box
+-- (@/@ focuses it), and a toggle between the lineage TREE (children indented
+-- under the agent that started them) and a flat needs-you-first list.  Below
+-- them: the dispatch box, which starts a new agent or messages the selected
+-- one.
+--
+-- Links in a description or bio open in the OS browser; hold ⌥ (⌥⇧ for the
+-- other direction) to open one in a leksah browser pane split instead.  The
+-- click is routed in JS ('agentLinksJs' → @window.__leksahOpenExtUrl@, defined
+-- in "IDE.Web.Main"), because the anchors are deliberately inert: the
 -- sanitizer moves @href@ to @data-href@, so nothing can navigate the page.
 module IDE.Web.Widget.Agents
   ( agentsCss
   , agentsWidget
   , agentLinksJs
+  , agentCardActions
+  , activeProjectDir
   ) where
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.), (.~), (&))
-import Control.Monad (forM, forM_, void)
+import Control.Monad (forM, void)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Bool (bool)
-import Data.List (sortOn)
+import Data.List (find, sortOn)
 
 import Data.Map (Map)
-import qualified Data.Map as M (fromList, elems)
+import qualified Data.Map as M (fromList)
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Clay
-       (Css, (?), (#), (|>), (-:), auto, backgroundImage, bold, borderRadius,
+       (Css, (?), (#), (-:), backgroundImage, borderRadius,
         borderStyle, color, cursor, cursorDefault, display, flex, fontSize,
-        fontStyle, italic,
-        fontWeight, height, hidden, hover, none, opacity, overflow, padding,
-        pct, pointer, px, textDecoration, underline, vGradient, width,
-        fontFamily, monospace, None(..), Cursor(..), Color(Other))
+        fontWeight, bold, height, hidden, hover, none, overflow, padding,
+        pct, px, vGradient, None(..), Cursor(..))
 import Clay.Stylesheet (key)
 
 import Reflex
-       (Dynamic, Event, attach, constDyn, current, ffilter, fmapMaybe, ffor,
-        foldDyn, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost,
-        listViewWithKey, never, newTriggerEvent, sample, switchHold, tag,
-        tagPromptlyDyn, tickLossyFromPostBuildTime, updated)
+       (Dynamic, Event, attach, current, ffor, fmapMaybe, foldDyn, getPostBuild,
+        holdDyn, holdUniqDyn, leftmost, listViewWithKey, never, newTriggerEvent,
+        tag, tagPromptlyDyn, tickLossyFromPostBuildTime, updated)
 import Reflex.Dom.Core
-       (Key(Enter, Escape), blank, def, divClass, domEvent, dyn, dyn_, dynText,
-        el, elAttr, elAttr', elClass, elClass', elDynAttr, elDynAttr',
-        elDynHtmlAttr', elementConfig_initialAttributes, inputElement,
-        inputElementConfig_elementConfig, inputElementConfig_initialValue,
-        keydown, keypress, text, textAreaElement,
+       (blank, def, divClass, domEvent, dyn_, dynText, elAttr, elAttr', elClass,
+        elClass', elDynAttr, elDynAttr', elementConfig_initialAttributes,
+        inputElement, inputElementConfig_elementConfig, text, textAreaElement,
         textAreaElementConfig_elementConfig, textAreaElementConfig_setValue,
-        EventName(..), (=:), _element_raw, _inputElement_element,
-        _inputElement_hasFocus, _inputElement_value, _textAreaElement_value)
-import Language.Javascript.JSaddle (liftJSM, jsg, js0, js1, eval, valToBool)
+        EventName(..), (=:), _element_raw, _inputElement_value,
+        _textAreaElement_value)
+import Language.Javascript.JSaddle (liftJSM, jsg, js1, eval, valToBool)
 
 import System.FilePath (takeFileName)
 
@@ -75,32 +76,54 @@ import IDE.App (App(..), getGlobalApp)
 import IDE.Reactive (readCell)
 import IDE.Workspace (WorkspaceService(..), activeProject, prDir)
 import IDE.Web.Agent
-       (ForkPlace(..), ForkRequest(..), agentLastSaid, agentResume, agentSend,
-        agentSuspend, emptyForkRequest, forkAgent, renameAgentEverywhere,
-        showAgentPane)
+       (ForkPlace(..), ForkRequest(..), agentLastSaid, agentManagerStart,
+        agentRefresh, agentResume, agentSend, agentSuspend, emptyForkRequest,
+        forkAgent, renameAgentEverywhere, showAgentPane)
 import IDE.Web.ClaudeQueue (queueAdd)
-import IDE.Web.AgentFace (agentFaceSvg)
-import IDE.Web.AgentInfo
-       (AgentNode(..), agentForest, agentRefreshPrompt, dismissAgent)
-import IDE.Web.Claude (ClaudeCmd(..), copySessionId, runClaudeCmd)
+import IDE.Web.AgentInfo (AgentNode(..), agentForest, dismissAgent)
+import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
-        dimColor, dimOpacity, fgColor, fgMutedColor, hoverColor, selectionColor)
-import IDE.Web.Widget.Tree (treeItemDynAttr')
-import IDE.Web.Widget.Menu (rowMenu)
+        dimColor, fgColor, hoverColor)
+import IDE.Web.Widget.AgentCard
+       (CardActions(..), CardEvent(..), agentCard, agentCardCss, colourOf,
+        displayName)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 
--- | The pane.  Polls 'agentForest' (cheap — it reads the status poll's cache),
--- and renders it with keyed lists so a poll that changes one agent's state
--- leaves every other row — and every expanded description — exactly as it was.
+-- | What the cards' buttons do, for a pane that shows notices with @toast@ and
+-- re-reads the agents with @refresh@.  Shared with the Team pane.
+agentCardActions :: (Text -> IO ()) -> IO () -> CardActions
+agentCardActions toast refresh = CardActions
+  { caOpen = \n ->
+      if anLive n || anState n == "starting"
+        then showAgentPane (anSession n) >>= \found -> if found then return ()
+          else toast $ displayName n <> " is running, but not in a terminal \
+                                        \here — there is no pane to bring up."
+        -- Resumed as it was launched (its parent, role, manager brief); an
+        -- agent leksah has no record of falls back to a plain resume.
+        else agentResume (anSession n) >>= \case
+          Right _ -> return ()
+          Left _  -> runClaudeCmd (ClaudeResume (anDir n) (anSession n))
+  , caRefresh = \n -> do
+      _ <- agentRefresh (anSession n)
+      toast ("Asked " <> displayName n <> " to refresh how it appears")
+  , caSuspend = \n -> agentSuspend (anSession n) False >>= toast . T.strip >> refresh
+  , caResume  = \n -> agentResume (anSession n) >>= either toast (toast . T.strip) >> refresh
+  , caForget  = \n -> dismissAgent (anSession n) >> refresh
+  , caRename  = \n new -> renameAgentEverywhere (anSession n) new >>= \case
+      Left err -> toast err
+      Right _  -> refresh
+  , caLastSaid = agentLastSaid . anSession
+  }
+
+-- | The pane.  @topNameD@ is the name of the agent in the active pane (else
+-- the most recently used agent pane) — its card leads, in full.
 --
--- Above the list: a count per state that doubles as a filter (click ▲ to see
--- only the agents that need you), a search box (@/@ focuses it), and a toggle
--- between the lineage TREE and a flat list sorted needs-you-first.  Below it:
--- the dispatch box, which starts a new agent or sends the selected one a
--- message.
-agentsWidget :: forall t m . MonadWidget t m => m (Event t ())
-agentsWidget = do
+-- Polls 'agentForest' (cheap — it reads the status poll's cache), and renders
+-- it with a keyed list so a poll that changes one agent's state leaves every
+-- other card — and whichever the user opened — exactly as it was.
+agentsWidget :: forall t m . MonadWidget t m => Dynamic t (Maybe Text) -> m (Event t ())
+agentsWidget topNameD = do
   (root, _) <- elClass' "div" "agents leksah-nav" $ mdo
     pb   <- getPostBuild
     tick <- tickLossyFromPostBuildTime 2
@@ -115,6 +138,7 @@ agentsWidget = do
     (toastE, toast) <- newTriggerEvent
     performEvent_ $ ffor toastE $ \msg -> liftJSM . void $
       jsg ("window" :: Text) ^. js1 ("__leksahBridgeToast" :: Text) (msg :: Text)
+    let acts = agentCardActions toast refresh
 
     (hdrE, stateE, searchD, flatD) <- divClass "agents-head" $ do
       (hdr', stE, flat') <- divClass "agents-head-row" $ do
@@ -164,23 +188,44 @@ agentsWidget = do
     stateD <- foldDyn (\st cur -> if cur == Just st then Nothing else Just st)
                       Nothing stateE
 
+    -- No manager yet: offer one.  (One that exists has its own card, second.)
+    let noManagerD = not . any anManager . flatten <$> forestD
+    dyn_ $ ffor noManagerD $ \none -> if not none then blank else do
+      (b, _) <- elAttr' "button"
+        ("class" =: "agents-manager-start"
+         <> "title" =: "Start a manager agent: it routes your tasks to the right \
+                       \agent (or starts one), keeps their descriptions current, \
+                       \and suspends and resumes them") $
+        text "Start a manager"
+      performEvent_ $ ffor (domEvent Click b) $ \_ -> liftIO . void . forkIO $
+        activeProjectDir >>= \case
+          Nothing -> toast "Open a project first: the manager starts in the active project"
+          Just d  -> agentManagerStart d >>= either toast (const refresh)
+
     performEvent_ $ liftIO refresh <$ leftmost [() <$ pb, () <$ tick, hdrE]
     -- Nothing running: say how one starts, rather than showing an empty box.
     dyn_ $ ffor (null <$> forestD) $ \empty' -> if not empty' then blank else
       divClass "agents-empty" $ text
         "Type a task below to start an agent, or start one from a Claude \
         \session with `leksah-cmd agent fork 'do this'`."
-    let shownD = shape <$> forestD <*> stateD <*> searchD <*> flatD
-    -- Top-level agents come up EXPANDED in the tree: a root is usually the
-    -- session you are talking to, and what it says about itself is the reason
-    -- to look here.  Anything it forked stays collapsed, so a deep tree still
-    -- opens small.  In the flat list every row starts collapsed.
-    pickE <- divClass "agents-list" . el "ul" $
-      agentLevel True refresh toast selectedD (byKey <$> shownD)
-    -- The selection: the agent the dispatch box talks to.  Clicking a row
-    -- selects it (and, as before, brings its pane up); ✕ in the box clears it.
+    let shownD = shape <$> forestD <*> stateD <*> searchD <*> flatD <*> topNameD
+    cardE <- divClass "agents-list" $ do
+      e <- listViewWithKey shownD $ \_ cD ->
+        elDynAttr "div" (slotAttrs <$> cD) $
+          agentCard acts (slotTop <$> cD) False selectedD (slotNode <$> cD)
+      return (fmapMaybe (listToMaybe . foldr (:) []) e)
+    -- The selection: the agent the dispatch box talks to.  Clicking a card
+    -- selects it (and brings its pane up); "Message" also jumps to the box;
+    -- ✕ in the box clears it.
+    let pickE = ffor cardE $ \case
+          CardSelect s  -> s
+          CardMessage s -> s
+        messageE = fmapMaybe (\case CardMessage s -> Just s; _ -> Nothing) cardE
     selectedD <- holdDyn Nothing (leftmost [Just <$> pickE, Nothing <$ clearE])
     clearE <- dispatchW toast refresh selectedD forestD
+    performEvent_ $ ffor messageE $ \_ -> liftJSM . void . eval $
+      ("setTimeout(function(){var t=document.querySelector(\
+       \'.agents.leksah-nav .agents-dispatch-text');if(t)t.focus()},0)" :: Text)
     return ()
   -- Arm the pane's JS (description links, Enter-to-dispatch, / to search) on
   -- THIS pane's root element.  The handle, never document.querySelector: at
@@ -193,28 +238,47 @@ agentsWidget = do
   return never
   where
     chips :: [(Text, Text, Text, Text)]
-    chips = [ ("waiting", "▲", "waiting for you", colourOf "waiting")
-            , ("busy",    "◆", "working",         colourOf "busy")
-            , ("idle",    "●", "idle",            colourOf "idle")
-            , ("done",    "✓", "done",            colourOf "done") ]
+    chips = [ ("waiting",   "▲", "waiting for you", colourOf "waiting")
+            , ("busy",      "◆", "working",         colourOf "busy")
+            , ("idle",      "●", "idle",            colourOf "idle")
+            , ("done",      "✓", "done",            colourOf "done")
+            , ("suspended", "❚", "suspended",       colourOf "suspended") ]
 
-    -- What the list shows: the tree pruned to the agents that match (an agent
-    -- stays when anything under it does, so the match keeps its context), or —
-    -- in list mode — every matching agent, flat, needs-you first.
-    shape forest mst q flat
-      | flat      = sortOn listOrder [ n { anChildren = [] } | n <- flatten forest, ok n ]
-      | otherwise = prune forest
+    -- What the list shows, as session → slot.  The top agent first (always in
+    -- full), then the manager, then the rest: the tree pruned to the agents
+    -- that match (an agent stays when anything under it does, so the match
+    -- keeps its context) with children indented, or — in list mode — every
+    -- matching agent, flat, needs-you first.  The top and manager cards are
+    -- shown whatever the filters say: they are the ones you are working with.
+    shape forest mst q flat mtop =
+      M.fromList [ (anSession n, Slot i d (Just (anSession n) == topSid) n)
+                 | (i, (d, n)) <- zip [0 ..] (pinned <> rest) ]
       where
+        everyone = flatten forest
+        topNode  = mtop >>= \nm -> find (\n -> anName n == nm && anLive n) everyone
+                                 `orElse` find ((== nm) . anName) everyone
+        topSid   = anSession <$> topNode
+        manager  = find anManager everyone
+        pinned   = [ (0 :: Int, n) | Just n <- [topNode] ]
+                <> [ (0, n) | Just n <- [manager], Just (anSession n) /= topSid ]
+        pinnedIds = map (anSession . snd) pinned
+        rest = filter ((`notElem` pinnedIds) . anSession . snd) $
+          if flat
+            then [ (0, n) | n <- sortOn listOrder everyone, ok n ]
+            else withDepth 0 (prune forest)
         prune ns = [ n { anChildren = ks } | n <- ns
                    , let ks = prune (anChildren n), ok n || not (null ks) ]
+        withDepth d = concatMap (\n -> (d, n) : withDepth (d + 1) (anChildren n))
         ok n = maybe True (`inState` n) mst && all (`T.isInfixOf` haystack n) terms
         terms = T.words (T.toLower q)
         haystack n = T.toLower $ T.unwords
           [ anName n, anTitle n, stripTags (fromMaybe "" (anDesc n))
+          , stripTags (fromMaybe "" (anBio n))
           , fromMaybe "" (anBranch n), maybe "" (\(k, _) -> "#" <> T.pack (show k)) (anPr n)
           , T.pack (anDir n), fromMaybe "" (anActivity n)
           , fromMaybe "" (anRole n), fromMaybe "" (anDone n), T.unwords (anWorktrees n) ]
         listOrder n = (rankOf (anState n), T.toLower (anName n <> anTitle n))
+        orElse a b = maybe b Just a
 
     -- The chips' groups: "working" takes the shell and starting states too.
     inState st n = case st of
@@ -225,254 +289,35 @@ agentsWidget = do
       (a, rest) | T.null rest -> a
                 | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
 
+-- | Where one card goes: its position (a CSS @order@ — the keyed list renders
+-- in key order, and re-keying by position would rebuild, and collapse, every
+-- card that moved), its depth in the tree (an indent), whether it is the top
+-- card, and the agent.
+data Slot = Slot
+  { slotOrder :: Int
+  , slotDepth :: Int
+  , slotTop   :: Bool
+  , slotNode  :: AgentNode
+  } deriving (Eq, Show)
+
+slotAttrs :: Slot -> Map Text Text
+slotAttrs s = "class" =: "agents-slot"
+           <> "style" =: ("order:" <> T.pack (show (slotOrder s))
+                          <> ";margin-left:" <> T.pack (show (12 * min 4 (slotDepth s))) <> "px")
+
 flatten :: [AgentNode] -> [AgentNode]
 flatten = concatMap (\n -> n : flatten (anChildren n))
 
 rankOf :: Text -> Int
 rankOf = \case
-  "waiting"  -> 0
-  "busy"     -> 1
-  "shell"    -> 1
-  "starting" -> 1
-  "idle"     -> 2
-  "done"     -> 3
-  _          -> 4
-
--- | Each agent keyed by session (so a row persists across polls) and carrying
--- its POSITION, which the row turns into a CSS @order@: the keyed list itself
--- renders in key order, and re-keying by position would rebuild — and collapse
--- — every row that moved.
-byKey :: [AgentNode] -> Map Text (Int, AgentNode)
-byKey ns = M.fromList [ (anSession n, (i, n)) | (i, n) <- zip [0 ..] ns ]
-
--- | One level of the tree: a keyed list, so rows persist across polls (an
--- unkeyed rebuild would collapse whatever the user had expanded).  @open@ is
--- how a row of this level STARTS (see 'agentsWidget'); a row created later by
--- the poll starts the same way, and a collapse the user made survives, because
--- the keyed list never rebuilds the rows it already has.  Answers the session
--- of a row the user clicked.
-agentLevel
-  :: MonadWidget t m
-  => Bool -> IO () -> (Text -> IO ()) -> Dynamic t (Maybe Text)
-  -> Dynamic t (Map Text (Int, AgentNode))
-  -> m (Event t Text)
-agentLevel open refresh toast selectedD mD = do
-  e <- listViewWithKey mD (\_ nD -> agentNodeW open refresh toast selectedD nD)
-  return (fmapMaybe (listToMaybe . M.elems) e)
-
--- | One agent: its row, and — only while expanded, which is the point — its
--- description, what it last said, and the agents it forked.
-agentNodeW
-  :: forall t m . MonadWidget t m
-  => Bool -> IO () -> (Text -> IO ()) -> Dynamic t (Maybe Text)
-  -> Dynamic t (Int, AgentNode) -> m (Event t Text)
-agentNodeW open refresh toast selectedD inD =
-    treeItemDynAttr' (constDyn False) (liAttrs <$> inD) open item children
-  where
-    nD = snd <$> inD
-    liAttrs (i, _) = "class" =: "agents-node" <> "style" =: ("order:" <> T.pack (show i))
-
-    item = mdo
-      -- Inline rename: the name becomes a text field (Enter keeps it, Esc or
-      -- leaving it gives up).  No modal prompt: a browser dialog would block
-      -- every other event in the window.
-      renamingD <- holdDyn False (leftmost [True <$ renameE, False <$ doneRenameE])
-      (lbl, doneRenameE) <- elDynAttr' "span" (rowAttrs <$> nD <*> selectedD) $ do
-        -- Its face, with the state glyph as a badge on its corner — WHO it is
-        -- and how it is, in one place — then its name and what it says it is
-        -- doing.  (No name yet, e.g. a pane still starting: the robot.)
-        elClass "span" "agents-avatar" $ do
-          void $ elDynHtmlAttr' "span" ("class" =: "agents-face") (faceOf <$> nD)
-          elDynAttr "span" (glyphAttrs <$> nD) . dynText $ glyphOf <$> nD
-        doneE <- switchHold never =<< dyn (ffor renamingD $ \case
-          False -> do
-            elDynAttr "span" (nameAttrs <$> nD) . dynText $ anName <$> nD
-            return never
-          True -> do
-            n0 <- sample (current nD)
-            inp <- inputElement $ def
-              & inputElementConfig_initialValue .~ anName n0
-              & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
-                  ("class" =: "agents-rename" <> "spellcheck" =: "false")
-            pbR <- getPostBuild
-            performEvent_ $ ffor pbR $ \_ -> liftJSM . void $
-              _element_raw (_inputElement_element inp) ^. js0 ("select" :: Text)
-            let commitE = tag (current (_inputElement_value inp)) (keypress Enter inp)
-                cancelE = leftmost [ () <$ keydown Escape inp
-                                   , () <$ ffilter not (updated (_inputElement_hasFocus inp)) ]
-            performEvent_ $ ffor (attach (current nD) commitE) $ \(n, new) ->
-              liftIO . void . forkIO $ renameAgentEverywhere (anSession n) new >>= \case
-                Left err -> toast err
-                Right _  -> refresh
-            return (leftmost [() <$ commitE, cancelE]))
-        elClass "span" "agents-title" . dynText $ anTitle <$> nD
-        elDynAttr "span" (ageAttrs <$> nD) . dynText $ anAge <$> nD
-        return doneE
-      -- Click: show the agent's pane (including one that is still starting, and
-      -- may be parked on a first-run question), or bring an exited one back
-      -- where it left off — its transcript is still there, so --resume picks the
-      -- thread up rather than starting over.  Either way the row is selected.
-      let open' n =
-            if not (anLive n) && anState n /= "starting"
-              -- Resumed as it was launched (its parent, role, manager brief);
-              -- an agent leksah has no record of falls back to a plain resume.
-              then agentResume (anSession n) >>= \case
-                Right _ -> return ()
-                Left _  -> runClaudeCmd (ClaudeResume (anDir n) (anSession n))
-              else showAgentPane (anSession n) >>= \found -> if found
-                then return ()
-                else toast $ displayName n <> " is running, but not in a terminal \
-                              \here — there is no pane to bring up."
-          -- ⟳ while it is running, ✕ once it has gone.
-          manage n =
-            if anLive n
-              then void (agentSend (anSession n) True agentRefreshPrompt)
-              else dismissAgent (anSession n) >> refresh
-          clickE = gate (not <$> current renamingD) (domEvent Click lbl)
-      performEvent_ $ ffor (tagPromptlyDyn nD clickE) $ \n ->
-        liftIO . void . forkIO $ open' n
-      liveD <- holdUniqDyn (anLive <$> nD)
-      btnE  <- switchHold never =<< dyn (ffor liveD $ \l ->
-        if l then actionBtn "\8635" "Ask this agent to refresh its title and \
-                                    \description"
-             else actionBtn "\10005" "Forget this agent (its children stay)")
-      performEvent_ $ ffor (tagPromptlyDyn nD btnE) $ \n ->
-        liftIO . void . forkIO $ manage n
-      -- The same actions on right-click, plus renaming it and copying the
-      -- session id (what `leksah-cmd agent send/read/wait` take).
-      (renameE, fireRename) <- newTriggerEvent
-      menuE <- rowMenu lbl
-        [ ffor nD $ \n -> ( if anState n == "gone" then "Resume Agent" else "Show Pane"
-                         , open' n )
-        , ffor nD $ \n -> ( if anLive n then "Refresh Title and Description"
-                                        else "Forget Agent"
-                         , manage n )
-        , ffor nD $ \n -> if anLive n
-            then ("Suspend Agent", agentSuspend (anSession n) False >>= toast . T.strip)
-            else ("Resume Agent", void (agentResume (anSession n)))
-        , constDyn ("Rename…", fireRename ())
-        , ffor nD $ \n -> ("Copy Session Id", copySessionId (anSession n)) ]
-      performEvent_ $ ffor menuE $ liftIO . void . forkIO
-      -- What it is doing this minute — its last tool call, or the approval it
-      -- is waiting on — on a line of its own under the title.  Gone at rest.
-      elDynAttr "div" (activityAttrs <$> nD) . dynText $ fromMaybe "" . anActivity <$> nD
-      return (anSession <$> tagPromptlyDyn nD clickE)
-
-    children = do
-      -- The line leksah writes itself (as against the agent's description):
-      -- which checkout it is in, its open PR — clickable, same routing as a
-      -- link in the description — and the branch it is on.  For worktree agents
-      -- that trio is the whole story of what the agent produced.  It comes
-      -- FIRST, directly under the title: it is one short line of leksah's own
-      -- facts, and a reader wants "which checkout / which branch" before the
-      -- agent's multi-line prose.
-      divClass "agents-where" $ do
-        dynText $ (T.pack . baseName . anDir) <$> nD
-        elDynAttr "span" (sepAttrs <$> nD) $ text "  ·  "
-        elDynAttr "a" (prAttrs <$> nD) . dynText $
-          ffor nD $ \n -> maybe "" (\(k, _) -> "PR #" <> T.pack (show k)) (anPr n)
-        dynText $ ffor nD $ maybe "" ("  ·  " <>) . anBranch
-        -- The checkout's FULL path, dimmest — the same touch as the toolbar
-        -- strip's editor path, and what tells two same-named worktrees apart.
-        elClass "span" "agents-where-path" . dynText $ (T.pack . anDir) <$> nD
-      -- The worktree relationships the agent REGISTERED (`agent register` /
-      -- register_worktree / the git hook) — leksah's other own-facts lines:
-      -- one per claim, plain text, empty collapses away.
-      dyn_ $ ffor nD $ \n ->
-        forM_ (anWorktrees n) $ \l -> divClass "agents-worktrees" (text l)
-      -- Its own summary, once it has said it is done (`agent done`), and the
-      -- role it was started in.
-      dyn_ $ ffor nD $ \n -> do
-        forM_ (anRole n) $ \ro -> divClass "agents-role" (text ("Role: " <> ro))
-        forM_ (anDone n) $ \d -> divClass "agents-done" $ do
-          elClass "span" "agents-said-label" (text "Done ")
-          text d
-      -- The description, straight into innerHTML — sanitized once, where it was
-      -- stored ('IDE.Web.AgentInfo.sanitizeAgentHtml').  Empty collapses away
-      -- (see the :empty rule in 'agentsCss') rather than leaving a gap.
-      void $ elDynHtmlAttr' "div" ("class" =: "agent-desc")
-        (fromMaybe "" . anDesc <$> nD)
-      -- What it last said — the answer you'd otherwise open its pane to read.
-      -- Fetched when the row opens and again whenever its state changes (a
-      -- turn that ends is a new answer).
-      pbC <- getPostBuild
-      stateC <- holdUniqDyn (anState <$> nD)
-      (saidE, fireSaid) <- newTriggerEvent
-      performEvent_ $ ffor (tag (current nD) (leftmost [pbC, () <$ updated stateC])) $ \n ->
-        liftIO . void . forkIO $ agentLastSaid (anSession n) >>= fireSaid
-      saidD <- holdDyn Nothing saidE
-      dyn_ $ ffor saidD $ \case
-        Nothing -> blank
-        Just t  -> divClass "agents-said" $ do
-          elClass "span" "agents-said-label" (text "Last said ")
-          text (T.take 600 t)
-      el "ul" $ agentLevel False refresh toast selectedD (byKey . anChildren <$> nD)
-
-    -- Signatures because '=:' is polymorphic in its container: without them the
-    -- inferred type is an over-general 'At' constraint that won't generalize.
-    glyphAttrs, nameAttrs, ageAttrs, prAttrs, sepAttrs, activityAttrs
-      :: AgentNode -> Map Text Text
-    activityAttrs n = case anActivity n of
-      Just a | not (T.null a) -> "class" =: ("agents-activity agents-activity-" <> anState n)
-                              <> "title" =: a
-      _                       -> "style" =: "display:none"
-    rowAttrs :: AgentNode -> Maybe Text -> Map Text Text
-    rowAttrs n sel = "class" =: ("agents-label leksah-nav-item"
-                              <> (if anLive n then "" else " agents-gone")
-                              <> (if sel == Just (anSession n) then " agents-selected" else ""))
-              <> "title" =: (nameLine n <> anTitle n <> "\n" <> anDetail n
-                              <> "\n" <> T.pack (anDir n)
-                              <> "\n" <> anSession n)
-    nameLine n | T.null (anName n) = ""
-               | otherwise         = anName n <> " — "
-    faceOf n | T.null (anName n) = "<img class=\"tree-icon\" src=\"/pics/tree-claude.svg\">"
-             | otherwise         = agentFaceSvg (anName n)
-    nameAttrs n | T.null (anName n) = "style" =: "display:none"
-                | otherwise         = "class" =: "agents-name"
-    -- Shape AND colour per state, like the workspace tree's badges, so the
-    -- states stay tellable apart without colour vision.
-    glyphAttrs n = "class" =: "agents-badge"
-                <> "style" =: ("color:" <> colourOf (anState n))
-    glyphOf :: AgentNode -> Text
-    glyphOf n = case anState n of
-      "waiting" -> "\9650"   -- ▲ blocked on an approval prompt: it needs you
-      "busy"    -> "\9670"   -- ◆ working
-      "shell"   -> "\9670"
-      "idle"    -> "\9679"   -- ● ready for input
-      "done"    -> "\10003"  -- ✓ said it is done (`agent done`)
-      "starting" -> "\9678"  -- ◎ a pane exists, no session registered yet
-      _         -> "\9675"   -- ○ exited
-    ageAttrs n | T.null (anAge n) = "style" =: "display:none"
-               | otherwise        = "class" =: "agents-age"
-    -- No PR: the anchor disappears, separator and all.  'data-href' (not 'href')
-    -- for the same reason the sanitizer rewrites description links — the pane's
-    -- own handler decides where a URL opens.
-    prAttrs n = case anPr n of
-      Nothing       -> "style" =: "display:none"
-      Just (_, url) -> "class" =: "agent-link agents-pr" <> "data-href" =: url
-                    <> "title" =: url
-    -- The separator belongs to the PR, not to the link itself (it would be
-    -- clickable inside the anchor), so it hides with it.
-    sepAttrs n | Nothing <- anPr n = "style" =: "display:none"
-               | otherwise         = mempty
-    baseName = reverse . takeWhile (/= '/') . dropWhile (== '/') . reverse
-
--- | The state colours — the same literal colours as every other Claude status
--- surface (they must match, and are not theme-dependent).
-colourOf :: Text -> Text
-colourOf = \case
-  "waiting"  -> "#f85149"
-  "busy"     -> "#d29922"
-  "shell"    -> "#d29922"
-  "idle"     -> "#3fb950"
-  "done"     -> "#3fb950"
-  "starting" -> "#d29922"
-  _          -> "#8b949e"
-
--- | How a row is called in a message: its name, else its title.
-displayName :: AgentNode -> Text
-displayName n | T.null (anName n) = anTitle n
-              | otherwise         = anName n
+  "waiting"   -> 0
+  "busy"      -> 1
+  "shell"     -> 1
+  "starting"  -> 1
+  "idle"      -> 2
+  "done"      -> 3
+  "suspended" -> 4
+  _           -> 5
 
 -- | The dispatch box under the list: say what you want, then send it to the
 -- selected agent, or start a new one with it (here, in a fresh worktree, or
@@ -626,17 +471,15 @@ agentLinksJs = T.unlines
 
 agentsCss :: Css
 agentsCss = do
-    -- Top-level uls sit flush with the pane's left edge (like .terminals > ul);
-    -- only nested uls take the global 20px indent.
-    ".agents .agents-list > ul" ? ("margin-left" -: "0px")
-    -- Head, list, dispatch box: only the list scrolls.
+    -- The cards themselves (shared with the Team pane).
+    agentCardCss
+    -- Head, cards, dispatch box: only the cards scroll.
     ".agents" ? do
         height (pct 100)
         overflow hidden
         display flex
         "flex-direction" -: "column"
-        -- The expand/collapse triangles are SVG and need an explicit fill here
-        -- (the shared tree rules only set it under .workspace / .metadata).
+        -- The search/expand triangles etc. are SVG and need an explicit fill.
         key "fill" dimColor
         cursor cursorDefault
         "padding-right" -: "8px"
@@ -645,37 +488,22 @@ agentsCss = do
         borderStyle none
         borderRadius (px 3) (px 3) (px 3) (px 3)
         backgroundImage (vGradient btnTopColor btnBottomColor)
-        fontSize (px 13)
+        fontSize (px 12)
         cursor cursorDefault
     ".agents button" # hover ?
         backgroundImage (vGradient btnHoverTopColor btnHoverBottomColor)
-    -- The per-row ⟳ / ✕ is a QUIET glyph, not a button: one boxed control per
-    -- row stacked up a column of chrome that competed with the titles.  Faint
-    -- at rest (still discoverable — hiding it entirely would make it a secret),
-    -- clearer on the row, full on itself and on keyboard focus.
+    -- The header's quiet glyph buttons (⟳, the layout toggle).
     ".agents .agents-action" ? do
         padding (px 0) (px 3) (px 0) (px 3)
         fontSize (px 11)
         "background" -: "none"
         color dimColor
-        "opacity" -: "0.35"
+        "opacity" -: "0.6"
         "flex" -: "0 0 auto"
-    ".agents li" # hover |> ".agents-action" ? ("opacity" -: "0.75")
     ".agents .agents-action" # hover ? do
         "opacity" -: "1"
         color fgColor
         backgroundImage (vGradient hoverColor hoverColor)
-    ".agents .agents-action:focus-visible" ? ("opacity" -: "1")
-    -- The header's own re-read glyph has no row to hover, so it always shows.
-    ".agents .agents-head .agents-action" ? ("opacity" -: "0.6")
-    ".agents .agents-list" ? do
-        "flex" -: "1 1 auto"
-        "min-height" -: "0"
-        overflow auto
-    -- Rows are ordered by CSS (see 'byKey'), so every list is a flex column.
-    ".agents ul" ? do
-        display flex
-        "flex-direction" -: "column"
     -- The header: agent count, the state chips, the layout toggle and the
     -- re-read glyph; the search box under them.
     ".agents .agents-head" ? do
@@ -685,6 +513,12 @@ agentsCss = do
         display flex
         "align-items" -: "center"
         "gap" -: "3px"
+    ".agents .agents-head-label" ? do
+        fontWeight bold
+        color dimColor
+        fontSize (px 12)
+        "flex" -: "1"
+        "min-width" -: "0"
     ".agents .agents-chip" ? do
         "background" -: "none"
         fontSize (px 11)
@@ -695,7 +529,6 @@ agentsCss = do
     ".agents .agents-chip.agents-chip-on" ? do
         color fgColor
         "border" -: "1px solid var(--leksah-selection)"
-    ".agents .agents-mode" ? ("opacity" -: "0.6")
     ".agents .agents-search" ? do
         "width" -: "calc(100% - 8px)"
         "margin" -: "4px 0 0 0"
@@ -708,109 +541,26 @@ agentsCss = do
         "outline" -: "none"
     ".agents .agents-search:focus" ?
         ("border-color" -: "var(--leksah-selection)")
-    ".agents .agents-head-label" ? do
-        fontWeight bold
-        color dimColor
-        fontSize (px 12)
-        "flex" -: "1"
-        "min-width" -: "0"
+    ".agents .agents-manager-start" ? do
+        "margin" -: "0 0 6px 2px"
+        "align-self" -: "flex-start"
+        padding (px 2) (px 8) (px 2) (px 8)
     ".agents .agents-empty" ? do
         color dimColor
         fontSize (px 12)
         padding (px 2) (px 2) (px 6) (px 2)
         "overflow-wrap" -: "anywhere"
-    ".agents li" ? do
-        padding (px 1) (px 0) (px 1) (px 0)
+    -- The cards: one column, ordered by CSS (see 'Slot').
+    ".agents .agents-list" ? do
+        "flex" -: "1 1 auto"
+        "min-height" -: "0"
+        overflow'
         display flex
-        "flex-wrap" -: "wrap"
-        "align-items" -: "center"
-    -- One agent is one block: a hairline above each sibling after the first
-    -- separates a tall expanded agent from the next row, which otherwise ran
-    -- into it as one wall of text.  Only at the top level — nested children
-    -- are already set apart by the tree indent.
-    ".agents > ul > li.agents-node + li.agents-node" ? do
-        "border-top" -: "1px solid var(--leksah-border-faint)"
-        "margin-top" -: "3px"
-        "padding-top" -: "4px"
-    -- The row is a flex line so the title can take the slack and ellipsize;
-    -- `gap` spaces the glyphs (each used to carry its own margin).
-    ".agents .agents-label" ? do
-        cursor cursorDefault
-        color dimColor
-        display flex
-        "align-items" -: "center"
-        "gap" -: "4px"
-        "flex" -: "1"
-        "min-width" -: "0"
-        "line-height" -: "18px"
-        "padding-left" -: "2px"
-    ".agents .agents-label img.tree-icon" ? do
-        opacity dimOpacity
-        "flex" -: "0 0 auto"
-    -- An agent's face (see "IDE.Web.AgentFace") with its state glyph as a
-    -- badge on the lower-right corner, and its name beside it.
-    ".agents .agents-avatar" ? do
-        "position" -: "relative"
-        display flex
-        "flex" -: "0 0 auto"
-        width (px 20)
-        height (px 20)
-    ".agents .agents-face" ? display flex
-    ".agents .agents-face svg" ? do
-        width (px 20)
-        height (px 20)
-    ".agents .agents-avatar .agents-badge" ? do
-        "position" -: "absolute"
-        "right" -: "-3px"
-        "bottom" -: "-3px"
-        "line-height" -: "9px"
-        "padding" -: "1px"
-        "border-radius" -: "6px"
-        "background" -: "var(--leksah-bg)"
-    ".agents .agents-selected" ?
-        ("box-shadow" -: "inset 2px 0 0 var(--leksah-selection)")
-    ".agents .agents-rename" ? do
-        fontSize (px 12)
-        width (px 90)
-        padding (px 0) (px 3) (px 0) (px 3)
-    -- The activity line: dim, one line, indented under the title.
-    ".agents .agents-activity" ? do
-        "flex-basis" -: "100%"
-        fontSize (px 11)
-        color dimColor
-        padding (px 0) (px 4) (px 1) (px 40)
-        "white-space" -: "nowrap"
-        overflow hidden
-        "text-overflow" -: "ellipsis"
-        fontFamily ["SF Mono", "Menlo"] [monospace]
-    ".agents .agents-activity-waiting" ? color (Other "#f85149")
-    ".agents .agents-role" ? do
-        color dimColor
-        fontSize (px 11)
-        padding (px 0) (px 4) (px 1) (px 14)
-    ".agents .agents-done" ? do
-        color fgColor
-        fontSize (px 12)
-        padding (px 1) (px 4) (px 2) (px 14)
-        "overflow-wrap" -: "anywhere"
-        "border-left" -: "2px solid #3fb950"
-        "margin-left" -: "14px"
-    -- What the agent last said, under its description.
-    ".agents .agents-said" ? do
-        color fgMutedColor
-        fontSize (px 12)
-        "line-height" -: "1.4"
-        padding (px 2) (px 4) (px 3) (px 14)
-        "overflow-wrap" -: "anywhere"
-        "white-space" -: "pre-wrap"
-        "display" -: "-webkit-box"
-        "-webkit-line-clamp" -: "4"
-        "-webkit-box-orient" -: "vertical"
-        overflow hidden
-    ".agents .agents-said-label" ? do
-        color dimColor
-        fontStyle italic
-    -- The dispatch box, pinned under the list.
+        "flex-direction" -: "column"
+        "gap" -: "5px"
+        "padding" -: "1px 1px 6px 1px"
+    ".agents .agents-slot" ? ("flex" -: "0 0 auto")
+    -- The dispatch box, pinned under the cards.
     ".agents .agents-dispatch" ? do
         "flex" -: "0 0 auto"
         "border-top" -: "1px solid var(--leksah-border-faint)"
@@ -845,104 +595,13 @@ agentsCss = do
         padding (px 1) (px 6) (px 1) (px 6)
     ".agents .agents-dispatch-go" ?
         ("box-shadow" -: "0 0 0 1px var(--leksah-selection)")
-    ".agents .agents-name" ? do
-        fontWeight bold
-        color fgColor
-        fontSize (px 12)
-        "flex" -: "0 0 auto"
-    -- The same face in the workspace tree's session rows.
+    -- An agent's face in the workspace tree's session rows.
     ".tree-face" ? do
         "display" -: "inline-flex"
         "vertical-align" -: "middle"
         "margin-right" -: "3px"
     ".tree-face svg" ? do
-        width (px 16)
-        height (px 16)
-    -- A live agent's title is lit; an exited one stays dim (and its whole row
-    -- reads as history).  ONE line, ellipsized: a wrapped title made every row
-    -- a different height and buried the rest of the block.  The full text is a
-    -- hover away (the row's title attribute).
-    ".agents .agents-label .agents-title" ? do
-        color fgColor
-        fontSize (px 12)
-        "font-weight" -: "500"
-        "flex" -: "1"
-        "min-width" -: "0"
-        "white-space" -: "nowrap"
-        overflow hidden
-        "text-overflow" -: "ellipsis"
-    ".agents .agents-gone" ? ("opacity" -: "0.55")
-    -- The state glyph carries meaning in its colour, so it is never dimmed.
-    ".agents .agents-badge" ? do
-        fontSize (px 9)
-        "flex" -: "0 0 auto"
-        opacity 1
-    ".agents .agents-age" ? do
-        fontSize (px 11)
-        "flex" -: "0 0 auto"
-        color dimColor
-    ".agents .tree-expand" ? ("flex" -: "0 0 auto")
-    ".agents .tree-children" ? ("flex-basis" -: "100%")
-    -- The description an agent wrote about itself: about four lines, clamped so
-    -- one that runs on can't push the tree off screen, and wrapping anywhere so
-    -- a long URL doesn't stretch the pane.
-    -- A node's own content (description, checkout line) is indented past the
-    -- expand triangle so it starts under the robot icon rather than under the
-    -- triangle: 12px is the triangle SVG's width ('simpleSvgPath' in
-    -- "IDE.Web.Widget.Tree"), plus the 2px inset .agents-label carries.  Nested
-    -- child agents keep the shared tree indent (their own <ul>'s 20px).
-    ".agents .agent-desc" ? do
-        -- Muted, not full foreground: the title is the thing you scan for, and
-        -- three or four lines of body text at the same weight drowned it.
-        color fgMutedColor
-        fontSize (px 12)
-        "line-height" -: "1.45"
-        padding (px 1) (px 4) (px 3) (px 14)
-        "overflow-wrap" -: "anywhere"
-        "display" -: "-webkit-box"
-        "-webkit-line-clamp" -: "3"
-        "-webkit-box-orient" -: "vertical"
-        overflow hidden
-    ".agents .agent-desc:empty" ? ("display" -: "none")
-    ".agents .agent-desc p" ? ("margin" -: "0 0 2px 0")
-    ".agents .agent-desc ul" ? ("margin" -: "0")
-    -- Inline code as a small chip rather than same-size text that only differs
-    -- by family (`ghc914-sh`, `emcc`, … are frequent in these descriptions).
-    ".agents .agent-desc code" ? do
-        "font-size" -: "11px"
-        "background" -: "var(--leksah-surface-alt)"
-        "border-radius" -: "3px"
-        "padding" -: "0 3px"
-    -- Links look like links and are clickable (the pane's handler decides where
-    -- they open: OS browser, or ⌥ for a leksah browser pane split) — both the
-    -- ones inside an agent's description and the PR on the checkout line.
-    ".agents a.agent-link" ? do
-        color selectionColor
-        cursor pointer
-        textDecoration underline
-    ".agents .agents-where" ? do
-        color dimColor
-        fontSize (px 11)
-        padding (px 0) (px 4) (px 1) (px 14)
-        "overflow-wrap" -: "anywhere"
-    ".agents .agents-where-path" ? do
-        opacity 0.7
-        "margin-left" -: "6px"
-        fontSize (px 10)
-    ".agents .agents-worktrees" ? do
-        color dimColor
-        fontSize (px 11)
-        fontStyle italic
-        padding (px 0) (px 4) (px 1) (px 14)
-        "overflow-wrap" -: "anywhere"
-    -- Hovering a row's own button highlights that row's line, like the
-    -- Terminals tree (clipped to the first line so it can't bleed over an
-    -- expanded subtree).
-    ".agents li:has(> button:hover)" ? do
-        backgroundImage (vGradient hoverColor hoverColor)
-        "background-size" -: "100% 20px"
-        "background-repeat" -: "no-repeat"
-    -- The keyboard-nav cursor is a blue outline, as in the other trees.
-    ".agents .leksah-nav-item.leksah-nav-current" ? do
-        "background" -: "transparent"
-        "box-shadow" -: "inset 0 0 0 1px var(--leksah-selection)"
+        "width" -: "16px"
+        "height" -: "16px"
+  where
+    overflow' = "overflow" -: "auto"

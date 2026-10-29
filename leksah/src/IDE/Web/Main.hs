@@ -9121,7 +9121,16 @@ main showMenubar macTitlebar wid ctx = mdo
           -- metadata feature is deleted); renders nothing and the post-build
           -- close event prunes any restored tab.
           MetadataKey    -> toDM MetadataTab <$> (never <$ blank)
-          AgentsKey      -> toDM AgentsTab <$> agentsWidget
+          -- The top card is the agent you are working with: the first agent
+          -- pane in the flip MRU, whose front is the active pane.
+          AgentsKey      -> toDM AgentsTab <$> (agentsWidget =<< holdUniqDyn
+            ((\mru tree -> listToMaybe
+                [ a | FlipPane s w p <- mru
+                    , Just (_, wins) <- [M.lookup s tree]
+                    , win <- wins, twIndex win == w
+                    , pn <- twPanes win, tpIndex pn == p
+                    , Just a <- [tpAgentName pn] ])
+              <$> flipMruD <*> allTreeD))
           ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
           ShortcutsKey   -> toDM ShortcutsTab <$> withTabFont k (shortcutsWidget ctx)
