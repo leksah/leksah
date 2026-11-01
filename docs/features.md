@@ -74,6 +74,12 @@ reserves no rows for the image (a program should send kitty's `C=1` and move
 the cursor itself), and anything that repaints a pane from tmux's own screen
 (a resize, a re-attach) drops the images.
 
+**Terminal ▸ New Terminal** (⌘T) opens a terminal tab in the front window,
+starting in the directory of whatever the active pane shows — a terminal's
+working directory, an editor's folder — else the active project's. ⌘D / ⌘⇧D
+split the current pane instead, and **Workspace ▸ New Window** (⌘N) opens a
+new window with a terminal in it.
+
 ## Git
 
 * **Changes pane** — live `git status` of the workspace with staged /
@@ -91,6 +97,29 @@ the Errors pane, and background build keeps it all up to date as you type.
 GHCi debugging (step, continue) is available from the Debug menu. Nix
 users: *Workspace ▸ Refresh Nix Environment* caches the project's dev
 shell so builds don't pay Nix evaluation on every command.
+
+## The active project follows you
+
+The active project — the one builds, the status bar and the Errors pane are
+about — follows the pane you are working in. Focus an editor, a git log or a
+terminal and its project becomes active; `cd` in a terminal and it follows
+the shell there (within a couple of seconds). Each project remembers the
+package and component you last picked in it.
+
+A path in a project the workspace doesn't have yet opens that project as a
+**temporary** one: Leksah walks up to the git checkout's root and takes the
+outermost `cabal.project` / `stack.yaml` / `Cargo.toml` / `flake.nix` /
+`Makefile` it finds (or the checkout itself, as a folder). Temporary projects
+are shown in *italics*, are never saved to the `.leksah-workspace` file, and
+leave again once no tab or pane shows anything in them. **Pin to Workspace**
+on the project's context menu (or opening it with **Open Project…**) makes it
+a regular project.
+
+```shell
+leksah-cmd project list          # root, type, active / temporary
+leksah-cmd project pin .         # keep the project this path is in
+leksah-cmd project remove PATH   # drop it from the workspace
+```
 
 ## Remote projects over SSH *(experimental)*
 
@@ -113,30 +142,52 @@ that default on top — tap the chord and let go to use it, or hold the modifier
 and press again (or use the arrow keys) to pick another, which then becomes
 that pane's default. A session you pick that has since exited is resumed.
 
+**Agents have names and faces.** Every Claude Code session Leksah sees is
+given an animal name — Wren, Otter, Heron… — and a matching face, used
+everywhere it appears: its tab, its tmux session, the tab flipper (per pane,
+so a window holding two agents shows both), the status light, the menu-bar
+item and the spoken terminal bell. An agent keeps its name when Claude Code
+continues its conversation under a new session id (backgrounding one, for
+example).
+
 **Agents can start agents.** A session running here can put a second one in a
 pane beside it with `leksah-cmd agent fork 'do this'` (or its `fork_agent` IDE
 tool) — by default a *fork* of its own conversation, so the new agent starts
-already knowing what the first one knew. Unlike an in-process subagent it is a
-real session: you can watch it, talk to it and approve its tools, and it
-outlives the turn that made it. The two then talk over `leksah-cmd agent
-send/read/wait/list`, and a forked agent is told how to report back when it
-finishes. Both are yours to interrupt: they are just panes.
+already knowing what the first one knew; `--as ROLE` starts a fresh one in a
+role defined by a Claude Code subagent file (`.claude/agents/*.md`), and
+`agent find QUERY` asks which existing agent fits a job. Unlike an in-process
+subagent it is a real session: you can watch it, talk to it and approve its
+tools, and it outlives the turn that made it. The two then talk over
+`leksah-cmd agent send/read/wait/list`, and a forked agent reports back with
+`agent done --summary …` when it finishes.
 
-**The Agents pane** (side bar, ⌥⌘2) is where you watch them: one row per
-session, each nested under the agent that forked it, with a status glyph —
-▲ needs you, ◆ working, ● idle, ○ exited. Expand a row and it shows what that
-agent says it is doing: a short description it wrote itself, with links to its
-pull requests, CI/Hydra builds and issues. **⟳** asks it to refresh that (a real
-turn in its conversation); links open in your browser, or hold ⌥ (⌥⇧) to open
-one in a leksah browser pane beside what you were reading. The title an agent
-gives itself is the one every other surface uses too — the status light's hover
-text, the macOS menu-bar item, the AI picker — so a session is named the same
-wherever you meet it. Clicking a row brings
-that agent's pane to the front — or, if it has finished, resumes it where it left
-off; exited agents stay listed for a day, dimmed, until you ✕ them.
+**The Agents pane** (side bar, ⌥⌘2) shows a card per agent — as a tree by
+who started whom, or as a list — ordered by what needs you first: ▲ waiting
+on you, ◆ working, ● idle, ✓ done, ❚ suspended, ○ exited. Each
+card says what the agent is doing right now (the tool it is running, the
+approval it is waiting for, an API error its last turn ended on), the files
+it edited, the branch and pull request it is on, and the description it
+wrote for itself, with links to its PRs, CI builds and issues. **⟳** asks it
+to refresh that; **＋ New agent** and a card's **Branch off** start another.
+Clicking a card brings the agent's pane to the front, or resumes it where it
+left off. Leksah learns all this from Claude Code's hooks, which it installs
+for the sessions it launches — the same hooks warn an agent that is about to
+edit a file another live agent edited recently.
+
+**The Team pane** (AI ▸ Team) shows a bio card for every agent; **the Manager
+pane** (bottom bar, ⌃⌘5) is the team's manager agent — one per workspace,
+briefed to coordinate the others — as a chat.
+
+**Suspend and resume.** `leksah-cmd agent suspend NAME` ends an idle agent's
+process on purpose but keeps it on the team (shown as *suspended*, for as
+long as it stays so); `agent resume NAME` brings it back in its own
+conversation, with the notes it was launched with. An agent that simply
+exited stays listed, dimmed, for a day, and can be resumed the same way.
 
 ## Multiple windows
 
-**Workspace ▸ New Window** opens additional OS windows onto the same IDE
-session; tabs can live in any window and the tab flipper (ctrl+tab)
-switches between recently used tabs.
+**Workspace ▸ New Window** (⌘N) opens additional OS windows onto the same IDE
+session. A new window starts with a terminal (in the active project) and
+with the side and bottom panes set the way the window it came from has
+them. Tabs can live in any window, and the tab flipper (ctrl+tab) switches
+between recently used tabs across all of them.

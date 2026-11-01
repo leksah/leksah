@@ -573,7 +573,7 @@ handleConn app conn = do
           maybe (requestKeymapCommand cmd) ($ app) (cmd ^. commandAction)
           reply $ "Ran " <> cid <> "\n"
 
-      -- File ▸ New Window, from a script: a terminal in the active project,
+      -- Workspace ▸ New Window, from a script: a terminal in the active project,
       -- with the front window's side/bottom pane settings.
       ("window" : "new" : _) -> do
         requestNewWindow

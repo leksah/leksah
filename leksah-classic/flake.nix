@@ -1,5 +1,5 @@
 {
-  # Standalone flake for leksah-classic, the frozen GPLv2 GTK3 IDE.  It is
+  # Standalone flake for leksah-classic, the classic GPLv2 GTK3 IDE.  It is
   # deliberately independent of the flake in the parent directory (which builds
   # the Apache-2.0 web-UI leksah): this directory is meant to be liftable into
   # its own repository unchanged.

@@ -1,6 +1,6 @@
 <!-- # Changelog -->
 
-## Unreleased — the web UI era
+## 2.0.0.0 — the web UI era
 
 Leksah's UI was rewritten as a single
 [reflex-dom](https://reflex-frp.org/) program, replacing the GTK+ /
@@ -28,10 +28,18 @@ GtkSourceView interface:
   `rebuild-self`, which Leksah uses to rebuild itself from within itself.
 * **Remote projects over SSH** *(experimental)*: edit, build and run the
   language server on another machine.
-* **AI assistant menu** *(experimental)*: send selections, file
-  references, errors or screen regions to an AI tool in a terminal pane.
-* **Nix flake build** with dev shells for GHC 9.6.7–9.14 and packaging
-  outputs for macOS (app/DMG), Windows (installer) and Linux.
+* **AI agents** *(experimental)*: Claude Code sessions run in terminal
+  panes with names and faces, start and brief each other (`leksah-cmd
+  agent`, or the MCP tools leksah serves), and report what they are doing
+  in the Agents, Team and Manager panes; the status light and macOS
+  menu-bar item show which are working or waiting for approval. The AI
+  menu sends selections, file references, errors or screen regions to the
+  agent of your choice.
+* **The active project follows you**: focusing a pane (an editor, or a
+  terminal you `cd` in) makes its project active, adding it to the
+  workspace temporarily if it isn't there.
+* **Nix flake build** with packaging outputs for macOS (app/DMG), Windows
+  (installer), Linux (tarballs) and the website with the in-browser demo.
 
 Release notes for the GTK-era versions (up to 0.8, 2010) are preserved in
 [leksah-classic/docs/old_manual/intro.rst](leksah-classic/docs/old_manual/intro.rst).

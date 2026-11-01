@@ -181,6 +181,16 @@
   - `leksah-cmd restart` — blunt relaunch (exits 2 immediately; see above).
   - `leksah-cmd editor open FILE…` — open files in the editor (alias: `cm`).
   - `leksah-cmd project open FILE…` — add project files to the workspace.
+    `project list` prints each project's root and type, marking the active one
+    and the *temporary* ones (opened because a pane shows something in them —
+    the active project follows the focused pane, `cd` included);
+    `project pin PATH` / `project remove PATH` act on the project PATH is in.
+  - `leksah-cmd window new` / `window list` / `window focus N` — open a window
+    (it starts with a terminal), list them, raise one.
+  - `leksah-cmd command ID` — run any command by its keybindings id
+    (`terminal.newTerminal`, `view.toggleSidebar`, … — `IDE.Web.Commands`) the
+    way choosing its menu item would. The few the native menus special-case
+    (Open, Save, Find, Shortcuts, New Browser Pane) aren't reachable this way.
   - `leksah-cmd js eval 'CODE'` — **evaluate JS in the running leksah and print
     the result.** Very useful for inspecting/poking the live page from a shell
     (e.g. `leksah-cmd js eval 'document.querySelectorAll(".tab").length'`). Runs
@@ -213,6 +223,12 @@
   `agent me`. A forked child is told to report back with `agent send`, and is
   allow-listed for exactly that one command (not `agent fork` — no silent
   fan-out).
+  Also: `agent done --summary T` (✓ in the Agents pane; the summary goes to
+  the parent), `agent find QUERY`, `fork --as ROLE` (`agent roles`),
+  `agent suspend SID` / `agent resume SID` (an exited or suspended agent comes
+  back with its launch notes — a bare `claude --resume` loses them),
+  `agent events SID` (what its hooks reported), `agent manager [start]`.
+  `leksah-cmd agent` prints the full list.
   `agent describe [SID] --title T --html H` (also the `describe_agent` MCP tool)
   is how a session says what it is doing for the **Agents pane** (side bar,
   ⌥⌘2): the tree of sessions by who forked whom, each row expandable to the

@@ -231,7 +231,8 @@
       <div class="card">
         <h3>Real terminals</h3>
         <p>Terminal panes are tmux sessions — persistent, searchable, and still
-           running after a restart. File references in output are clickable.</p>
+           running after a restart. File references in output are clickable;
+           ⌘T opens one where you are working, ⌘D splits beside it.</p>
       </div>
       <div class="card">
         <h3>Git built in</h3>
@@ -245,6 +246,13 @@
            cached Nix dev-shell environments.</p>
       </div>
       <div class="card">
+        <h3>Follows your focus</h3>
+        <p>The active project is whichever one the pane in front of you is in —
+           an editor, a git log, or a terminal you just <code>cd</code>-ed. Wander
+           into a project you haven't added and it joins the workspace for as
+           long as you're there; pin it to keep it.</p>
+      </div>
+      <div class="card">
         <h3>Remote projects <span class="tag">experimental</span></h3>
         <p>Open a project over SSH: editing, builds and the language server run
            on the remote machine while the UI stays local.</p>
@@ -256,9 +264,18 @@
            region — straight from the menu.</p>
       </div>
       <div class="card">
+        <h3>A team of agents <span class="tag">experimental</span></h3>
+        <p>Claude Code sessions get names and faces, start each other in panes
+           beside you, and report back. The Agents pane shows what each one is
+           doing right now — the tool it is running, what it edited, its branch
+           and PR — the Team pane their bios, and a manager agent coordinates
+           the rest. Suspend one and resume it later, right where it was.</p>
+      </div>
+      <div class="card">
         <h3>Multiple windows</h3>
-        <p>Open extra OS windows onto the same session; a tab flipper switches
-           between recent tabs across all of them.</p>
+        <p>Open extra OS windows onto the same session — each starts with a
+           terminal and your panel layout — and a tab flipper switches between
+           recent tabs across all of them.</p>
       </div>
     </div>
   </section>

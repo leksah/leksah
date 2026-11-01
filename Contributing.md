@@ -3,13 +3,12 @@
 This document is meant to get you started hacking on the Leksah code base.
 
 Questions and ideas are welcome on the
-[issue tracker](https://github.com/leksah/leksah/issues) and in
-[GitHub discussions](https://github.com/leksah/leksah/discussions).
+[issue tracker](https://github.com/leksah/leksah/issues).
 
 ## Getting started
 
 1. Click "Fork" at the top of the leksah repository page
-2. Clone your fork locally (with submodules):
+2. Clone your fork locally:
 
    ```
    git clone <url-to-your-fork>
@@ -19,7 +18,7 @@ Questions and ideas are welcome on the
    [docs/building.md](docs/building.md). The short version:
 
    ```
-   ./leksah.sh --nix ghc914
+   ./leksah.sh
    ```
 
 ## Making a contribution
@@ -66,10 +65,11 @@ on it.
 * jsaddle dispatches DOM events **asynchronously** — anything that needs a
   synchronous `preventDefault` has to be handled in JavaScript (see the
   inline JS snippets in `src/IDE/Web/Main.hs`).
-* Shared application state is the `IDE` record
-  (`src/IDE/Core/Types.hs`), operated on in the `IDEM` monad
-  (`readIDE` / `modifyIDE_` / `reflectIDE`); the web UI observes it as a
-  reflex `Dynamic`.
+* There is no central state record or monad. Each service (workspace,
+  builder, config, problems, …) owns its own reactive cells; the `App`
+  record (`leksah/src/IDE/App.hs`) just holds one handle per service,
+  created at boot, and functions take the services they use. The web UI
+  observes the cells as reflex `Dynamic`s.
 * Editor backends are prebuilt JS bundles exposing the same API surface
   (`window.LeksahCM` / `window.LeksahMonaco`), driven from
   `src/IDE/Web/Widget/Editor.hs`. Rebuild a bundle only when you change

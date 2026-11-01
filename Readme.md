@@ -36,8 +36,13 @@ prerecorded language-server hovers and terminal output.
 * **Remote projects over SSH** *(experimental)* — open, edit and build a
   project that lives on another machine, with the language server running
   remotely too.
-* **AI assistant integration** *(experimental)* — send the current file or
-  a selected region to an AI tool running in a terminal pane.
+* **A team of AI agents** *(experimental)* — Claude Code sessions run in
+  terminal panes with names and faces, start and brief each other, and
+  report what they are doing in the Agents pane; the status light shows
+  which are working or waiting for your approval. Send the current file,
+  a selection, errors or a screen region to whichever agent you pick.
+* **Follows your focus.** The active project is whatever the focused pane
+  shows — an editor, or a terminal you `cd` around in.
 
 Haskell development is still where Leksah is deepest — it understands
 Cabal workspaces, packages and components, drives incremental builds, and

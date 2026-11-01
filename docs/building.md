@@ -36,8 +36,12 @@ Leksah's own in-IDE builds use, so the two share incremental state.
 * The flake reads the **dirty working tree**: uncommitted edits are picked
   up, but **new files must be `git add`ed** before Nix can see them.
 * Packaging outputs: `leksah-macos-app` / `leksah-macos-dmg` (macOS),
-  `leksah-windows-installer` (WebView2), and `leksah-linux` /
-  `leksah-windows` run apps for cross-built binaries.
+  `leksah-windows-installer` (WebView2), `leksah-linux-tarball` (GTK4 +
+  WebKitGTK) and `leksah-warp-linux-tarball` (static, browser UI) for
+  Linux, `leksah-website` (the homepage plus the in-browser demo), and
+  `leksah-linux` / `leksah-windows` run apps for cross-built binaries.
+  `scripts/release.sh` builds the four downloads and uploads them to the
+  GitHub release the website links to.
 
 ## Developing Leksah in Leksah
 
@@ -125,10 +129,10 @@ Escape hatches: `tmux -L leksah attach -t ghci` for the raw prompt;
 ## Editor bundles
 
 The editor front ends are prebuilt JavaScript bundles checked into the
-repo: `cm6/` (CodeMirror 6) and `monaco/` (Monaco). Each has a
-`package.json` with a `build` script (esbuild); rebuild them only when
-changing their sources (`cm6/src/leksah-cm6.mjs`,
-`monaco/src/leksah-monaco.mjs`) and commit the built artifacts.
+repo: `leksah/cm6/` (CodeMirror 6) and `leksah/monaco/` (Monaco). Each
+has a `package.json` with a `build` script (esbuild); rebuild them only
+when changing their sources (`leksah/cm6/src/leksah-cm6.mjs`,
+`leksah/monaco/src/leksah-monaco.mjs`) and commit the built artifacts.
 
 ## More developer docs
 

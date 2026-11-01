@@ -41,12 +41,23 @@ the Workspace pane shows the project's packages and components, and the
 file tree follows the project directory. **Workspace ▸ Add Remote Project…**
 opens a project on another machine over SSH (experimental).
 
+You often don't need to: the active project follows the pane you are in,
+and opening a file — or `cd`-ing a terminal — into a project the workspace
+doesn't have adds it as a *temporary* project, which goes away again when
+nothing shows it. **Pin to Workspace** on its context menu keeps it. See
+[features.md](features.md#the-active-project-follows-you).
+
 From a shell, a running Leksah can be driven with `leksah-cmd`:
 
 ```shell
 leksah-cmd editor open src/Main.hs    # open files in the editor
 leksah-cmd project open cabal.project # add a project to the workspace
+leksah-cmd project list               # the projects, active / temporary
+leksah-cmd window new                 # a new window, with a terminal
+leksah-cmd command terminal.newTerminal  # run any command by its id
 ```
+
+`leksah-cmd help` lists the rest.
 
 ## Language servers
 
@@ -88,4 +99,11 @@ removes a default binding:
 
 Saving the file applies it immediately (menus, the shortcut sheet and the
 key handler all follow), as does **Edit ▸ Reload Keybindings**.  Command ids
-are listed in the Shortcuts pane's source registry (`IDE.Web.Commands`).
+are listed in the Shortcuts pane's source registry (`IDE.Web.Commands`), and
+`leksah-cmd command ID` runs one from a shell the way its menu item would.
+
+A few to start with: **⌘T** a new terminal tab, **⌘N** a new window (with a
+terminal), **⌘D** / **⌘⇧D** split the current pane, **ctrl+tab** flip
+between recent tabs, **⌥⌘1–3** the side panes (Workspace, Agents,
+Terminals), **⌃⌘1–5** the bottom panes (Errors, Log, Grep, Changes,
+Manager).

@@ -12,7 +12,7 @@ bug-reports: https://github.com/leksah/leksah/issues
 synopsis: The classic GTK3 leksah IDE
 description:
     The classic GTK3 front end of the leksah IDE, split out of the main
-    package as a frozen fork so the new web-UI leksah can be relicensed.
+    package so the new web-UI leksah can be relicensed.
     This package keeps its own GPL copies of the (formerly shared) core
     modules; it does not track their evolution in the main package.
 category: Development, IDE, Editor
