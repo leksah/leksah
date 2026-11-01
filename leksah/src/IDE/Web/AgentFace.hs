@@ -92,6 +92,12 @@ rimmed :: Double -> Double -> Double -> Text -> Text
 rimmed x y r f = "<circle cx=\"" <> n x <> "\" cy=\"" <> n y <> "\" r=\"" <> n r
                  <> "\" fill=\"" <> f <> "\" stroke=\"#6b6b7a\" stroke-width=\"1\"/>"
 
+-- | A head disc with a faint darker rim — for the white animals, which would
+-- otherwise vanish into a light theme's background.
+ringed :: Double -> Double -> Double -> Text -> Text
+ringed x y r f = "<circle cx=\"" <> n x <> "\" cy=\"" <> n y <> "\" r=\"" <> n r
+                 <> "\" fill=\"" <> f <> "\" stroke=\"#cfd8dc\" stroke-width=\"1\"/>"
+
 --------------------------------------------------------------------------------
 -- the faces
 
@@ -125,10 +131,9 @@ faces =
          , ell 16 21 2 1.4 ink ]
       <> eyes 16 4.5 1.4)
   , ("egret",
-      [ circ 16 16 10 "#fbfbfb"
-      , line "M16 6.5 Q12 2 6 3" 1.3 "#c9d2d8"
+      [ line "M16 6.5 Q12 2 6 3" 1.3 "#c9d2d8"
       , line "M16 6.5 Q13 1 9 0.8" 1 "#c9d2d8"
-      , "<circle cx=\"16\" cy=\"16\" r=\"10\" fill=\"none\" stroke=\"#cfd8dc\" stroke-width=\"1\"/>"
+      , ringed 16 16 10 "#fbfbfb"
       , poly [(13.5, 18), (18.5, 18), (16, 29)] "#f2c230" ]
       <> eyes 15 4 1.4)
   , ("fox",
@@ -449,6 +454,226 @@ faces =
          , poly [(10, 19), (16, 17), (22, 19), (16, 29)] "#e8eaec"
          , ell 16 26.5 2 1.4 ink ]
       <> concat [ [ circ x 14.5 1.5 "#f2c94c", circ x 14.5 0.8 ink ] | x <- [11.5, 20.5] ])
+  , ("bee",
+      [ line "M13 8 Q11 3 8 2" 1.2 ink, line "M19 8 Q21 3 24 2" 1.2 ink
+      , circ 8 2 1.4 ink, circ 24 2 1.4 ink
+      , ell 5.5 13 4 6 "#cfe3f2", ell 26.5 13 4 6 "#cfe3f2"
+      , circ 16 17 10.5 "#f5c32c"
+      , path "M5.9 20 L26.1 20 L24.25 23.5 L7.75 23.5 Z" ink
+      , line "M13 16.5 Q16 18.5 19 16.5" 1 ink ]
+      <> eyes 13.5 4 1.4)
+  , ("bison",
+      [ line "M8 12 Q3 11 4 5" 2.2 "#e8e0cc", line "M24 12 Q29 11 28 5" 2.2 "#e8e0cc"
+      , ell 16 18 10 11 "#74502f"
+      , path "M6 14 Q8 3 16 4 Q24 3 26 14 Q21 9 16 11 Q11 9 6 14 Z" "#3a2618"
+      , path "M10.5 25 Q16 33 21.5 25 Z" "#3a2618"
+      , ell 16 23 5 3.5 "#9a7656"
+      , ell 14.3 23 0.9 0.7 ink, ell 17.7 23 0.9 0.7 ink ]
+      <> eyes 16 4.2 1.3)
+  , ("camel",
+      mirrored 8 (\x -> ell x 8 2 3 "#b98a50")
+      <> [ ell 16 15 8 10 "#d2a468"
+         , ell 16 24 6.5 5.5 "#e3bf8a"
+         , line "M13 22.5 L14.3 23.5" 1 ink, line "M19 22.5 L17.7 23.5" 1 ink
+         , line "M13.5 27 Q16 28.2 18.5 27" 0.9 "#8a5f30" ]
+      <> eyes 14 3.5 1.4
+      <> [ path "M10.6 14 A1.9 1.9 0 0 1 14.4 14 Z" "#b98a50"
+         , path "M17.6 14 A1.9 1.9 0 0 1 21.4 14 Z" "#b98a50" ])
+  , ("crab",
+      [ line "M12 15 L11 7" 1.2 "#b8402a", line "M20 15 L21 7" 1.2 "#b8402a" ]
+      <> mirrored 0 (\x -> ell (x `towards` 5) 12 3 3.6 "#e0533d")
+      <> mirrored 0 (\x -> poly [(x `towards` 3, 10), (x `towards` 2, 3.5), (x `towards` 5, 8)] "#e0533d")
+      <> mirrored 0 (\x -> poly [(x `towards` 6.5, 9.5), (x `towards` 8.5, 4), (x `towards` 5, 8.5)] "#e0533d")
+      <> [ ell 16 21 11 7.5 "#e0533d"
+         , line "M12 24 Q16 26.5 20 24" 1 "#8a2414"
+         , circ 11 7 2.2 "#fff", circ 11 7 1.2 ink, circ 21 7 2.2 "#fff", circ 21 7 1.2 ink ])
+  , ("dodo",
+      [ line "M14 6 Q14.5 2 12.5 1" 1 "#d8dce2", line "M17.5 6 Q17.5 2 19.5 1" 1 "#d8dce2"
+      , circ 16 14 9.5 "#8e939c"
+      , ell 16 16 4 2.4 "#f2e2a0"
+      , path "M12.5 15 L19.5 15 Q22 23 17 27.5 Q17.5 21 12.5 18.5 Z" "#e6c75a" ]
+      <> eyes 12.5 4.6 1.3)
+  , ("eagle",
+      [ path "M5 20 Q16 30 27 20 L28 31 L4 31 Z" "#6b4a2b"
+      , ringed 16 15 10.5 "#fafafa"
+      , path "M13 16 L19 16 Q20.5 22 16 25 Q17 20 13 19 Z" "#f2b630"
+      , line "M8 11 L13.5 12.5" 1.3 "#8a8a8a", line "M24 11 L18.5 12.5" 1.3 "#8a8a8a" ]
+      <> eyes 14 4.5 1.3)
+  , ("ferret",
+      mirrored 8 (\x -> circ x 9 3 "#f1e4cc")
+      <> [ ell 16 17 10 9.5 "#f1e4cc"
+         , path "M6.5 16 Q11 11.5 16 15 Q21 11.5 25.5 16 Q21 19.5 16 17.5 Q11 19.5 6.5 16 Z" "#6a4a35"
+         , ell 16 22 2 1.4 "#e88a96"
+         , line "M12 23 L6 22.5" 0.6 "#8a7a6a", line "M20 23 L26 22.5" 0.6 "#8a7a6a" ]
+      <> eyes 15.8 4.5 1.3)
+  , ("flamingo",
+      [ line "M16 21 Q10 26 14 31" 3 "#f49ac1"
+      , circ 16 13 9.5 "#f49ac1"
+      , path "M13 16 L20 16 L19.2 22 Q17 21 13 18 Z" "#fbf3e8"
+      , path "M16.5 20.2 L19.2 21.2 L17.6 26.5 Z" ink ]
+      <> eyes 12 4.3 1.3)
+  , ("goat",
+      [ line "M12 8 Q9 2 5 4" 1.8 "#a89a84", line "M20 8 Q23 2 27 4" 1.8 "#a89a84" ]
+      <> mirrored 5.5 (\x -> ell x 12 3.5 1.8 "#e6e0d4")
+      <> [ ell 16 16 8 10.5 "#f3efe6"
+         , poly [(14, 24), (18, 24), (16, 31)] "#d9d2c4"
+         , ell 14.4 22.5 0.8 0.6 ink, ell 17.6 22.5 0.8 0.6 ink ]
+      <> concat [ [ circ x 15 1.7 "#e8c14a", ell x 15 1.1 0.5 ink ] | x <- [12.5, 19.5] ])
+  , ("gorilla",
+      mirrored 5 (\x -> circ x 16 2.6 "#2f2f36")
+      <> [ rimmed 16 16 11 "#2f2f36"
+         , path "M9 13 Q16 9 23 13 Q24 22 16 27 Q8 22 9 13 Z" "#5e5a63"
+         , path "M10 12.5 Q16 10.5 22 12.5 L22 14 Q16 12 10 14 Z" "#232328"
+         , ell 14.5 20 1 0.8 ink, ell 17.5 20 1 0.8 ink
+         , line "M13 23.5 Q16 24.5 19 23.5" 0.9 ink ]
+      <> eyes 16 3.2 1.2)
+  , ("hamster",
+      mirrored 8 (\x -> circ x 8.5 3.2 "#d79a55")
+      <> mirrored 8 (\x -> circ x 8.5 1.8 "#f2b8c6")
+      <> [ ell 16 18 12 10.5 "#e3a965"
+         , ell 9.5 21 4.2 3.8 "#fbf1e2", ell 22.5 21 4.2 3.8 "#fbf1e2"
+         , ell 16 22 3.5 4 "#fbf1e2"
+         , circ 16 19.5 1 "#e88a96"
+         , path "M15 22.5 L17 22.5 L17 24 L15 24 Z" "#fff" ]
+      <> eyes 15.5 4.6 1.4)
+  , ("horse",
+      mirrored 0 (\x -> poly [(x `towards` 8, 2), (x `towards` 12.5, 8), (x `towards` 8.5, 9)] "#8a5530")
+      <> [ ell 16 16 8 12 "#a8683a"
+         , path "M15 6 L17 6 L17.4 19 L14.6 19 Z" "#fbf5ec"
+         , path "M12 4 Q16 2 20 4 Q18 9 16 8 Q14 9 12 4 Z" "#3a2618"
+         , ell 16 25 6 4 "#7a4a2a"
+         , ell 13.7 25 0.9 1.1 ink, ell 18.3 25 0.9 1.1 ink ]
+      <> eyes 13.5 4.8 1.3)
+  , ("hyena",
+      mirrored 7.5 (\x -> circ x 8 3.3 "#8a7a5a")
+      <> mirrored 7.5 (\x -> circ x 8 1.7 "#4a3a2a")
+      <> [ ell 16 17 10 10 "#c4ac7e"
+         , circ 9.5 13 1 "#5a4a32", circ 22.5 13 1 "#5a4a32", circ 8 18 1.1 "#5a4a32"
+         , circ 24 18 1.1 "#5a4a32", circ 16 9.5 0.9 "#5a4a32"
+         , ell 16 23.5 5 4.5 "#3e3428"
+         , ell 16 21.5 1.8 1.2 ink
+         , line "M13 25 Q16 27.5 19 25" 1 "#f5ecd8" ]
+      <> eyes 15.5 4 1.3)
+  , ("jaguar",
+      mirrored 7 (\x -> circ x 8.5 3.2 "#d99a3a")
+      <> mirrored 7 (\x -> circ x 8.5 1.6 "#3a2a1a")
+      <> [ ell 16 17.5 11.5 10.5 "#e8a94a"
+         , circ 9 13 1.3 "#5a3a1a", circ 23 13 1.3 "#5a3a1a", circ 16 9.5 1.2 "#5a3a1a"
+         , circ 7.5 19 1.1 "#5a3a1a", circ 24.5 19 1.1 "#5a3a1a"
+         , ell 16 22.5 5 4 "#fbefd9"
+         , poly [(14.6, 20), (17.4, 20), (16, 21.6)] "#4a2a1a" ]
+      <> eyes 15.5 4.5 1.4)
+  , ("kangaroo",
+      mirrored 0 (\x -> ell (x `towards` 10.5) 6 2.4 5.5 "#b8743e")
+      <> mirrored 0 (\x -> ell (x `towards` 10.5) 6.5 1.1 3.8 "#e9c49a")
+      <> [ ell 16 17 8 9.5 "#c8844a"
+         , ell 16 24 5.5 5 "#e9c49a"
+         , ell 16 21.5 2 1.3 ink
+         , line "M14.5 26 Q16 27 17.5 26" 0.8 "#6b3a1e" ]
+      <> eyes 15 3.8 1.4)
+  , ("lemur",
+      mirrored 0 (\x -> poly [(x `towards` 3, 6), (x `towards` 11, 10), (x `towards` 6, 14)] "#8a8f96")
+      <> [ path "M5 13 Q16 2 27 13 Q24 24 16 30 Q8 24 5 13 Z" "#f2f2f2"
+         , path "M7 11 Q16 3 25 11 Q16 8 7 11 Z" "#8a8f96"
+         , ell 11.5 15 3.6 3.8 ink, ell 20.5 15 3.6 3.8 ink
+         , circ 11.5 15 2 "#f29a2a", circ 20.5 15 2 "#f29a2a"
+         , circ 11.5 15 1 ink, circ 20.5 15 1 ink
+         , poly [(14.5, 25), (17.5, 25), (16, 27.5)] ink ])
+  , ("magpie",
+      [ path "M6 18 Q16 30 26 18 L26 27 Q16 32 6 27 Z" "#fafafa"
+      , rimmed 16 15 10.5 "#1f1f26"
+      , path "M8.5 20 Q16 27 23.5 20 Q16 25 8.5 20 Z" "#fafafa"
+      , line "M8 9 Q14 6 20 7.5" 1.2 "#3d6fb0"
+      , poly [(13.5, 17), (18.5, 17), (16, 24)] "#6a6a78" ]
+      <> concat [ [ circ x 13.5 1.9 "#d8d8e0", circ x 13.5 1.2 ink ] | x <- [11.6, 20.4] ])
+  , ("moose",
+      mirrored 0 (\x -> poly [ (x `towards` a, b) | (a, b) <- [(11, 9), (3, 8), (1, 2), (4, 4.5), (5.5, 1), (7, 4.5), (9, 1.5), (10.5, 6)] ] "#c9a46b")
+      <> mirrored 7 (\x -> ell x 12 3 1.7 "#5a3a22")
+      <> [ ell 16 17 7.5 10.5 "#6e4a2e"
+         , ell 16 25 6.5 5 "#5a3a22"
+         , ell 13.8 25.5 1 1.2 ink, ell 18.2 25.5 1 1.2 ink ]
+      <> eyes 14.5 4 1.3)
+  , ("narwhal",
+      [ line "M16 9 L19 0.8" 1.6 "#f3ecd8"
+      , ell 16 18 12 10 "#7d93a8"
+      , ell 16 22 9 5 "#c9d4de"
+      , circ 9 14 1 "#5f7488", circ 22 12 1.2 "#5f7488", circ 24 17 0.9 "#5f7488"
+      , line "M13 22 Q16 24 19 22" 1 "#3a4a5a" ]
+      <> eyes 16 5 1.4)
+  , ("octopus",
+      [ line "M7 22 Q4 27 7 30" 2.4 "#c0508a", line "M11.5 24 Q10 29 12 31" 2.4 "#c0508a"
+      , line "M20.5 24 Q22 29 20 31" 2.4 "#c0508a", line "M25 22 Q28 27 25 30" 2.4 "#c0508a"
+      , ell 16 14 11 11.5 "#d4609c"
+      , circ 11 8 1.4 "#e88ab8", circ 21 6.5 1 "#e88ab8"
+      , line "M13.5 20 Q16 22 18.5 20" 1 "#7a2a5a" ]
+      <> eyes 15.5 4.6 1.6)
+  , ("parrot",
+      [ circ 16 15 10.5 "#3aa64a"
+      , ell 10.5 15.5 4 4.5 "#fafafa", ell 21.5 15.5 4 4.5 "#fafafa" ]
+      <> eyes 15.5 5.5 1.3
+      <> [ ell 16 22 2.6 1.6 "#3a3a3a"
+         , path "M12.5 17 Q16 14 19.5 17 Q19.5 23 16 27 Q16 22 12.5 20 Z" "#f2b63a" ])
+  , ("pelican",
+      [ ringed 16 11 8.5 "#fafafa"
+      , path "M13 13 L19 13 L18 30 Q16 31.5 14 30 Z" "#f2b63a"
+      , path "M13.8 17 L18.2 17 L17.4 29 Q16 30 14.6 29 Z" "#f29a6a" ]
+      <> eyes 10.5 4 1.3)
+  , ("robin",
+      [ circ 16 16 11 "#8a6a4a"
+      , path "M6 18 Q16 12 26 18 Q24 27 16 27 Q8 27 6 18 Z" "#e8642c"
+      , poly [(14.6, 15.5), (17.4, 15.5), (16, 18.5)] "#3a2a1a" ]
+      <> eyes 13 4.3 1.4)
+  , ("shark",
+      [ poly [(13, 8), (19, 0.5), (20, 8)] "#5f7385"
+      , ell 16 17 12.5 10 "#7a8fa2"
+      , path "M5 19 Q16 31 27 19 Q16 25 5 19 Z" "#f2f4f6"
+      , path "M10 21 L22 21 Q16 26 10 21 Z" "#2a2a32"
+      , poly [(11.5, 21), (13, 21), (12.3, 22.4)] "#fff"
+      , poly [(15.2, 21), (16.8, 21), (16, 22.6)] "#fff"
+      , poly [(19, 21), (20.5, 21), (19.7, 22.4)] "#fff" ]
+      <> eyes 14.5 6 1.2)
+  , ("skunk",
+      mirrored 8 (\x -> circ x 9 2.6 "#26262c")
+      <> [ rimmed 16 17 10.5 "#26262c"
+         , path "M14.5 6.5 L17.5 6.5 L16.8 21 L15.2 21 Z" "#fafafa"
+         , ell 16 23 2 1.4 "#e88a96" ]
+      <> concat [ [ circ x 16 1.8 "#d8d8e0", circ x 16 1.1 ink ] | x <- [11.4, 20.6] ])
+  , ("sloth",
+      [ circ 16 16 12 "#8a7458"
+      , ell 16 17 9.5 8.5 "#e8dcc4"
+      , path "M8.5 14 Q11 12 14 15 Q12 19.5 9 18 Z" "#4a3a2a"
+      , path "M23.5 14 Q21 12 18 15 Q20 19.5 23 18 Z" "#4a3a2a"
+      , ell 16 19.5 1.8 1.2 ink
+      , line "M12.5 21.5 Q16 24.5 19.5 21.5" 0.9 "#4a3a2a" ]
+      <> eyes 15.8 4.4 1.1)
+  , ("squirrel",
+      [ path "M23 29 Q32 27 30.5 15 Q29.5 8 24 9 Q28.5 15 23.5 23 Z" "#a8482a" ]
+      <> mirrored 0 (\x -> poly [(x `towards` 6, 2), (x `towards` 12, 8), (x `towards` 6.5, 11)] "#b8562a")
+      <> [ ell 16 17.5 10.5 10 "#c8642e"
+         , ell 16 23 5.5 4 "#f5e1c4"
+         , ell 16 20.5 1.5 1 ink
+         , path "M15 24 L17 24 L17 26 L15 26 Z" "#fff" ]
+      <> eyes 16 4.5 1.5)
+  , ("swan",
+      [ line "M16 21 Q13 27 18 31" 4 "#fafafa"
+      , ringed 16 13 9 "#fafafa"
+      , path "M13.5 13.5 Q16 12 18.5 13.5 L17 20 L15 20 Z" ink
+      , poly [(14.5, 15.5), (17.5, 15.5), (16, 22.5)] "#f2803a" ]
+      <> eyes 12 4.2 1.2)
+  , ("walrus",
+      [ ell 16 15 11 11 "#a07a5e"
+      , line "M13.5 22 L13 30.5" 2 "#f6efdc", line "M18.5 22 L19 30.5" 2 "#f6efdc"
+      , circ 13 20 3.6 "#c9a488", circ 19 20 3.6 "#c9a488"
+      , ell 16 17.5 1.8 1.2 ink
+      , line "M11 20 L5 19" 0.6 ink, line "M11 21.5 L5 22" 0.6 ink
+      , line "M21 20 L27 19" 0.6 ink, line "M21 21.5 L27 22" 0.6 ink ]
+      <> eyes 12.5 4.4 1.3)
+  , ("wombat",
+      mirrored 8.5 (\x -> circ x 8 2.6 "#7a5e48")
+      <> [ ell 16 17.5 11.5 10.5 "#8f715a"
+         , path "M13.2 18.5 L18.8 18.5 Q19.2 21.8 16 22.2 Q12.8 21.8 13.2 18.5 Z" "#2e2620"
+         , line "M14 25.5 Q16 26.5 18 25.5" 0.9 "#2e2620" ]
+      <> eyes 14.5 5.2 1.2)
   ]
   where
     -- A left-hand x coordinate, on the side @mirrored 0@ is drawing (0 = left,

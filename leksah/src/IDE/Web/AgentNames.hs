@@ -52,13 +52,16 @@ import IDE.Paths (sidecarPath)
 -- a face for every one of them — add the face with the name.
 agentAnimals :: [Text]
 agentAnimals =
-  [ "Alpaca", "Badger", "Bear", "Beaver", "Cat", "Cow", "Crane", "Deer"
-  , "Dingo", "Duck", "Egret", "Elephant", "Fox", "Frog", "Gecko", "Giraffe"
-  , "Hedgehog", "Heron", "Hippo", "Ibis", "Jay", "Kiwi", "Koala", "Lion"
-  , "Lynx", "Mole", "Monkey", "Newt", "Otter", "Owl", "Panda", "Penguin"
-  , "Pig", "Puffin", "Quail", "Rabbit", "Raccoon", "Raven", "Seal", "Sheep"
-  , "Tapir", "Tiger", "Turtle", "Urial", "Vole", "Wolf", "Wren", "Xerus"
-  , "Yak", "Zebra" ]
+  [ "Alpaca", "Badger", "Bear", "Beaver", "Bee", "Bison", "Camel", "Cat"
+  , "Cow", "Crab", "Crane", "Deer", "Dingo", "Dodo", "Duck", "Eagle"
+  , "Egret", "Elephant", "Ferret", "Flamingo", "Fox", "Frog", "Gecko", "Giraffe"
+  , "Goat", "Gorilla", "Hamster", "Hedgehog", "Heron", "Hippo", "Horse", "Hyena"
+  , "Ibis", "Jaguar", "Jay", "Kangaroo", "Kiwi", "Koala", "Lemur", "Lion"
+  , "Lynx", "Magpie", "Mole", "Monkey", "Moose", "Narwhal", "Newt", "Octopus"
+  , "Otter", "Owl", "Panda", "Parrot", "Pelican", "Penguin", "Pig", "Puffin"
+  , "Quail", "Rabbit", "Raccoon", "Raven", "Robin", "Seal", "Shark", "Sheep"
+  , "Skunk", "Sloth", "Squirrel", "Swan", "Tapir", "Tiger", "Turtle", "Urial"
+  , "Vole", "Walrus", "Wolf", "Wombat", "Wren", "Xerus", "Yak", "Zebra" ]
 
 -- | One session's name, and when it was last seen (POSIX seconds) — the
 -- reservation clock.
