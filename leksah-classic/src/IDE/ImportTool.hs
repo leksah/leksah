@@ -8,7 +8,7 @@
 -- Copyright   :  2007-2011 Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GPL
 --
--- Maintainer  :  Jutaro <jutaro@leksah.org>
+-- Maintainer  :  Jutaro
 -- Stability   :  provisional
 -- Portability :
 --

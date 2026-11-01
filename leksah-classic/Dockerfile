@@ -152,7 +152,7 @@ RUN mkdir ~/.wine32/drive_c/bin && \
 # Install 64bit Windows version of cabal-install:
 RUN mkdir ~/.wine/drive_c/bin && \
     cd ~/.wine/drive_c/bin && \
-    wget http://leksah.org/packages/cabal-mingw64.7z && \
+    wget https://leksah.github.io/packages/cabal-mingw64.7z && \
     7za x cabal-mingw64.7z && \
     rm cabal-mingw64.7z
 

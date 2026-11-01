@@ -123,7 +123,7 @@
         # crossPlatforms yields ucrt64, i.e. x86_64-linux (see nix/hix.nix).
         packages = flake.packages
           // {
-          # The leksah.org site root: homepage + the in-browser demo (the
+          # The leksah.github.io site root: homepage + the in-browser demo (the
           # ghcjs cross builds of leksah and the sandpit breakout game),
           # assembled by a Haskell program compiled inside the derivation
           # (see nix/website.nix).  Mirror the output to leksah.github.io.

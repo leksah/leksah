@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
--- | Assemble the complete leksah.org site root — the Haskell replacement for
+-- | Assemble the complete leksah.github.io site root — the Haskell replacement for
 -- copy-assets.sh's orchestration, written to run inside a nix derivation
 -- (nix\/website.nix compiles it with the project's native ghc and runs it
 -- with the compiled JS apps as inputs; boot libraries only, like the rest of

@@ -1,6 +1,6 @@
 # Leksah — an IDE written in Haskell
 
-[Leksah](https://leksah.org/) is a fast, hackable development environment
+[Leksah](https://leksah.github.io/) is a fast, hackable development environment
 written in Haskell. The whole UI is a functional-reactive program
 ([reflex-dom](https://reflex-frp.org/)) that runs everywhere: as a native
 app on macOS, Linux and Windows, served to any browser, and even compiled
@@ -8,7 +8,7 @@ to JavaScript and run entirely in-page — no install, no server.
 
 That last one is the easiest way to see it:
 
-**[▶ Try Leksah in your browser](https://leksah.org/try/)** — the real IDE,
+**[▶ Try Leksah in your browser](https://leksah.github.io/try/)** — the real IDE,
 compiled with GHC's JavaScript backend, editing a small game project with
 prerecorded language-server hovers and terminal output.
 

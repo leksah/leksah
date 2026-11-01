@@ -15,7 +15,7 @@
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
--- Maintainer  :  Juergen Nicklisch-Franken <info@leksah.org>
+-- Maintainer  :  Juergen Nicklisch-Franken
 -- Stability   :  provisional
 -- Portability  :  portable
 --

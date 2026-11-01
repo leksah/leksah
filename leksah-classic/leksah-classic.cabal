@@ -4,10 +4,10 @@ version: 0.17.0.0
 license: GPL-2.0-or-later
 license-file: LICENSE
 copyright: 2007-2026 Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
-maintainer: maintainer@leksah.org
+maintainer: Hamish.K.Mackenzie@gmail.com
 author: Juergen Nicklisch-Franken, Hamish Mackenzie, Jacco Krijnen, JP Moresmau
 stability: provisional
-homepage: https://leksah.org
+homepage: https://leksah.github.io
 bug-reports: https://github.com/leksah/leksah/issues
 synopsis: The classic GTK3 leksah IDE
 description:

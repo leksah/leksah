@@ -49,7 +49,7 @@ The current version is 0.8.
 Further Information
 -------------------
 
-The home page for Leksah is `leksah.org <http://leksah.org>`__. Stable
+The home page for Leksah is `leksah.github.io <https://leksah.github.io>`__. Stable
 version of Leksah can be installed from Hackage
 `hackage.haskell.org/package/leksah <http://hackage.haskell.org/package/leksah>`__\ using
 Cabal install. The source code for Leksah is hosted under
@@ -60,12 +60,12 @@ The Leksah user Wiki is
 The Leksah forum can be accessed at
 `groups.google.com/group/leksah/topics <http://groups.google.com/group/leksah/topics>`__.
 The current version of this manual can be found at
-`leksah.org/leksah\_manual.pdf <http://leksah.org/leksah_manual.pdf>`__.
+`leksah.github.io/leksah\_manual.pdf <https://leksah.github.io/leksah_manual.pdf>`__.
 An issue tracker to collect bug reports and suggestions for improvements
 is at
 `code.google.com/p/leksah/issues/list <http://code.google.com/p/leksah/issues/list>`__.
-You can contact the developers at `info (at)
-leksah.org <mailto:info@leksah.org>`__.
+You can contact the developers at `github.com/leksah/leksah/issues
+<https://github.com/leksah/leksah/issues>`__.
 
 For information about the Programming language Haskell go to
 `www.haskell.org <http://www.haskell.org>`__. The GHC computer is found

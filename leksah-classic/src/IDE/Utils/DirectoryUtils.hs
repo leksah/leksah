@@ -5,7 +5,7 @@
 -- Copyright   :  2007-2014 Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GPL
 --
--- Maintainer  :  maintainer@leksah.org
+-- Maintainer  :  Hamish.K.Mackenzie@gmail.com
 -- Stability   :  provisional
 -- Portability :
 --

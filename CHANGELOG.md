@@ -10,7 +10,7 @@ GtkSourceView interface:
   macOS, GTK4 + WebKitGTK on Linux, Edge WebView2 on Windows),
   `leksah-warp` (any browser over HTTP), and an in-browser demo compiled
   with GHC's JavaScript backend
-  ([leksah.org/try](https://leksah.org/try/)). The Gtk front end lives on
+  ([leksah.github.io/try](https://leksah.github.io/try/)). The Gtk front end lives on
   as `leksah-classic`.
 * **Editors**: CodeMirror 6 by default, Monaco (VS Code's editor
   component) as a preference; shared find bar, dirty gutter, in-editor

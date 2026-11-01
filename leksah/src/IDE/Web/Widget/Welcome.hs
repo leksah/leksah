@@ -186,7 +186,7 @@ markSrc = "/pics/leksah.png"
 
 links :: [(Text, Text)]
 links =
-  [ ("Documentation",   "https://leksah.org/")
+  [ ("Documentation",   "https://leksah.github.io/")
   , ("Source on GitHub", "https://github.com/leksah/leksah")
   , ("Report an issue",  "https://github.com/leksah/leksah/issues")
   ]

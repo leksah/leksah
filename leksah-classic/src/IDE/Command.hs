@@ -10,7 +10,7 @@
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
--- Maintainer  :  <maintainer at leksah.org>
+-- Maintainer  :  <maintainer at leksah.github.io>
 -- Stability   :  provisional
 -- Portability :  portable
 --
@@ -546,8 +546,8 @@ mkActions =
             p <- readIDE activePack
             ideMessage Normal (T.pack $ show p)) [] False
 --    ,AD "HelpDebug2" "Debug2" (Just "<Ctrl>d") Nothing dbgInstalledPackageInfo [] False
-    ,AD "HelpManual" (__ "Manual") Nothing Nothing (openBrowser "http://leksah.org/leksah_manual.pdf") [] False
-    ,AD "HelpHomepage" (__ "Homepage") Nothing Nothing (openBrowser "http://leksah.org") [] False
+    ,AD "HelpManual" (__ "Manual") Nothing Nothing (openBrowser "https://leksah.github.io/leksah_manual.pdf") [] False
+    ,AD "HelpHomepage" (__ "Homepage") Nothing Nothing (openBrowser "https://leksah.github.io") [] False
     ,AD "HelpAbout" (__ "About") Nothing (Just "gtk-about") (liftIO aboutDialog) [] False
 
     ,AD "BackgroundBuildToggled" (__ "_Build in the background") (Just (__ "Build in the background and report errors")) (Just "ide_build")
@@ -764,7 +764,7 @@ aboutDialog = do
     setAboutDialogComments d $ __ "An integrated development environement (IDE) for the " <>
                                __ "programming language Haskell and the Glasgow Haskell Compiler"
     setAboutDialogLicense d license
-    setAboutDialogWebsite d "http://leksah.org/"
+    setAboutDialogWebsite d "https://leksah.github.io/"
     aboutDialogSetAuthors d ["Jürgen Nicklisch-Franken","Hamish Mackenzie","Jacco Krijnen","JP Moresmau"]
     void $ dialogRun d
     widgetDestroy d

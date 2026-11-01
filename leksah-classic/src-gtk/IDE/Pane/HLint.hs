@@ -12,7 +12,7 @@
 -- Copyright   :  (c) Juergen Nicklisch-Franken, Hamish Mackenzie
 -- License     :  GNU-GPL
 --
--- Maintainer  :  <maintainer at leksah.org>
+-- Maintainer  :  <maintainer at leksah.github.io>
 -- Stability   :  provisional
 -- Portability  :  portable
 --

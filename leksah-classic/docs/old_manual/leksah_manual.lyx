@@ -184,8 +184,8 @@ Further Information
 The home page for Leksah is 
 \begin_inset CommandInset href
 LatexCommand href
-name "leksah.org"
-target "http://leksah.org"
+name "leksah.github.io"
+target "https://leksah.github.io"
 
 \end_inset
 
@@ -237,8 +237,8 @@ target "http://groups.google.com/group/leksah/topics"
  The current version of this manual can be found at 
 \begin_inset CommandInset href
 LatexCommand href
-name "leksah.org/leksah_manual.pdf"
-target "http://leksah.org/leksah_manual.pdf"
+name "leksah.github.io/leksah_manual.pdf"
+target "https://leksah.github.io/leksah_manual.pdf"
 
 \end_inset
 
@@ -256,9 +256,8 @@ target "http://code.google.com/p/leksah/issues/list"
  You can contact the developers at 
 \begin_inset CommandInset href
 LatexCommand href
-name "info (at) leksah.org"
-target "info@leksah.org"
-type "mailto:"
+name "github.com/leksah/leksah/issues"
+target "https://github.com/leksah/leksah/issues"
 
 \end_inset
 

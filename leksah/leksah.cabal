@@ -4,11 +4,11 @@ version: 2.0.0.0
 license: Apache-2.0
 license-file: LICENSE
 copyright: 2007-2026 Hamish Mackenzie
-maintainer: maintainer@leksah.org
+maintainer: Hamish.K.Mackenzie@gmail.com
 author: Hamish Mackenzie
 stability: provisional
 tested-with: ghc ==9.6.7 ghc ==9.8.4 ghc ==9.10.1 ghc ==9.12.2 ghc ==9.14.1
-homepage: https://leksah.org
+homepage: https://leksah.github.io
 bug-reports: https://github.com/leksah/leksah/issues
 synopsis: An IDE written in Haskell
 description:

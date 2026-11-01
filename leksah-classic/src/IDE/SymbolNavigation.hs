@@ -8,7 +8,7 @@
 -- Copyright   :  (c) Sanny Sannof, Juergen Nicklisch-Franken
 -- License     :  GNU-GPL
 --
--- Maintainer  :  <maintainer at leksah.org>
+-- Maintainer  :  <maintainer at leksah.github.io>
 -- Stability   :  provisional
 -- Portability :  portable
 --

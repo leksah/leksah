@@ -3,7 +3,7 @@
 ## Try it first
 
 The quickest look at Leksah needs no install at all: the
-[in-browser demo](https://leksah.org/try/) is the real IDE compiled to
+[in-browser demo](https://leksah.github.io/try/) is the real IDE compiled to
 JavaScript, editing a small game project with prerecorded language-server
 hovers and terminal output.
 
