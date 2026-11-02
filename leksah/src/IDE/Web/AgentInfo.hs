@@ -485,8 +485,8 @@ demoForestRef = unsafePerformIO (newIORef Nothing)
 
 -- | One page-seeded row (children nest the same shape).
 data DemoAgent = DemoAgent Text Text Text Text FilePath (Maybe Text) Text
-                           (Maybe Text) (Maybe Text) (Maybe (Int, Text)) [DemoAgent] (Maybe Text)
-                           (Maybe Text)
+                           (Maybe Text) (Maybe (Int, Text)) [DemoAgent] (Maybe Text)
+                           (Maybe Text) (Maybe Text)
 
 instance FromJSON DemoAgent where
   parseJSON = withObject "DemoAgent" $ \o -> DemoAgent
