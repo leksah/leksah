@@ -7,9 +7,9 @@
     "build": "esbuild src/leksah-monaco.mjs --bundle --format=iife --minify --legal-comments=none --loader:.ttf=dataurl --outfile=leksah-monaco.js && esbuild node_modules/monaco-editor/esm/vs/editor/editor.worker.js --bundle --format=iife --minify --legal-comments=none --outfile=leksah-monaco-worker.js"
   },
   "dependencies": {
-    "monaco-editor": "^0.55.1"
+    "monaco-editor": "^0.57.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.28.2"
   }
 }
