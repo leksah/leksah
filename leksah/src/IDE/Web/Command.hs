@@ -24,11 +24,12 @@ import IDE.Web.TerminalInput
        (sendToActiveTerminal, tmuxCommandActiveTerminal, splitActiveTerminal)
 import IDE.Web.TransparencyRequest (requestToggleTransparency)
 import IDE.Web.SnapRequest (requestSnapWindow)
+import Language.Javascript.JSaddle (eval)
 
 import qualified Data.Map as M (adjust, delete, insert, lookup)
 import Data.Maybe (fromMaybe)
 
-import IDE.App (App(..), AppAction, appNote)
+import IDE.App (App(..), AppAction, appJSM, appNote)
 import IDE.Builder (buildActiveTarget, runVerb)
 import IDE.Config
        (BuildC(..), Config(..), FontC(..), TerminalC(..), UiC(..),
@@ -610,3 +611,12 @@ snapWindowCmd = CommandIDEAction
   ""  -- menu-only: no toolbar icon
   "Snap another app's window over the active tmux pane (macOS)"
   (const requestSnapWindow)
+
+-- | Rebuild the WebGL glyph atlas of every terminal in every window and
+-- repaint (@LeksahTerm.redrawAll@ in "IDE.Web.Main").  The cure for terminals
+-- whose text has gone mostly invisible; the same runs automatically whenever
+-- a window regains focus.
+commandRedrawTerminals :: Command
+commandRedrawTerminals = CommandIDEAction
+  "" "Rebuild the terminals' glyph cache and repaint them"
+  (\app -> appJSM app (() <$ eval ("window.LeksahTerm && window.LeksahTerm.redrawAll()" :: Text)))

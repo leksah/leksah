@@ -4004,7 +4004,25 @@ terminalWriteJs = T.unlines
   , "    } catch (e) { measureCell(); }"
   , "  }"
   , "  if (window.requestAnimationFrame) requestAnimationFrame(warmCell); else warmCell();"
-  , "  return { register: register, unregister: unregister, write: write, loadWebgl: loadWebgl, cellMetrics: cellMetrics, fontOpts: fontOpts, setFontSize: setFontSize, applyZoom: applyZoom, byId: byId };"
+  -- Rebuild every terminal's WebGL glyph atlas and repaint.  The atlas is a
+  -- GPU texture shared by all the terminals, and it can go bad WITHOUT a
+  -- webglcontextlost event (seen 2026-11-03: every terminal at once drew only
+  -- a scattered handful of glyphs, isContextLost() false everywhere), so the
+  -- onContextLoss fallback in loadWebgl never fires.  clearTextureAtlas is
+  -- cheap (glyphs re-rasterise on demand), so it runs whenever the window
+  -- comes back (focus / visible again: after sleep, a GPU-process reset or a
+  -- long time in the background) and from the terminal.redraw command.
+  -- Harmless on DOM-renderer terminals.
+  , "  function redrawAll(){"
+  , "    var n = 0;"
+  , "    for (var k in byId) {"
+  , "      try { var t = byId[k]; t.clearTextureAtlas(); t.refresh(0, t.rows - 1); n++; } catch (e) {}"
+  , "    }"
+  , "    return n;"
+  , "  }"
+  , "  window.addEventListener('focus', redrawAll);"
+  , "  document.addEventListener('visibilitychange', function(){ if (!document.hidden) redrawAll(); });"
+  , "  return { register: register, unregister: unregister, write: write, loadWebgl: loadWebgl, cellMetrics: cellMetrics, fontOpts: fontOpts, setFontSize: setFontSize, applyZoom: applyZoom, redrawAll: redrawAll, byId: byId };"
   , "})();"
   ]
 

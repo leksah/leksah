@@ -106,6 +106,7 @@ allCommands =
     , always "terminal.snapWindowToPane"  "Snap Window to Pane"   snapWindowCmd
     , always "terminal.focusAlerting"     "Focus Alerting Terminal" CommandFocusAlert
     , always "terminal.toggleTmuxIntercept" "Intercept Ctrl+B"    commandToggleTmuxIntercept
+    , always "terminal.redraw"            "Redraw Terminals"      commandRedrawTerminals
 
     , always "ai.sendSelection"           "Send Selection"        commandSendSelection
     , always "ai.sendFileRef"             "Send File Reference"   commandSendFileRef

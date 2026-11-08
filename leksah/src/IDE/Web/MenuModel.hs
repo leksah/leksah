@@ -210,6 +210,7 @@ terminalMenu =
   , MSepE
   , MCmd "terminal.focusAlerting"
   , MCmd "terminal.toggleTmuxIntercept"
+  , MCmd "terminal.redraw"
   , MSubE "Tmux" tmuxMenu
   ]
 
