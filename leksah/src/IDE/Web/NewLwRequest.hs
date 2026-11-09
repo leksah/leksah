@@ -11,6 +11,7 @@
 -- import cycle; this channel is the seam.)
 module IDE.Web.NewLwRequest
   ( requestNewLw
+  , requestNewLwIn
   , nextNewLwRequest
   , beginConversion
   , endConversion
@@ -29,15 +30,24 @@ import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
 
 {-# NOINLINE newLwChan #-}
-newLwChan :: Chan (Text, Text)
+newLwChan :: Chan (Maybe Int, (Text, Text))
 newLwChan = unsafePerformIO newChan
 
 -- | Ask for a leksah window (and its tab) wrapping @(session id, window id)@.
+-- Its tab goes to the frontmost OS window (the one the user just acted in).
 requestNewLw :: (Text, Text) -> IO ()
-requestNewLw = writeChan newLwChan
+requestNewLw = requestNewLwIn Nothing
+
+-- | 'requestNewLw' with the tab placed in a specific OS window (a raw
+-- 'IDE.Web.Model.WindowId').  File ▸ New Window's first terminal needs this:
+-- "the frontmost window" is only a guess at which window asked, and when key
+-- status has moved on by the time the request drains, the terminal lands in
+-- the OLD window and the new one is left empty — and an empty window closes.
+requestNewLwIn :: Maybe Int -> (Text, Text) -> IO ()
+requestNewLwIn target r = writeChan newLwChan (target, r)
 
 -- | Block until the next request (drained by the reflex bridge in Main).
-nextNewLwRequest :: IO (Text, Text)
+nextNewLwRequest :: IO (Maybe Int, (Text, Text))
 nextNewLwRequest = readChan newLwChan
 
 -- A minimal-path conversion is mid-flight: its break-pane children must not

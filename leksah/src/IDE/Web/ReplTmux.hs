@@ -30,6 +30,7 @@ module IDE.Web.ReplTmux
   , activePaneIdOfWindow
   , ensureRemoteWindow
   , openTerminalInDir
+  , openTerminalInDirFor
   , shellCommandForDir
   , freshSessionName
   , tmuxOut
@@ -77,7 +78,7 @@ import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
 import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
-import IDE.Web.NewLwRequest (requestNewLw)
+import IDE.Web.NewLwRequest (requestNewLwIn)
 
 -- | The private tmux server socket leksah's terminals live on (so they don't
 -- mix with the user's own tmux sessions, and so its options don't touch their
@@ -539,7 +540,15 @@ ensureRemoteWindow host rdir name mbCmd = do
 -- Fire-and-forget on a background thread, so it never blocks the reflex frame
 -- thread / the calling IDEAction.
 openTerminalInDir :: MonadIO m => FilePath -> m ()
-openTerminalInDir dir0 = liftIO . void . forkIO $ do
+openTerminalInDir = openTerminalInDirFor Nothing
+
+-- | 'openTerminalInDir' with the new tab placed in a given OS window (a raw
+-- 'IDE.Web.Model.WindowId') rather than whichever is frontmost when the tmux
+-- session turns up — File ▸ New Window opening its own first terminal.  (The
+-- remote arm still goes to the frontmost window: it reuses the host's shared
+-- session rather than minting a leksah window here.)
+openTerminalInDirFor :: MonadIO m => Maybe Int -> FilePath -> m ()
+openTerminalInDirFor target dir0 = liftIO . void . forkIO $ do
     -- A caller's project dir may end in a path separator, which would leave
     -- the shell's cwd — and its prompt — with a trailing "//"; strip it.
     let dir = dropTrailingPathSeparator dir0
@@ -557,7 +566,7 @@ openTerminalInDir dir0 = liftIO . void . forkIO $ do
             name <- freshSessionName (winName dir)
             newSessionWindow name dir (Just (T.pack dir <> "#shell"))
                 (maybe "true" shellUnder mbPrefix) True
-                >>= mapM_ (\(sid, wid, _) -> requestNewLw (sid, wid))
+                >>= mapM_ (\(sid, wid, _) -> requestNewLwIn target (sid, wid))
   where
     winName p = case T.pack (takeFileName p) of
                   "" -> "shell"

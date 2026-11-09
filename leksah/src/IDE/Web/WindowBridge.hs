@@ -99,9 +99,10 @@ data WindowBridge = WindowBridge
   , wbRegionGrab :: Maybe Text -> IO ()
                                       -- ^ start the screen-region picker
   , wbAIAction   :: AIAction -> IO () -- ^ open the AI picker with this payload
-  , wbNewLw      :: (Text, Text) -> IO ()
+  , wbNewLw      :: (Maybe Int, (Text, Text)) -> IO ()
                                       -- ^ a fresh @(session, tmux window)@:
                                       --   mint its leksah window and open it
+                                      --   (in the given OS window, if any)
   , wbFontConvert :: (Text, Text, Int -> Maybe Int) -> IO ()
                                       -- ^ isolate a tmux pane before resizing it
   , wbConsolidate :: Text -> IO ()    -- ^ re-consolidate one leksah window

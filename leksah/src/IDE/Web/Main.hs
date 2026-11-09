@@ -68,11 +68,11 @@ import Data.Map (mapKeys)
 import qualified Data.Map as M
        (Map, keys, elems, toList, toAscList, fromList, fromListWith, union,
         findWithDefault, lookup, insert, insertWith, adjust, delete,
-        member, filterWithKey, singleton, mapWithKey, empty, size, null)
+        member, filter, filterWithKey, keysSet, singleton, mapWithKey, empty, size, null)
 import Data.Map (Map)
 import qualified Data.Set as S
        (Set, fromList, delete, null, singleton, empty, insert, member, intersection, toList)
-import Data.Time.Clock (NominalDiffTime, getCurrentTime)
+import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
@@ -247,7 +247,7 @@ import IDE.LSP (shutdownServers)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.ReplTmux
        (tmuxCmd, tmuxSupported, activePaneIdOfSession, activePaneIdOfWindow,
-        openTerminalInDir, splitPane, newSessionWindow, newWindowInSession,
+        openTerminalInDir, openTerminalInDirFor, splitPane, newSessionWindow, newWindowInSession,
         shellCommandForDir, freshSessionName, tmuxOut, paneCountOfWindow,
         runInTerminal, prefixedCmdLine)
 import IDE.Web.SaveRequest (requestSaveActiveFileWait)
@@ -512,14 +512,58 @@ bindLwSession lwi sid = withApp $ \app ->
 -- handlers; the tab is placed by 'requestLocalTerm' (or the reconcile's tab
 -- sync).  'Nothing' before the global 'App' exists.
 mintLeksahWindow :: Maybe Text -> PaneContent -> IO (Maybe Text)
-mintLeksahWindow msess pc = getGlobalApp >>= \case
+mintLeksahWindow = mintLeksahWindowIn Nothing
+
+-- | 'mintLeksahWindow', with the new tab placed in OS window @target@ in the
+-- SAME cell write (when that window exists).  Placing it later — via the term
+-- request or the reconcile's 'syncLwTabs' — means "whichever window is active
+-- by then", which is not necessarily the window that asked.
+--
+-- A minted window's session is also recorded in 'freshSessionsRef', so a
+-- pane-tree poll taken before the session existed can't prune it (see
+-- 'freshSessionsFor').
+mintLeksahWindowIn :: Maybe WindowId -> Maybe Text -> PaneContent -> IO (Maybe Text)
+mintLeksahWindowIn target msess pc = getGlobalApp >>= \case
     Nothing  -> return Nothing
-    Just app -> fmap Just . stateCell (appUi app) $ \i ->
-      let n   = i ^. nextLeksahWin
-          lwi = lwIdText n
-      in ( i & nextLeksahWin .~ (n + 1)
-             & leksahWindows %~ M.insert lwi (singlePaneWindow msess pc)
-         , lwi )
+    Just app -> do
+      forM_ msess $ \s -> do
+        now <- getCurrentTime
+        atomicModifyIORef' freshSessionsRef (\m -> (M.insert s now m, ()))
+      fmap Just . stateCell (appUi app) $ \i ->
+        let n   = i ^. nextLeksahWin
+            lwi = lwIdText n
+            place = case target of
+              Just w | w `M.member` (i ^. webWindows) ->
+                webWindows %~ moveTabTo w (LeksahWinKey lwi)
+              _ -> id
+        in ( i & nextLeksahWin .~ (n + 1)
+               & leksahWindows %~ M.insert lwi (singlePaneWindow msess pc)
+               & place
+           , lwi )
+
+-- | Sessions a leksah window was minted for, with the mint time.
+--
+-- The eager mint ('mintLeksahWindow') races the reconcile: each OS window
+-- polls the pane tree on its own forked thread, so a poll that STARTED before
+-- the new tmux session existed can finish after the mint — and
+-- 'reconcileWindows' would read the session's absence as "it died", drop the
+-- leksah window, then re-adopt the session on the next poll as a stray with a
+-- NEW id in whichever OS window is active.  For File ▸ New Window that emptied
+-- the new window, and the never-empty-window rule closed it a moment after it
+-- appeared.  Polls finish out of order, so seeing the session in one tree
+-- doesn't prove later trees are newer; the protection is a fixed grace period.
+{-# NOINLINE freshSessionsRef #-}
+freshSessionsRef :: IORef (M.Map Text UTCTime)
+freshSessionsRef = unsafePerformIO (newIORef M.empty)
+
+-- | The sessions still inside their grace period (expiring the rest).  A
+-- session that genuinely dies straight away lingers at most this long.
+freshSessionsFor :: IO (S.Set Text)
+freshSessionsFor = do
+  now <- getCurrentTime
+  atomicModifyIORef' freshSessionsRef $ \m ->
+    let m' = M.filter (\t -> diffUTCTime now t < 10) m
+    in (m', M.keysSet m')
 
 -- | Keep every OS window's tab list consistent with the leksah-window map:
 -- prune tabs whose window is gone (falling the active tab back to the next
@@ -5620,15 +5664,17 @@ main showMenubar macTitlebar wid ctx = mdo
   emptyPb    <- getPostBuild
   emptyBoot0 <- delay 0.4 emptyPb
   -- A File ▸ New Window window boots into a terminal instead (in the active
-  -- project's directory, else home), placed in the frontmost window — this
-  -- one, by now.  If none has turned up a few seconds later (no tmux), the
-  -- boot check below falls back to Welcome after all.
+  -- project's directory, else home), placed in THIS window by id — not "the
+  -- frontmost window", which it need not be by the time tmux answers (key can
+  -- move back, or a second ⌘N's window can take it).  If none has turned up a
+  -- few seconds later (no tmux), the boot check below falls back to Welcome
+  -- after all.
   freshE <- performEvent $ ffor (gate (current emptyWinD) emptyBoot0) $ \_ -> liftIO $ do
     fresh <- atomicModifyIORef' freshWindowsRef (\ws -> (S.delete wid ws, wid `S.member` ws))
     when fresh $ do
       mws <- getGlobalApp >>= traverse (readCell . wsCell . appWorkspace)
       dir <- maybe getHomeDirectory (return . prDir) (mws >>= activeProject)
-      openTerminalInDir dir
+      openTerminalInDirFor (Just widN) dir
     return fresh
   freshFallbackE <- delay 3 (ffilter id freshE)
   let emptyBootE = gate (current emptyWinD) $
@@ -6529,9 +6575,10 @@ main showMenubar macTitlebar wid ctx = mdo
     -- Fresh tmux windows from the session-per-open paths (openTerminalInDir /
     -- runClaudeCmd): mint the leksah window and open its tab at once.
     (newLwReqE, fireNewLwReq) <- newTriggerEvent
-    performEvent_ $ ffor newLwReqE $ \(sid, wid') ->
+    performEvent_ $ ffor newLwReqE $ \(target, (sid, wid')) ->
         liftIO . void . forkIO $ do
-            mlwi <- mintLeksahWindow (Just sid) (PaneContent (PaneTmux wid') Nothing)
+            mlwi <- mintLeksahWindowIn (WindowId <$> target) (Just sid)
+                      (PaneContent (PaneTmux wid') Nothing)
             mapM_ requestLocalTerm mlwi
     -- ⌥⌘=/⌥⌘− on a tmux pane in a MULTI-pane window (see paneFontAdjust):
     -- isolate the pane first (per-pane fonts can't share a tmux window),
@@ -6649,7 +6696,7 @@ main showMenubar macTitlebar wid ctx = mdo
     -- Other reasons to re-read the tree (labels, MRU while hidden): post-build,
     -- terminal activity (click / ⌃B poll), open/close/select, session save.
     let treeRefreshE = leftmost
-          [ () <$ treePb, termActivityE
+          [ () <$ treePb, termActivityE, graceEndE
           , () <$ closeTermE, () <$ selectAnyTermE, () <$ saveSessE
           -- A requested tab may be a freshly-created session/window (e.g. a
           -- workspace repl button): re-read the tree so it shows at once.
@@ -6661,6 +6708,12 @@ main showMenubar macTitlebar wid ctx = mdo
           -- A session just died (its client exited): re-read + reconcile NOW,
           -- so a leksah window healing to sessionless (view panes kept, tab
           -- label back to the view's) does so at once, not on the next
+    -- A freshly minted session's grace period ran out ('freshSessionsFor'):
+    -- re-read once more, so a terminal that died DURING the grace period (its
+    -- prune was suppressed) is reconciled away without waiting for some
+    -- unrelated tmux change.  Fired from the reconcile below.
+    (graceEndE, fireGraceEnd) <- newTriggerEvent
+    graceEndArmed <- liftIO $ newIORef False
           -- debounced poll.
           , () <$ exitedRawE ]
     -- Same for remote CC tabs: poke the ssh poll.
@@ -9735,7 +9788,7 @@ main showMenubar macTitlebar wid ctx = mdo
     -- died.  The changed check runs against a snapshot, but the mutation
     -- recomputes from the live IDE inside 'modifyIDE_', so a racing layout
     -- edit can't be clobbered.
-    let applyReconcile tree i =
+    let applyReconcile fresh tree i =
           let liveBySession = M.fromList
                 [ (sid, map twId wins)
                 | (sid, (_, wins)) <- M.toList tree
@@ -9745,20 +9798,35 @@ main showMenubar macTitlebar wid ctx = mdo
                 | (sid, (_, wins)) <- M.toList tree
                 , w <- wins
                 , (sid, twIndex w) `S.member` (i ^. hiddenWindows) ]
-              (lws', next') = reconcileWindows liveBySession hiddenIds mempty
+              (lws', next') = reconcileWindows liveBySession hiddenIds mempty fresh
                                 (i ^. nextLeksahWin) (i ^. leksahWindows)
           in syncLwTabs (i & leksahWindows .~ lws' & nextLeksahWin .~ next')
         -- (syncLwTabs — the tab-list/window-map consistency pass — is a
         -- top-level function now: the ⌘-drag cross-window move composes it
         -- after 'moveLeafAcross' too.)
-        needsReconcileE = attachWithMaybe
-          (\i tree ->
-              let i' = applyReconcile tree i
+    -- The freshly minted sessions are read per pass ('freshSessionsFor'):
+    -- once here for the changed check, and again by the mutation itself
+    -- (below), immediately before its cell write, so a mint landing between
+    -- the two is still protected.
+    reconcileTreeE <- performEvent $
+        ffor (gate (current isActiveD) (ffilter (not . M.null) (updated paneTreeD))) $
+          \tree -> liftIO $ do
+            fresh <- freshSessionsFor
+            unless (S.null fresh) $ do
+              armed <- atomicModifyIORef' graceEndArmed (\a -> (True, a))
+              unless armed . void . forkIO $ do
+                threadDelay 10500000   -- just past the 10s grace
+                writeIORef graceEndArmed False
+                fireGraceEnd ()
+            return (fresh, tree)
+    let needsReconcileE = attachWithMaybe
+          (\i (fresh, tree) ->
+              let i' = applyReconcile fresh tree i
               in if i' ^. leksahWindows == i ^. leksahWindows
                     && i' ^. webWindows == i ^. webWindows
                    then Nothing else Just tree)
           (current ide)
-          (gate (current isActiveD) (ffilter (not . M.null) (updated paneTreeD)))
+          reconcileTreeE
     -- Skip the pass while a minimal-path conversion has tmux surgery in
     -- flight: its break-pane children must not be adopted as strays before
     -- the converting leksah window claims them.
@@ -9892,7 +9960,9 @@ main showMenubar macTitlebar wid ctx = mdo
       -- Leksah windows: reconcile against the live pane tree (recomputed
       -- from the CURRENT ide inside the mutation, so nothing stale is
       -- written; 'applyReconcile' also keeps the wide0 tab lists in step).
-      <> ((\tree -> [overUi (applyReconcile tree)]) <$> needsReconcileGatedE)
+      <> ((\tree -> [\app -> freshSessionsFor >>= \fresh ->
+                         overUi (applyReconcile fresh tree) app])
+            <$> needsReconcileGatedE)
       -- ⌥-open / ⌘D new content into an existing leksah window's split
       -- (see leafOpenE).
       <> ((\(lwi, pc, vert) ->

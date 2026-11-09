@@ -729,16 +729,20 @@ singlePaneWindow session content = LeksahWindow
 -- it the LIVE local sessions (window ids in tmux window-index order), the
 -- hidden set already resolved to window IDS, and the sessions currently
 -- mid-conversion (their strays are left alone — a conversion's break-pane
--- children must not be adopted before the converting window claims them).
+-- children must not be adopted before the converting window claims them),
+-- and the sessions minted too recently for the tree to be trusted about them:
+-- a window bound to one of those that the tree doesn't list AT ALL is kept
+-- untouched — the poll may simply predate the session.
 -- Returns the reconciled windows plus the advanced id minter.
 reconcileWindows
   :: Map Text [Text]        -- ^ live LOCAL sessions -> window ids, index order
   -> Set Text               -- ^ hidden window ids
   -> Set Text               -- ^ sessions with a conversion in flight
+  -> Set Text               -- ^ freshly minted sessions (grace period)
   -> Int                    -- ^ next leksah window id ('nextLeksahWin')
   -> Map Text LeksahWindow
   -> (Map Text LeksahWindow, Int)
-reconcileWindows liveBySession hidden converting next0 lws0 =
+reconcileWindows liveBySession hidden converting fresh next0 lws0 =
     (M.fromList (kept <> strayWindows), next1)
   where
     liveSet = S.unions [ S.fromList ws | (_, ws) <- M.toAscList liveBySession ]
@@ -748,6 +752,11 @@ reconcileWindows liveBySession hidden converting next0 lws0 =
     -- dead session, clamp fonts, fix dangling refs.
     (_, keptRev) = foldl' step (mempty, []) (M.toAscList lws0)
     kept = reverse keptRev
+    step (seen, out) (i, lw)
+      | Just s <- lwSession lw
+      , s `S.member` fresh
+      , not (s `M.member` liveBySession)
+      = (seen `S.union` S.fromList (lwWindowIds lw), (i, lw) : out)
     step (seen, out) (i, lw) =
       let sessionAlive = maybe False (`M.member` liveBySession) (lwSession lw)
           keepPane l = case M.lookup l (lwPanes lw) of
