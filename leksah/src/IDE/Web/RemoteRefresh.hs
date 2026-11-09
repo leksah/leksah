@@ -23,6 +23,7 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.Map (Map)
 import qualified Data.Map as M (delete, elems, empty, insert)
 import System.IO.Unsafe (unsafePerformIO)
+import IDE.Web.WindowScope (onCurrentScopeClose)
 
 data RefreshReason
   = RefreshSaved FilePath   -- ^ a remote file was saved
@@ -48,5 +49,8 @@ registerRemoteRefresh :: (RefreshReason -> IO ()) -> IO (IO ())
 registerRemoteRefresh h = do
     k <- atomicModifyIORef' handlers $ \(n, m) ->
             ((n + 1, M.insert n h m), n)
-    return . void $ atomicModifyIORef' handlers $ \(n, m) ->
+    let unregister = void $ atomicModifyIORef' handlers $ \(n, m) ->
             ((n, M.delete k m), ())
+    -- A window's handler goes when the window does ("IDE.Web.WindowScope").
+    onCurrentScopeClose unregister
+    return unregister

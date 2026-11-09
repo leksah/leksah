@@ -116,6 +116,7 @@ library
         IDE.Web.AIContextRequest
         IDE.Web.ScreenshotRequest
         IDE.Web.Attach
+        IDE.Web.WindowScope
         IDE.Web.Frame
         IDE.Web.Bridge
         IDE.Web.BridgeStore

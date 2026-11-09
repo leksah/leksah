@@ -159,10 +159,13 @@ import Reflex.Dom.Core
         _element_raw, (=:))
 
 import IDE.Web.Attach (mainWidgetWithCssGuarded)
+import IDE.Web.WindowScope
+       (newWindowScope, registerWindowScope, onCurrentScopeClose,
+        forkInCurrentScope)
 
 import IDE.App
        (App(..), AppAction, RunState(..), appNote, getGlobalApp, newApp,
-        registerJsContext, setGlobalApp, withApp)
+        registerJsContext, unregisterJsContext, setGlobalApp, withApp)
 import IDE.Builder (buildActiveTarget)
 import IDE.Config
        (AiC(..), BuildC(..), Config(..), Editor(..), EditorC(..), FontC(..),
@@ -1694,6 +1697,11 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- The colour palette (all --leksah-* tokens, dark + light) goes in first, so
   -- every stylesheet below resolves them; see "IDE.Web.Theme".
   metaLog "boot: helper JS eval'd, entering mainWidgetWithCss"
+  -- This window's lifetime ("IDE.Web.WindowScope"): the native close path
+  -- closes it ('closeWindowNetwork'), which unsubscribes the network from the
+  -- shared state and ends its frame loop.
+  scope <- liftIO newWindowScope
+  liftIO $ registerWindowScope (case wid of WindowId n -> n) scope
   -- GUARDED attach ("IDE.Web.Attach"): reflex-dom's own frame loop has no
   -- exception handler, so anything escaping a performEvent/dyn body would
   -- end async event processing for this window — a frozen UI that still
@@ -1704,7 +1712,7 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- frame-thread IO is supposed to be total.  The message arrives ready to
   -- log ("FRAME ABORTED …" / "WINDOW BUILD FAILED …"), tagged here with the
   -- window it belongs to.
-  mainWidgetWithCssGuarded
+  mainWidgetWithCssGuarded scope
       (\msg -> do
           wlog wid msg
           appNote app (T.pack msg <> " — please report this."))
@@ -1724,6 +1732,9 @@ jsMain showMenubar macTitlebar mbWid app = do
       -- Register this context so process-wide JS (leksah-cmd js eval,
       -- appJSM fan-outs) reaches this window too.
       liftIO $ registerJsContext app wid jsCtx
+      -- …until it closes: process-wide JS must not keep evaluating into a
+      -- page that is gone.
+      liftIO $ onCurrentScopeClose (unregisterJsContext app wid)
       wlog wid "network attached"
       pb <- getPostBuild
       -- Leave the start-up state (commands gate on it).
@@ -6548,7 +6559,9 @@ main showMenubar macTitlebar wid ctx = mdo
     -- hears every request and 'termRequestMineE' below picks the one that acts.
     (termRequestE0, fireTermRequest) <- newTriggerEvent
     termReqChan <- liftIO dupTermRequests
-    _ <- liftIO . forkIO . forever $ nextTermRequest termReqChan >>= fireTermRequest
+    -- Window-lived: killed when the window closes (an orphaned reader would
+    -- keep draining this window's copy of the broadcast forever).
+    _ <- liftIO . forkInCurrentScope . forever $ nextTermRequest termReqChan >>= fireTermRequest
     -- …and here is where a window decides a broadcast request is ITS to serve.
     -- The window that ALREADY owns the resolved tab serves it, so bringing a
     -- tab up never MOVES it — the cross-window flipper's rule, and the reason
@@ -6695,6 +6708,12 @@ main showMenubar macTitlebar wid ctx = mdo
     let flipStepE = leftmost [ advanceStepE, openStepDelayedE ]
     -- Other reasons to re-read the tree (labels, MRU while hidden): post-build,
     -- terminal activity (click / ⌃B poll), open/close/select, session save.
+    -- A freshly minted session's grace period ran out ('freshSessionsFor'):
+    -- re-read once more, so a terminal that died DURING the grace period (its
+    -- prune was suppressed) is reconciled away without waiting for some
+    -- unrelated tmux change.  Fired from the reconcile below.
+    (graceEndE, fireGraceEnd) <- newTriggerEvent
+    graceEndArmed <- liftIO $ newIORef False
     let treeRefreshE = leftmost
           [ () <$ treePb, termActivityE, graceEndE
           , () <$ closeTermE, () <$ selectAnyTermE, () <$ saveSessE
@@ -6708,12 +6727,6 @@ main showMenubar macTitlebar wid ctx = mdo
           -- A session just died (its client exited): re-read + reconcile NOW,
           -- so a leksah window healing to sessionless (view panes kept, tab
           -- label back to the view's) does so at once, not on the next
-    -- A freshly minted session's grace period ran out ('freshSessionsFor'):
-    -- re-read once more, so a terminal that died DURING the grace period (its
-    -- prune was suppressed) is reconciled away without waiting for some
-    -- unrelated tmux change.  Fired from the reconcile below.
-    (graceEndE, fireGraceEnd) <- newTriggerEvent
-    graceEndArmed <- liftIO $ newIORef False
           -- debounced poll.
           , () <$ exitedRawE ]
     -- Same for remote CC tabs: poke the ssh poll.
@@ -9487,7 +9500,7 @@ main showMenubar macTitlebar wid ctx = mdo
     -- takes its own reading copy.  A shared 'Chan' gave each poke to one
     -- window and left the others' indicators stale.
     remoteActChan <- liftIO dupRemoteInFlight
-    _ <- liftIO . forkIO . forever $
+    _ <- liftIO . forkInCurrentScope . forever $
             atomically (readTChan remoteActChan)
               >> readTVarIO remoteInFlight >>= fireRemoteAct
     remoteActD <- holdDyn M.empty remoteActE

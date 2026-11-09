@@ -2479,6 +2479,45 @@ void leksah_close_window(int wid) {
     });
 }
 
+static void leksah_detach_webview(id web);
+
+// A closed window's webview, released once Haskell has torn its network down
+// (IDE.Web.MacMenu.closeWindowNetwork) — which invalidates the webview's
+// jsaddle context FIRST, so no jsaddle thread dereferences the pointer after
+// this.  Without it every closed window kept its webview, its WebContent
+// renderer process and (on the Haskell side) its whole reflex network alive
+// until the app quit.  A no-op for a webview that is not over-retained (the
+// first-launch window's belongs to jsaddle's AppDelegate) beyond detaching it.
+void leksah_release_webview(void *p) {
+    if (p == NULL) return;
+    id web = (id)p;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // The closed NSWindow itself lingers — the notification-observer
+        // blocks installed by leksah_configure_window capture it — and as long
+        // as the webview is its content view the window's reference alone keeps
+        // the webview (and its renderer process) alive.  Hand the window an
+        // empty view; that also makes those lingering observers find no
+        // webview to talk to.
+        NSWindow *w = [web window];
+        if (w != nil && [w contentView] == web)
+            [w setContentView:[[[NSView alloc] initWithFrame:NSZeroRect] autorelease]];
+        // Close the page before dropping our reference.  Releasing alone is
+        // not enough: WebKit keeps internal references to the view (measured
+        // retain count still >10 after the release), so the WebContent renderer
+        // — ~120MB each — outlived the window anyway.  -_close is WebKit SPI
+        // (what Safari uses to close a tab): it shuts the page down and ends
+        // its renderer regardless of who still holds the object.  Reached
+        // dynamically and only if present, so a WebKit without it just keeps
+        // the old behaviour.  Safe here because the jsaddle context was
+        // invalidated first — nothing sends to this page again.
+        SEL closeSel = NSSelectorFromString(@"_close");
+        if ([web respondsToSelector:closeSel]) {
+            @try { ((void (*)(id, SEL))objc_msgSend)(web, closeSel); } @catch (...) {}
+        }
+        leksah_detach_webview(web);
+    });
+}
+
 // --- ghci-mode lifecycle (leksah.sh --ghci) --------------------------------
 // Under a cabal repl the app must be able to hand control back to the ghci
 // prompt and take it again: [NSApp stop:] makes [NSApp run] return (after the
@@ -2516,6 +2555,59 @@ void leksah_run_app(void) {
     [NSApp run];
 }
 
+// Detach one leksah webview for good: remove its script message handlers,
+// stop it loading, and balance leksah_new_window's extra retain if it carries
+// one.  Main thread only.  Shared by the ghci teardown (every window) and the
+// per-window close (leksah_release_webview).
+static void leksah_detach_webview(id web) {
+    if (web == nil) return;
+    // Remove the script message handlers.
+    // -addScriptMessageHandler: makes WebKit keep an internal strong
+    // reference that pins the WKWebView (and thus its WebContent XPC
+    // process) alive even after the window closes — the classic
+    // WKWebView leak.  We add three (jsaddle / leksahBeep /
+    // leksahSpeak), so leaving them on would pin the webview even
+    // once its other refs are gone.  Necessary but NOT sufficient:
+    // the webview is also deliberately over-retained in
+    // leksah_new_window because jsaddle keeps using it — see the long
+    // note there for why releasing it crashes the repl.  WebKit is
+    // reached dynamically (id).
+    @try {
+        id cfg = [web valueForKey:@"configuration"];
+        id ucc = [cfg valueForKey:@"userContentController"];
+        SEL removeAll = @selector(removeAllScriptMessageHandlers);
+        if ([ucc respondsToSelector:removeAll]) {          // macOS 11+
+            ((void (*)(id, SEL))objc_msgSend)(ucc, removeAll);
+        } else {
+            SEL rm = @selector(removeScriptMessageHandlerForName:);
+            for (NSString *nm in @[@"jsaddle", @"leksahBeep", @"leksahSpeak", @"leksahStatusItem", @"leksahBrowserFrame"])
+                ((void (*)(id, SEL, id))objc_msgSend)(ucc, rm, nm);
+        }
+    } @catch (...) {}
+    @try { ((void (*)(id, SEL))objc_msgSend)(web, @selector(stopLoading)); } @catch (...) {}
+    // NB: do NOT nil navigationDelegate / UIDelegate here.  Both are
+    // *weak* properties on WKWebView, so clearing them does nothing
+    // for the refcount — and jsaddle-wkwebview owns the UIDelegate
+    // for its synchronous JS↔Haskell bridge; poking it mid-teardown
+    // can wedge jsaddle (a hung reload/teardown).
+    //
+    // Balance leksah_new_window's deliberate extra retain, for
+    // exactly the webviews that carry it (the first-launch window's
+    // webview does not — jsaddle's AppDelegate owns that one).  Safe
+    // ONLY because the Haskell side invalidated every attached
+    // jsaddle context (jsaddleWebViewInvalidate) BEFORE dispatching
+    // this teardown block, so no jsaddle thread dereferences the
+    // pointer again; any batch already queued on this (main) queue
+    // holds its own block-copy retain and stays valid.  This is
+    // what lets the webview dealloc and its WebContent XPC renderer
+    // exit instead of leaking one per :main restart.
+    if (gOverRetainedWebViews != nil
+            && [gOverRetainedWebViews containsObject:web]) {
+        [gOverRetainedWebViews removeObject:web];
+        [web release];
+    }
+}
+
 // Close every leksah window without the merge/quit callbacks (teardown before
 // a :reload + fresh :main).  gLeksahWindow is also in gWindows; just nil it.
 void leksah_close_all_windows(void) {
@@ -2537,53 +2629,7 @@ void leksah_close_all_windows(void) {
             if (leksah_find_webview([w contentView]) != nil) [toClose addObject:w];
         for (NSWindow *w in toClose) {
             id web = leksah_find_webview([w contentView]);
-            if (web != nil) {
-                // Remove the script message handlers.
-                // -addScriptMessageHandler: makes WebKit keep an internal strong
-                // reference that pins the WKWebView (and thus its WebContent XPC
-                // process) alive even after the window closes — the classic
-                // WKWebView leak.  We add three (jsaddle / leksahBeep /
-                // leksahSpeak), so leaving them on would pin the webview even
-                // once its other refs are gone.  Necessary but NOT sufficient:
-                // the webview is also deliberately over-retained in
-                // leksah_new_window because jsaddle keeps using it — see the long
-                // note there for why releasing it crashes the repl.  WebKit is
-                // reached dynamically (id).
-                @try {
-                    id cfg = [web valueForKey:@"configuration"];
-                    id ucc = [cfg valueForKey:@"userContentController"];
-                    SEL removeAll = @selector(removeAllScriptMessageHandlers);
-                    if ([ucc respondsToSelector:removeAll]) {          // macOS 11+
-                        ((void (*)(id, SEL))objc_msgSend)(ucc, removeAll);
-                    } else {
-                        SEL rm = @selector(removeScriptMessageHandlerForName:);
-                        for (NSString *nm in @[@"jsaddle", @"leksahBeep", @"leksahSpeak", @"leksahStatusItem", @"leksahBrowserFrame"])
-                            ((void (*)(id, SEL, id))objc_msgSend)(ucc, rm, nm);
-                    }
-                } @catch (...) {}
-                @try { ((void (*)(id, SEL))objc_msgSend)(web, @selector(stopLoading)); } @catch (...) {}
-                // NB: do NOT nil navigationDelegate / UIDelegate here.  Both are
-                // *weak* properties on WKWebView, so clearing them does nothing
-                // for the refcount — and jsaddle-wkwebview owns the UIDelegate
-                // for its synchronous JS↔Haskell bridge; poking it mid-teardown
-                // can wedge jsaddle (a hung reload/teardown).
-                //
-                // Balance leksah_new_window's deliberate extra retain, for
-                // exactly the webviews that carry it (the first-launch window's
-                // webview does not — jsaddle's AppDelegate owns that one).  Safe
-                // ONLY because the Haskell side invalidated every attached
-                // jsaddle context (jsaddleWebViewInvalidate) BEFORE dispatching
-                // this teardown block, so no jsaddle thread dereferences the
-                // pointer again; any batch already queued on this (main) queue
-                // holds its own block-copy retain and stays valid.  This is
-                // what lets the webview dealloc and its WebContent XPC renderer
-                // exit instead of leaking one per :main restart.
-                if (gOverRetainedWebViews != nil
-                        && [gOverRetainedWebViews containsObject:web]) {
-                    [gOverRetainedWebViews removeObject:web];
-                    [web release];
-                }
-            }
+            leksah_detach_webview(web);
             // Persist the window's LAST GOOD frame, then detach it from frame
             // autosave before closing.  A closing window whose content view
             // dies can collapse to a ~64×64 husk and autosave THAT — and a

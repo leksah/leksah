@@ -42,12 +42,12 @@ module IDE.Web.Attach
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Concurrent.Chan (readChan)
+import Control.Concurrent.Chan (readChan, writeChan)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Exception
        (SomeException, SomeAsyncException, displayException, fromException,
         throwIO, try)
-import Control.Monad (forM, forM_, forever, void)
+import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (MonadIO(..))
 
 import Data.ByteString (ByteString)
@@ -76,6 +76,10 @@ import Reflex.Dom.Core
         runHydrationDomBuilderT, runPostBuildT, runWithJSContextSingleton,
         withJSContextSingleton)
 import Reflex.Host.Class (newEventWithTriggerRef)
+
+import IDE.Web.WindowScope
+       (WindowScope, markFrameLoopDone, onScopeClose, scopeIsClosed,
+        withCurrentScope)
 
 -- | Serializes everything that touches the Spider timeline, process-wide.
 --
@@ -125,17 +129,23 @@ withFrameLock act = withMVar frameLock (const act)
 -- exception.  The callback is handed a human-readable description of any
 -- exception that aborted a frame; it runs OFF the frame thread and must
 -- itself be total.
+--
+-- The 'WindowScope' is this window's lifetime ("IDE.Web.WindowScope"): it is
+-- the current scope during the build and during every frame, so whatever the
+-- network subscribes to is undone when the window closes — and closing it
+-- ends the frame loop, between frames.
 mainWidgetWithCssGuarded
-  :: (String -> IO ())     -- ^ report an aborted frame (must not throw)
+  :: WindowScope           -- ^ this window's lifetime
+  -> (String -> IO ())     -- ^ report an aborted frame (must not throw)
   -> ByteString            -- ^ CSS for the @\<head\>@
   -> (forall x. Widget x ())
   -> JSM ()
-mainWidgetWithCssGuarded onAbort css w = withJSContextSingleton $ \jsSing -> do
+mainWidgetWithCssGuarded scope onAbort css w = withJSContextSingleton $ \jsSing -> do
   doc <- currentDocumentUnchecked
   headElement <- getHeadUnchecked doc
   setInnerHTML headElement $ "<style>" <> T.unpack (decodeUtf8 css) <> "</style>"
   body <- getBodyUnchecked doc
-  attachGuarded onAbort body jsSing w
+  attachGuarded scope onAbort body jsSing w
 
 -- | 'Reflex.Dom.Core.attachWidget'' with 'guardedAsyncEvents' in place of
 -- reflex-dom's unguarded @processAsyncEvents@.  The body below mirrors
@@ -152,13 +162,14 @@ mainWidgetWithCssGuarded onAbort css w = withJSContextSingleton $ \jsSing -> do
 -- an aborted frame, and this window alone is given up on.
 attachGuarded
   :: DOM.IsElement e
-  => (String -> IO ()) -> e -> JSContextSingleton x -> Widget x () -> JSM ()
-attachGuarded onAbort rootElement jsSing w = do
+  => WindowScope -> (String -> IO ()) -> e -> JSContextSingleton x -> Widget x ()
+  -> JSM ()
+attachGuarded scope onAbort rootElement jsSing w = do
   doc <- getOwnerDocumentUnchecked rootElement
   df <- createDocumentFragment doc
   -- Under 'frameLock': this call builds the whole widget tree AND fires its
   -- post-build frame, all on the shared Spider timeline.
-  built <- liftIO . try . withFrameLock . attachImmediateWidget $ \hydrationMode events -> do
+  built <- liftIO . try . withFrameLock . withCurrentScope scope . attachImmediateWidget $ \hydrationMode events -> do
     (postBuild, postBuildTriggerRef) <- newEventWithTriggerRef
     unreadyChildren <- liftIO $ newIORef 0
     delayed <- liftIO $ newIORef $ pure ()
@@ -184,18 +195,32 @@ attachGuarded onAbort rootElement jsSing w = do
           <> " stays blank until leksah restarts): " <> displayException e
     Right ((_, events), fc) -> do
       replaceElementContents rootElement df
-      liftIO $ guardedAsyncEvents onAbort events fc
+      liftIO $ guardedAsyncEvents scope onAbort events fc
 
 -- | The frame loop.  One batch of triggers per iteration, exactly as
 -- reflex-dom does it, except that the batch runs under 'try' — a frame that
 -- throws is abandoned and reported, and the NEXT batch is still processed —
 -- and under 'frameLock', so it cannot interleave with another window's
 -- frame or build.
+--
+-- It ends when the window's scope closes: checked after each wait, and the
+-- close posts an empty batch so a loop blocked in 'readChan' wakes to see it.
+-- Ending here (between frames) rather than by 'killThread' matters — the
+-- Spider timeline is shared by every window, and an asynchronous exception
+-- mid-propagation could leave it inconsistent for the windows that remain.
 guardedAsyncEvents
-  :: (String -> IO ()) -> EventChannel -> FireCommand DomTimeline DomHost -> IO ()
-guardedAsyncEvents onAbort events (FireCommand fire) = void . forkIO . forever $ do
+  :: WindowScope -> (String -> IO ()) -> EventChannel
+  -> FireCommand DomTimeline DomHost -> IO ()
+guardedAsyncEvents scope onAbort events (FireCommand fire) = do
+  onScopeClose scope (writeChan events [])
+  void (forkIO loop)
+ where
+ loop = do
   ers <- readChan events
-  r <- withFrameLock . try $ runDomHost $ do
+  closed <- scopeIsClosed scope
+  if closed then markFrameLoopDone scope else frame ers >> loop
+ frame ers = do
+  r <- withFrameLock . withCurrentScope scope . try $ runDomHost $ do
     mes <- liftIO $ forM ers $ \(EventTriggerRef er :=> TriggerInvocation a _) -> do
       me <- readIORef er
       return $ fmap (\e -> e :=> Identity a) me

@@ -48,6 +48,7 @@ module IDE.Web.MacGlue
   , c_raiseWindow
   , c_orderWindowFront
   , c_closeWindow
+  , c_releaseWebView
   , c_showOpenPanel
   , c_showPickPathPanel
   , c_setRecentFiles
@@ -161,6 +162,10 @@ foreign import ccall "leksah_order_window_front" c_orderWindowFront :: CInt -> I
 -- Close one OS window (the never-empty-window rule in 'IDE.Web.Main' — see
 -- 'IDE.Web.NewWindowRequest.requestCloseWindow').
 foreign import ccall "leksah_close_window" c_closeWindow :: CInt -> IO ()
+-- Release a closed window's webview (balance leksah_new_window's extra
+-- retain, detach its script handlers).  ONLY after its jsaddle context has
+-- been invalidated — see 'IDE.Web.MacMenu.closeWindowNetwork'.
+foreign import ccall "leksah_release_webview" c_releaseWebView :: Ptr () -> IO ()
 -- Show the native "Open File" panel (NSOpenPanel); it calls back 'cbOpenFile'.
 foreign import ccall "leksah_show_open_panel" c_showOpenPanel :: IO ()
 -- Show the Add Project… dialog's browse panel, tagged with the asking dialog's
@@ -355,6 +360,8 @@ c_raiseWindow :: CInt -> IO ()
 c_raiseWindow _ = return ()
 c_closeWindow :: CInt -> IO ()
 c_closeWindow _ = return ()
+c_releaseWebView :: Ptr () -> IO ()
+c_releaseWebView _ = return ()
 c_showOpenPanel :: IO ()
 c_showOpenPanel = return ()
 c_showPickPathPanel :: CInt -> CInt -> IO ()

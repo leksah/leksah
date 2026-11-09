@@ -19,8 +19,10 @@ module IDE.Web.MacMenu
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Lens ((^.), (?~))
-import Control.Monad (void, when)
+import Control.Lens ((^.), (?~), view)
+import Control.Monad (forM_, void, when)
+import Data.Bool (bool)
+import qualified Data.Map.Strict as M
 
 import Data.IORef (IORef, newIORef, writeIORef, readIORef, atomicModifyIORef')
 import Data.List (intercalate)
@@ -40,8 +42,8 @@ import Language.Javascript.JSaddle.WKWebView
 import IDE.App
        (appConfig, appUi, appWorkspace, getGlobalApp, withApp)
 import IDE.Config (currentConfig)
-import IDE.Reactive (modifyCell)
-import IDE.Web.Model (WindowId(..), activeWindow)
+import IDE.Reactive (modifyCell, readCell)
+import IDE.Web.Model (WindowId(..), activeWindow, webWindows)
 import IDE.Workspace (projectOpenPath)
 import IDE.Web.Claude (showLiveSession)
 import IDE.Web.ClaudeStatus
@@ -73,6 +75,7 @@ import IDE.Web.ShortcutsRequest (requestShowShortcuts)
 import IDE.Web.BrowserRequest (requestOpenBrowser)
 import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.WindowBridge (closeWindowMerge)
+import IDE.Web.WindowScope (closeWindowScope)
 import IDE.Web.ScreenshotRequest
        (registerScreenshotHandler, registerScreenshotRegionHandler)
 import IDE.Web.ColorPick (setColorPickImpl, colorPicked)
@@ -102,7 +105,7 @@ macAttachWindow widInt pWebView = do
     Just app -> do
       -- Remember the webview so the ghci teardown can invalidate its jsaddle
       -- context before the native side releases it (see 'installMacMenu').
-      atomicModifyIORef' attachedWebViews (\ws -> (castPtr pWebView : ws, ()))
+      atomicModifyIORef' attachedWebViews (\ws -> (M.insert widInt (castPtr pWebView) ws, ()))
       -- Flags match the first window's (main/WKWebView.hs: newIDE False True):
       -- hide the web menubar, use the native title bar.
       jsaddleMainHTMLWithBaseURL indexHtml baseURL
@@ -121,8 +124,8 @@ macAttachWindow widInt pWebView = do
 -- a :reload gives the next instance a fresh, empty list — which is right,
 -- each instance invalidates only its own webviews.)
 {-# NOINLINE attachedWebViews #-}
-attachedWebViews :: IORef [Ptr ()]
-attachedWebViews = unsafePerformIO (newIORef [])
+attachedWebViews :: IORef (M.Map Int (Ptr ()))
+attachedWebViews = unsafePerformIO (newIORef M.empty)
 
 -- | Invalidate the jsaddle context of every webview this instance attached:
 -- after this no jsaddle thread touches those pointers, so the native teardown
@@ -131,7 +134,7 @@ attachedWebViews = unsafePerformIO (newIORef [])
 -- MUST run before 'closeAllWindows' dispatches its teardown block.
 invalidateAttachedWebViews :: IO ()
 invalidateAttachedWebViews = do
-    ws <- atomicModifyIORef' attachedWebViews (\ws' -> ([], ws'))
+    ws <- M.elems <$> atomicModifyIORef' attachedWebViews (\ws' -> (M.empty, ws'))
     phaseLog $ "boot: invalidating " <> show (length ws)
                <> " jsaddle webview context(s) before teardown"
     mapM_ (jsaddleWebViewInvalidate . WKWebView . castPtr) ws
@@ -150,10 +153,58 @@ macWindowActivated widInt = withApp $ \app ->
 -- last-window quit is macOS-specific (hard exit — or, in ghci mode, a stop
 -- back to the prompt so the ghci session survives).
 macWindowClosing :: Int -> IO ()
-macWindowClosing widInt =
+macWindowClosing widInt = do
+  -- Last window: the app quits (or, in ghci mode, the full teardown runs), so
+  -- there is nothing left to tear down one window at a time.
+  others <- getGlobalApp >>= \case
+    Nothing  -> return False
+    Just app -> any (/= WindowId widInt) . M.keys . view webWindows
+                  <$> readCell (appUi app)
   closeWindowMerge lastWindowQuit (WindowId widInt)
+  -- Called on the main thread, and the teardown waits for this window's frame
+  -- loop and for any in-flight jsaddle send — both of which may need the main
+  -- queue — so it runs on its own thread.
+  when others . void . forkIO $ closeWindowNetwork widInt
   where lastWindowQuit | ghciMode  = stopForGhci
                        | otherwise = exitImmediately ExitSuccess
+
+-- | Tear down a closed window's network so it stops costing anything.  Before
+-- this, a closed window lost only its NSWindow: the webview (deliberately
+-- over-retained, see @leksah_new_window@), its WebContent renderer, the jsaddle
+-- context and the whole reflex network — polls, heartbeat, the shared-state
+-- subscriptions — all ran on until the app quit (twelve such networks behind
+-- one visible window measured ~70% idle CPU).
+--
+-- Order matters, each step making the next safe:
+--
+-- 1. 'closeWindowScope': unsubscribe the network from the shared state, stop
+--    its window-lived threads, and let its frame loop finish the frame it may
+--    be in and exit (waited for, bounded).
+-- 2. 'jsaddleWebViewInvalidate': after it returns no jsaddle thread touches the
+--    webview again (it waits for an in-flight send).  Doing this while a frame
+--    was still running would fail that frame's JS calls mid-way.
+-- 3. 'c_releaseWebView': only now may the native side drop the webview.
+--
+-- The first-launch window's webview is not in 'attachedWebViews' (jsaddle's
+-- AppDelegate owns it), so for it only step 1 runs.
+closeWindowNetwork :: Int -> IO ()
+closeWindowNetwork widInt = do
+  stopped <- closeWindowScope widInt
+  phaseLog $ "window " <> show widInt <> " closed: network "
+             <> maybe "had no scope" (bool "frame loop did NOT exit within 5s"
+                                           "stopped") stopped
+  -- Step 2 relies on jsaddle-wkwebview invalidating under its process-wide
+  -- 'wkWebViewBatchLock' (ghcjs/jsaddle#173): jsaddle holds that lock from a
+  -- batch's send until its REPLY, so invalidating mid round trip used to drop
+  -- the reply and leave the lock held forever — every other window then froze
+  -- on its next JS call.  Must run off the main thread (the reply is delivered
+  -- there), which it is: see 'macWindowClosing'.
+  mweb <- atomicModifyIORef' attachedWebViews $ \m ->
+            (M.delete widInt m, M.lookup widInt m)
+  forM_ mweb $ \p -> do
+    jsaddleWebViewInvalidate (WKWebView (castPtr p))
+    c_releaseWebView p
+    phaseLog $ "window " <> show widInt <> " closed: webview released"
 
 -- | The macOS app menu holds Settings… natively (see leksah-mac-menu.m), so
 -- strip the Preferences command from the shared menu model when building the

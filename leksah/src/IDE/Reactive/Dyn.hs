@@ -16,11 +16,12 @@ import Reflex
         newTriggerEvent)
 
 import IDE.Reactive (Cell, watchCellCurrent)
+import IDE.Web.WindowScope (onCurrentScopeClose)
 
 -- | Lift a cell into the current reflex host.  The watcher is a
 -- trigger-event fire — async into this host's queue, so the writing
 -- service never waits on this window.  The subscription lives as long as
--- the host does (there is no per-widget teardown hook in 'TriggerEvent');
+-- the window does (there is no per-widget teardown hook in 'TriggerEvent');
 -- create window-lived dynamics near the window root and pass them down,
 -- rather than calling this in short-lived widgets.
 cellDyn
@@ -28,7 +29,11 @@ cellDyn
     => Cell a -> m (Dynamic t a)
 cellDyn c = do
     (ev, fire) <- newTriggerEvent
-    (a0, _unsub) <- liftIO $ watchCellCurrent c fire
+    (a0, unsub) <- liftIO $ watchCellCurrent c fire
+    -- Unsubscribe when this window closes ("IDE.Web.WindowScope"): otherwise
+    -- every closed window stays subscribed, and the cell keeps firing into a
+    -- network nothing processes any more (and keeps it reachable).
+    liftIO $ onCurrentScopeClose unsub
     holdDyn a0 ev
 
 -- | 'cellDyn' deduplicated with 'holdUniqDyn' — the usual choice when the

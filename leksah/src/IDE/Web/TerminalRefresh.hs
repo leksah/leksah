@@ -37,6 +37,8 @@ import qualified Data.Map as M (delete, elems, empty, insert)
 import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
 
+import IDE.Web.WindowScope (onCurrentScopeClose)
+
 #if !defined(ghcjs_HOST_OS)
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar)
@@ -70,8 +72,11 @@ registerTerminalRefresh :: IO () -> IO (IO ())
 registerTerminalRefresh h = do
     k <- atomicModifyIORef' handlers $ \(n, m) ->
             ((n + 1, M.insert n h m), n)
-    return . void $ atomicModifyIORef' handlers $ \(n, m) ->
+    let unregister = void $ atomicModifyIORef' handlers $ \(n, m) ->
             ((n, M.delete k m), ())
+    -- A window's handler goes when the window does ("IDE.Web.WindowScope").
+    onCurrentScopeClose unregister
+    return unregister
 
 #if defined(ghcjs_HOST_OS)
 -- | No tmux in the browser demo; nothing to monitor.
