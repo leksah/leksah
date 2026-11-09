@@ -9749,7 +9749,17 @@ main showMenubar macTitlebar wid ctx = mdo
         <*> flipMruD <*> paneAID <*> tabFontD' <*> projectRecentsD
         <*> (view wsPath <$> cWs ctx)
     let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
-    saveSessE <- debounce (1 :: NominalDiffTime) (gate (current writeGateD) (updated sessionD))
+        -- Gate on the gate's UPDATED value, not 'current': when a window closes,
+        -- the survivor becomes the writer in the SAME update that drops the
+        -- closed window from 'sessionD', and @gate (current …)@ saw "not the
+        -- writer yet" and lost exactly that change — the closed window stayed
+        -- in web-session.json and came back (as an empty Welcome window) on
+        -- the next launch.  Becoming the writer now also saves, which is
+        -- harmless (debounced, same content).
+        gatedUpdates :: forall a. Dynamic t a -> Event t a
+        gatedUpdates d = fmapMaybe (\(ok, v) -> if ok then Just v else Nothing)
+                           (updated ((,) <$> writeGateD <*> d))
+    saveSessE <- debounce (1 :: NominalDiffTime) (gatedUpdates sessionD)
     -- Once this instance has initiated a handoff, stop writing the session — the
     -- successor has restored it and is now the authoritative writer (otherwise
     -- the retiring old instance races the successor on the same file).
@@ -9840,8 +9850,7 @@ main showMenubar macTitlebar wid ctx = mdo
     -- sessions (@leksah_layout v2), debounced like the web-session saver,
     -- with an encoded-value cache so only sessions whose windows actually
     -- changed get a set-option.  (Sessionless windows ride 'sessionD'.)
-    layoutSaveE <- debounce (1 :: NominalDiffTime)
-        (gate (current writeGateD) (updated leksahWindowsD))
+    layoutSaveE <- debounce (1 :: NominalDiffTime) (gatedUpdates leksahWindowsD)
     lastLayoutWrites <- liftIO $ newIORef M.empty
     performEvent_ $ ffor layoutSaveE $ \lws -> liftIO . void . forkIO $ do
         let bySess = lwsBySession lws
