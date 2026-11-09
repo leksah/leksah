@@ -1,6 +1,12 @@
 {
   # This is a template created by `hix init`
-  inputs.haskellNix.url = "github:ican-group/haskell.nix/hkm/slice-pkgconf-names";
+  # When bumping haskellNix, consider bumping `index-state` in cabal.project to
+  # match the new hackage.nix input's newest snapshot (see the comment there
+  # for how to get the exact time).
+  # The pin decides which Hackage snapshot both the nix plan and cabal inside
+  # `nix develop` solve against, so a haskellNix bump alone won't pick up newer
+  # Hackage packages.
+  inputs.haskellNix.url = "github:input-output-hk/haskell.nix";
   inputs.nixpkgs.follows = "haskellNix/nixpkgs-unstable";
   # hyper-linux runs aarch64-linux / x86_64-linux ELF binaries on Apple Silicon
   # via Hypervisor.framework.  haskell.nix's darwin→linux cross (the -hl branch

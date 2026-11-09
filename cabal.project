@@ -3,6 +3,21 @@
 -- (formerly shared) core modules, and it has its own cabal.project/flake so
 -- that directory can be lifted into its own repository.  Build it from there:
 --   cd leksah-classic && cabal build leksah-classic
+
+-- Pin Hackage to the snapshot haskell.nix built the dev shell from: the
+-- newest upload in the snapshot named by the newest entry of its hackage.nix
+-- input's index-state-hashes.nix.  That entry is a day label (2026-11-08T00:00:00Z)
+-- and cabal rejects any time after the snapshot's last upload; the nix eval
+-- error ("Latest known index-state ... is older than the requested") prints
+-- the exact time to use.  Without
+-- it, the shell's packages come from haskell.nix's snapshot while cabal
+-- inside the shell solves against whatever `cabal update` last fetched, so
+-- any version drift between the two rebuilds most of the dependency tree
+-- instead of reusing the shell's store.  Bump this together with the
+-- haskell.nix pin; cabal inside the shell needs an index at least this new
+-- (`cabal update`).
+index-state: 2026-11-07T22:48:03Z
+
 packages:
  leksah/
  -- LSP client types, vendored (the hackage lsp-types package is tied to the

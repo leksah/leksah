@@ -121,7 +121,7 @@ let
   hlsDepsPatched = pkgs.lib.optionalString isGhc914sh ''
     packages: ${patchedHackage "cabal-add" "0.2" ./patches/cabal-add-cabal-syntax-3.17.patch}
     packages: ${patchedHackage "cabal-install-parsers" "0.6.3" ./patches/cabal-install-parsers-cabal-syntax-3.17.patch}
-    packages: ${patchedHackage "ghc-exactprint" "1.14.1.0" ./patches/ghc-exactprint-1.14-stable-ghc-9.14.patch}
+    packages: ${patchedHackage "ghc-exactprint" "1.14.3.0" ./patches/ghc-exactprint-1.14-stable-ghc-9.14.patch}
     packages: ${patchedHackage "hie-bios" "0.21.0" ./patches/hie-bios-stable-ghc-9.14-ospath.patch}
   '';
   # HLS's own hls-cabal-plugin doesn't compile against the fork's Cabal-syntax
@@ -137,6 +137,9 @@ let
       src = pkgs.hls-github-src;
       patches = [
         ./patches/hls-cabal-plugin-cabal-syntax-3.17.patch
+        # The fork's Cabal 3.17 split Verbosity into VerbosityFlags + handles;
+        # readBuildTargets needs a whole Verbosity built with mkVerbosity.
+        ./patches/hls-cabal-plugin-cabal-3.17-verbosity.patch
         # ghc914-sh reports the project GHC as "9.14" but HLS is compiled
         # against its library (cProjectVersion "9.14.0"); relax ghcide's exact
         # version-equality guard so it loads ghc914-sh projects.

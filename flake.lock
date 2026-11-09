@@ -136,11 +136,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1731533236,
-        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "lastModified": 1791914995,
+        "narHash": "sha256-Zf/xfQEAasnwnmEfHqW/4hjDE/s44yn2hD4RuVIZRjA=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "rev": "b7a79d3fea1e214f6d668d521cecec0c01e26544",
         "type": "github"
       },
       "original": {
@@ -152,11 +152,11 @@
     "hackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1794026965,
-        "narHash": "sha256-aAn6YyEMPmNlQTY3XM2viwZP5+jSih2PXsJNl5I9Tw8=",
+        "lastModified": 1794112627,
+        "narHash": "sha256-DQmcpf5tdYhg4+pEreEi1Hz/iY8sq7m2S2DaygswRL0=",
         "owner": "input-output-hk",
         "repo": "hackage.nix",
-        "rev": "6262c828b6539dadc7a567e65be26bf3c45fda6c",
+        "rev": "3d4b75e9523f363ca8c5a4be82421251c06ea2d7",
         "type": "github"
       },
       "original": {
@@ -168,11 +168,11 @@
     "hackage-for-stackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1794026940,
-        "narHash": "sha256-dmR6z5cDs9Jjnz4zNAdTdML5cHxeUJrFdozvsAd66UQ=",
+        "lastModified": 1794112587,
+        "narHash": "sha256-PyOVGkb8YyR8YvNcbQJtZF8FJD7Yw8cZ0pO06BEsMI8=",
         "owner": "input-output-hk",
         "repo": "hackage.nix",
-        "rev": "30337ea718070b928e1c51454a85c51e035b3cad",
+        "rev": "43511004322701e2b1d12150f0a09cc12372e0de",
         "type": "github"
       },
       "original": {
@@ -260,16 +260,15 @@
         "stackage": "stackage"
       },
       "locked": {
-        "lastModified": 1794102331,
-        "narHash": "sha256-Ws7a+K3iEB9ap7E1Kmz9XaQewIjgF25xFXgUu4IwjOk=",
-        "owner": "ican-group",
+        "lastModified": 1794175066,
+        "narHash": "sha256-ojNKsc12z89oBsQPQSYpB5BODRf4piZ28mgQa7ddxjA=",
+        "owner": "input-output-hk",
         "repo": "haskell.nix",
-        "rev": "ed08f01ce810b464fedb19106714c18f1a748cf8",
+        "rev": "45cf4a2f5f4b72a34141bb2f6c1fbdaabc47f984",
         "type": "github"
       },
       "original": {
-        "owner": "ican-group",
-        "ref": "hkm/slice-pkgconf-names",
+        "owner": "input-output-hk",
         "repo": "haskell.nix",
         "type": "github"
       }
@@ -532,11 +531,11 @@
     "hls-github": {
       "flake": false,
       "locked": {
-        "lastModified": 1789666120,
-        "narHash": "sha256-j/mD75tOTim+epcTqF2Ad2aExlVjSs9qTE0GxSfjbZA=",
+        "lastModified": 1794074319,
+        "narHash": "sha256-RDhW3/Ho7jnHYg7nRoW7OMEGJNtHNhUqT2a2UQW9beY=",
         "owner": "haskell",
         "repo": "haskell-language-server",
-        "rev": "38a34d3593b4651d302e4462e99ec22bd495c4f6",
+        "rev": "b2522ea27a4a68973ffb8d920af8df56f311652c",
         "type": "github"
       },
       "original": {

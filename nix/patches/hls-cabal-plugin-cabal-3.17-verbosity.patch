@@ -1,0 +1,32 @@
+--- a/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/CabalAdd/Create.hs	2026-11-09 15:36:49.694641030 +1300
++++ b/plugins/hls-cabal-plugin/src/Ide/Plugin/Cabal/CabalAdd/Create.hs	2026-11-09 15:36:57.781827537 +1300
+@@ -38,8 +38,15 @@
+ import           Distribution.Simple.Errors                    (CabalException)
+ import           Distribution.Simple.Utils                     (VerboseException)
+ #endif
++#if MIN_VERSION_Cabal(3,17,0)
++import           Distribution.Verbosity                        (defaultVerbosityHandles,
++                                                                mkVerbosity,
++                                                                silent,
++                                                                verboseNoStderr)
++#else
+ import           Distribution.Verbosity                        (silent,
+                                                                 verboseNoStderr)
++#endif
+ import           Ide.Logger
+ import           Ide.Plugin.Cabal.CabalAdd.CodeAction          (buildInfoToHsSourceDirs,
+                                                                 mkModuleInsertionConfig,
+@@ -210,7 +217,13 @@
+ #else
+     $ try @IOError
+ #endif
++#if MIN_VERSION_Cabal(3,17,0)
++    -- Cabal 3.17 split Verbosity into VerbosityFlags (silent,
++    -- verboseNoStderr) plus output handles; readBuildTargets takes the whole.
++    $ readBuildTargets (mkVerbosity defaultVerbosityHandles (verboseNoStderr silent)) pd [haskellFileRelativePath]
++#else
+     $ readBuildTargets (verboseNoStderr silent) pd [haskellFileRelativePath]
++#endif
+   case buildTargetsM of
+     Left _ -> pure False
+     Right buildTargets -> do
