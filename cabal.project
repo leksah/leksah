@@ -187,12 +187,12 @@ constraints: any.haskell-gi ==0.26.16
 -- the gi setups to the installed Cabal makes the link line match what the
 -- compile actually used.  (Fork-cabal build/host store issue; drop these when
 -- fixed.)  The GTK3-only entries left with leksah-classic.
-constraints:
-  gi-cairo:setup.Cabal ==3.17.0.1,
-  gi-freetype2:setup.Cabal ==3.17.0.1, gi-gdkpixbuf:setup.Cabal ==3.17.0.1,
-  gi-gio:setup.Cabal ==3.17.0.1, gi-glib:setup.Cabal ==3.17.0.1,
-  gi-gmodule:setup.Cabal ==3.17.0.1, gi-gobject:setup.Cabal ==3.17.0.1,
-  gi-harfbuzz:setup.Cabal ==3.17.0.1, gi-pango:setup.Cabal ==3.17.0.1
+-- constraints:
+--   gi-cairo:setup.Cabal ==3.17.0.1,
+--   gi-freetype2:setup.Cabal ==3.17.0.1, gi-gdkpixbuf:setup.Cabal ==3.17.0.1,
+--   gi-gio:setup.Cabal ==3.17.0.1, gi-glib:setup.Cabal ==3.17.0.1,
+--   gi-gmodule:setup.Cabal ==3.17.0.1, gi-gobject:setup.Cabal ==3.17.0.1,
+--   gi-harfbuzz:setup.Cabal ==3.17.0.1, gi-pango:setup.Cabal ==3.17.0.1
 
 -- The GHC JS backend build (docs/website/try demo) must use ghcjs-dom's
 -- JSADDLE flavor, not the direct-FFI one: `jsffi` is a manual flag with no
