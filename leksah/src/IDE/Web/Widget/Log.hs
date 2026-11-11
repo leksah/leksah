@@ -31,8 +31,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Clay (height, pct, (?), Css)
 import Control.Lens ((^.))
 import Language.Javascript.JSaddle
-       (JSM, JSVal, js, js1, js2, jsg, jss, liftJSM, new, pToJSVal,
-        valToNumber)
+       (JSM, JSVal, js, js1, js2, jsg, jss, liftJSM, new, pToJSVal)
 import Reflex
        (Event, attachPromptlyDyn, ffor, holdDyn, never, newTriggerEvent)
 import Reflex.Dom.Core
@@ -45,6 +44,8 @@ import IDE.Web.Events (FindbarEvents, LogEvents)
 import IDE.Web.Model (WindowId)
 import IDE.Web.Widget.ResizeObserver (resizeObserverWithAttrs)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
+import GHCJS.DOM.HTMLElement (getOffsetWidth, getOffsetHeight)
+import GHCJS.DOM.Types (HTMLElement(..))
 
 logCss :: Css
 logCss =
@@ -140,6 +141,6 @@ logWidget ctx _findE _moveE _activateE = do
 -- hidden tab always is.
 fitIfSized :: JSVal -> JSVal -> JSM ()
 fitIfSized el fit = do
-    w <- valToNumber =<< el ^. js ("offsetWidth" :: Text)
-    h <- valToNumber =<< el ^. js ("offsetHeight" :: Text)
+    w <- getOffsetWidth (HTMLElement el)
+    h <- getOffsetHeight (HTMLElement el)
     when (w > 0 && h > 0) . void $ fit ^. js1 ("fit" :: Text) ()

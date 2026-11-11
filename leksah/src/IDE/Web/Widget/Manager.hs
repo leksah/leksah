@@ -40,7 +40,7 @@ import Reflex.Dom.Core
         elClass', elDynHtmlAttr', elementConfig_initialAttributes, inputElement,
         inputElementConfig_elementConfig, inputElementConfig_setValue, keypress,
         text, EventName(..), (=:), _element_raw, _inputElement_value)
-import Language.Javascript.JSaddle (liftJSM, jsg, js, js1, jss)
+import Language.Javascript.JSaddle (liftJSM, jsg, js1)
 
 import IDE.Web.Agent
        (agentConversation, agentManagerStart, agentResume, agentSend,
@@ -50,6 +50,7 @@ import IDE.Web.AgentInfo (AgentNode(..), agentForest)
 import IDE.Web.Widget.AgentCard (colourOf, displayName)
 import IDE.Web.Widget.Agents (activeProjectDir)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import GHCJS.DOM.Element (getScrollHeight, setScrollTop)
 
 -- | What the pane shows: the manager (if there is one) and its last turns.
 data View = View
@@ -122,8 +123,7 @@ managerWidget = do
     scrollE <- delay 0.05 (updated viewD)
     performEvent_ $ ffor scrollE $ \_ -> liftJSM $ do
       let raw = _element_raw chat
-      h <- raw ^. js ("scrollHeight" :: Text)
-      void $ raw ^. jss ("scrollTop" :: Text) h
+      setScrollTop raw . fromIntegral =<< getScrollHeight raw
 
     -- The line: Enter (or Send) types it into the manager's pane and submits.
     divClass "manager-input" $ mdoInput toast soon mgrD

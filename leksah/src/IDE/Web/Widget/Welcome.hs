@@ -45,9 +45,8 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import Clay ((?), (-:), Css)
 
-import Control.Lens ((^.))
 
-import Language.Javascript.JSaddle (eval, js0, liftJSM)
+import Language.Javascript.JSaddle (eval, liftJSM)
 
 import Reflex
        (Dynamic, Event, ffor, getPostBuild, holdDyn, holdUniqDyn,
@@ -60,6 +59,7 @@ import IDE.Web.Chord (toGlyphs)
 import IDE.Web.Ctx (Ctx)
 import IDE.Web.Events (WelcomeEvents)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.Dom (focusElement)
 import IDE.Web.Keybindings
        (Binding(..), CommandSpec(..), Keymap, registerKeymapListener)
 import IDE.Web.NewWindowRequest (requestNewWindow)
@@ -227,7 +227,7 @@ welcomeWidget _ctx selectedE recentD = do
   -- session-restore case this would otherwise trip over cannot arise.)
   pb <- getPostBuild
   performEvent_ $ ffor (leftmost [selectedE, pb]) $ \_ ->
-      liftJSM . void $ _element_raw rootEl ^. js0 ("focus" :: Text)
+      liftJSM $ focusElement (_element_raw rootEl)
   return never
 
 render

@@ -30,7 +30,7 @@ module IDE.Web.Widget.AgentCard
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Lens ((^.), (.~), (&))
+import Control.Lens ((.~), (&))
 import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (liftIO)
 
@@ -53,11 +53,14 @@ import Reflex.Dom.Core
         inputElementConfig_elementConfig, inputElementConfig_initialValue,
         keydown, keypress, text, EventName(..), (=:), _element_raw,
         _inputElement_element, _inputElement_hasFocus, _inputElement_value)
-import Language.Javascript.JSaddle (liftJSM, js0)
+import Language.Javascript.JSaddle (liftJSM)
 
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentInfo (AgentNode(..))
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.Dom (focusElement)
+import GHCJS.DOM.HTMLInputElement (select)
+import GHCJS.DOM.Types (Element(..), HTMLInputElement(..), uncheckedCastTo)
 
 -- | What a card's buttons do.  Each runs off the reflex thread.
 data CardActions = CardActions
@@ -141,8 +144,8 @@ agentCard acts mustD startOpen nD = mdo
       readyE <- delay 0.05 =<< getPostBuild
       performEvent_ $ ffor readyE $ \_ -> liftJSM $ do
         let raw = _element_raw (_inputElement_element inp)
-        void $ raw ^. js0 ("focus" :: Text)
-        void $ raw ^. js0 ("select" :: Text)
+        focusElement raw
+        select (uncheckedCastTo HTMLInputElement raw)
       let commitE = tag (current (_inputElement_value inp)) (keypress Enter inp)
           cancelE = leftmost [ () <$ keydown Escape inp
                              , () <$ ffilter not (updated (_inputElement_hasFocus inp)) ]

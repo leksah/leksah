@@ -20,7 +20,7 @@ module IDE.Web.Widget.LwView
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.), over)
-import Control.Monad (unless, void, when)
+import Control.Monad (forM_, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (atomicModifyIORef', newIORef, writeIORef)
 import qualified Data.Map.Strict as M
@@ -35,8 +35,7 @@ import Reflex.Dom.Core
        (blank, dyn_, elAttr', elDynAttr, elDynAttr',
         listWithKey, _element_raw, (=:))
 import Language.Javascript.JSaddle
-       (JSM, eval, fun, js, js0, js1, js2, jsg, jss, liftJSM, valIsNull,
-        valToBool, valToNumber, valToText)
+       (JSM, eval, fun, js2, jsg, jss, liftJSM, valToNumber)
 
 import IDE.App (appUi, withApp)
 import IDE.DebugLog (focusLog)
@@ -52,6 +51,12 @@ import IDE.Web.SplitLayout
         subtreeRects, treeLeafIds)
 import IDE.Web.TerminalInput (registerTerminalFocus)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.Dom (holdsFocus, activeTagName)
+import GHCJS.DOM.Element (getBoundingClientRect)
+import GHCJS.DOM.HTMLElement (getOffsetParent)
+import qualified GHCJS.DOM.DOMRect as DOMRect (getWidth, getHeight)
+import GHCJS.DOM.Types (HTMLElement(..), uncheckedCastTo)
+import qualified GHCJS.DOM.Types as DOM (Element(..))
 
 -- | Renderer for a SESSIONLESS leksah window (native views only — no tmux
 -- windows yet, so no control client): the same absolutely-positioned leaf
@@ -178,13 +183,11 @@ sessionlessLwWidget ctx lwId selectedE leafViewW = do
                     (fun $ \_ _ args -> case args of
                       (dv : _) -> do
                         d <- valToNumber dv
-                        parent <- raw ^. js ("offsetParent" :: Text)
-                        isNull <- valIsNull parent
-                        unless isNull $ do
-                          rect <- parent ^. js0 ("getBoundingClientRect" :: Text)
-                          ext <- valToNumber =<< rect ^. js
-                              (if ndVertical nd then "width" :: Text
-                                                else "height")
+                        mbParent <- getOffsetParent (uncheckedCastTo HTMLElement raw)
+                        forM_ mbParent $ \parent -> do
+                          rect <- getBoundingClientRect parent
+                          ext <- (if ndVertical nd then DOMRect.getWidth
+                                                   else DOMRect.getHeight) rect
                           let deltaFrac = d / max 1 (ext * ndAxis nd)
                           liftIO . void . forkIO $
                               modifyLeksahWindow lwId $ \lw ->
@@ -221,10 +224,8 @@ sessionlessLwWidget ctx lwId selectedE leafViewW = do
           ]
     performEvent_ $ ffor reconcileE $ \(forced, l) -> do
         (had, tagName) <- liftJSM $ do
-            ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
-            h  <- valToBool =<< _element_raw containerEl
-                                  ^. js1 ("contains" :: Text) ae
-            t  <- valToText =<< ae ^. js ("tagName" :: Text)
+            h <- holdsFocus (_element_raw containerEl)
+            t <- activeTagName
             return (h, t)
         pend <- liftIO $ atomicModifyIORef' forcePendRef (\p -> (False, p))
         focusLog $ "[" <> T.unpack lwId <> "] sessionless reconcileFocus had="

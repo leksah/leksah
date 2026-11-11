@@ -132,7 +132,8 @@ import Clay
         FontFaceSrc(..))
 
 import Language.Javascript.JSaddle
-       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, js4, jss, fun, toJSVal, valToText, valToBool, valToNumber, liftJSM, runJSM)
+       (JSM, eval, syncPoint, jsg, js, js0, js1, js2, js3, js4, jss, fun, valToText, valToBool, valToNumber, liftJSM, runJSM)
+import IDE.Web.Dom (focusElement)
 #if defined(ghcjs_HOST_OS)
 -- Under the JS backend jsaddle-warp is a base-only shim whose `run` executes
 -- the JSM directly against the page (no port, no server) — the websocket
@@ -8948,8 +8949,8 @@ main showMenubar macTitlebar wid ctx = mdo
                     return (res <$ domEvent Click b, i <$ domEvent Mouseenter b)
                   return (leftmost (map fst rows), leftmost (map snd rows))
           focusE <- delay 0.03 pb
-          performEvent_ $ ffor focusE $ \_ -> liftJSM . void $
-              toJSVal (_element_raw menuEl) >>= \o -> o ^. js0 ("focus" :: Text)
+          performEvent_ $ ffor focusE $ \_ -> liftJSM $
+              focusElement (_element_raw menuEl)
           let keyChoiceE = ffor (tag (current selD) enterE) $ \s -> snd (opts !! s)
           return $ leftmost [ clickE, keyChoiceE, Nothing <$ escE ])
     let answeredE     = fmapMaybe id promptDoneE
@@ -9009,8 +9010,8 @@ main showMenubar macTitlebar wid ctx = mdo
           -- Focus the menu one tick after build (attached + laid out) so its
           -- keydown reaches reflex — Haskell-side, via jsaddle, no JS helper.
           focusE <- delay 0.03 pb
-          performEvent_ $ ffor focusE $ \_ -> liftJSM . void $
-              toJSVal (_element_raw menuEl) >>= \o -> o ^. js0 ("focus" :: Text)
+          performEvent_ $ ffor focusE $ \_ -> liftJSM $
+              focusElement (_element_raw menuEl)
           -- Shadow: whole terminal while "Hide Window" is selected (multi), else
           -- the focused pane — drives the existing shadow overlay (paneHlJs).
           performEvent_ $ ffor (leftmost [tag (current selD) pb, updated selD]) $ \s ->
