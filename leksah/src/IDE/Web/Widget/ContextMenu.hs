@@ -5,18 +5,17 @@
 {-# LANGUAGE LambdaCase #-}
 module IDE.Web.Widget.ContextMenu where
 
-import Control.Lens ((^.))
 
 import Data.Bool (bool)
-import Control.Monad (void)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
 
-import Language.Javascript.JSaddle (liftJSM, js1, js2)
+import Language.Javascript.JSaddle (liftJSM)
 
-import GHCJS.Marshal (FromJSVal(..))
 import GHCJS.DOM (currentDocumentUnchecked)
-import GHCJS.DOM.Types (HTMLElement(..), uncheckedCastTo, pToJSVal)
+import GHCJS.DOM.Types (EventTarget(..), HTMLElement(..), Node(..), uncheckedCastTo)
+import GHCJS.DOM.Element (setAttribute)
+import GHCJS.DOM.Node (contains)
 import qualified GHCJS.DOM.Types as DOM (Element(..))
 import qualified GHCJS.DOM.Event as Event (getTargetUnchecked)
 import GHCJS.DOM.EventM
@@ -72,8 +71,8 @@ contextMenu parent menu = mdo
   -- widget is still being built aborts wkwebview's batched DOM build, which
   -- leaves the whole UI unstyled.
   pb <- getPostBuild
-  performEvent_ $ ffor pb $ \_ -> liftJSM . void $ pToJSVal (_element_raw parent)
-    ^. js2 ("setAttribute" :: Text) ("data-leksah-menu" :: Text) ("" :: Text)
+  performEvent_ $ ffor pb $ \_ -> liftJSM $
+    setAttribute (_element_raw parent) ("data-leksah-menu" :: Text) ("" :: Text)
   contextmenuE <- wrapDomEvent (uncheckedCastTo HTMLElement $ _element_raw parent)
     (`onSync` DOM.contextMenu) $ do
       preventDefault
@@ -90,10 +89,10 @@ contextMenu parent menu = mdo
       doc <- currentDocumentUnchecked
       docMouseDownE <- wrapDomEventMaybe doc (`onSync` mouseDown) $ do
         t <- event >>= Event.getTargetUnchecked
-        fmap (bool (Just ()) Nothing) . liftJSM $ pToJSVal (_element_raw menuElement) ^. js1 ("contains" :: Text) (pToJSVal t) >>= fromJSValUnchecked
+        bool (Just ()) Nothing <$> contains (_element_raw menuElement) (Just (uncheckedCastTo Node t))
       docTouchStartE <- wrapDomEventMaybe doc (`onSync` touchStart) $ do
         t <- event >>= Event.getTargetUnchecked
-        fmap (bool (Just ()) Nothing) . liftJSM $ pToJSVal (_element_raw menuElement) ^. js1 ("contains" :: Text) (pToJSVal t) >>= fromJSValUnchecked
+        bool (Just ()) Nothing <$> contains (_element_raw menuElement) (Just (uncheckedCastTo Node t))
 --      docScrollE <- wrapDomEvent doc (`onSync` touchStart) $ return ()
       return $ leftmost [ Nothing <$ docMouseDownE, Nothing <$ docTouchStartE, Just <$> menuEvent ]
   return (() <$ contextmenuE, fmapMaybe id events)
