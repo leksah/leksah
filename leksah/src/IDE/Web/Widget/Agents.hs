@@ -38,7 +38,7 @@ module IDE.Web.Widget.Agents
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.), (.~), (&))
-import Control.Monad (forM, void)
+import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Bool (bool)
@@ -78,7 +78,7 @@ import IDE.Web.Agent
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.AgentInfo
        (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
-        interruptedOffer)
+        interruptedOffer, latestInterruption)
 import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
@@ -135,13 +135,16 @@ agentsWidget mruNamesD = do
     tick <- tickLossyFromPostBuildTime 2
     (forestE, fireForest) <- newTriggerEvent
     (offerE, fireOffer) <- newTriggerEvent
+    (latestE, fireLatest) <- newTriggerEvent
     -- The read runs OFF the reflex thread: it stats transcripts of exited
     -- agents, and a synchronous performEvent would hitch the whole UI.
     let refresh = void . forkIO $ do
           agentForest >>= fireForest
           interruptedOffer >>= fireOffer
+          latestInterruption >>= fireLatest
     forestD <- holdUniqDyn =<< holdDyn [] forestE
     offerD  <- holdUniqDyn =<< holdDyn (Nothing :: Maybe (RanOn, [Text])) offerE
+    latestD <- holdUniqDyn =<< holdDyn (Nothing :: Maybe (RanOn, [Text])) latestE
     -- One-line notices (a click that finds no pane, an agent that started or
     -- agent or failed): fired from whichever thread knows, shown as a toast on
     -- the frame thread.
@@ -263,14 +266,30 @@ agentsWidget mruNamesD = do
     -- Once the offer is answered (or for agents from older interruptions) the
     -- banner stays away — but with the ↻ filter on, the manager can still be
     -- asked to sort out every interrupted agent that is left.
-    let leftD = ffor ((,,) <$> stateD <*> offerD <*> forestD) $ \(st, off, f) ->
-          if st == Just "interrupted" && null off
-            then [ anSession n | n <- flatten f, anState n == "interrupted" ] else []
-    dyn_ $ ffor leftD $ \left -> if null left then blank else
+    let leftD = ffor ((,,,) <$> stateD <*> offerD <*> forestD <*> latestD) $
+          \(st, off, f, latest) ->
+            if st == Just "interrupted" && null off
+              then ( [ anSession n | n <- flatten f, anState n == "interrupted" ]
+                   , latest )
+              else ([], Nothing)
+    dyn_ $ ffor leftD $ \(left, latest) -> if null left then blank else
       divClass "agents-interrupted" $ do
         elClass "span" "agents-interrupted-text" . text $
           "↻ " <> T.pack (show (length left)) <> " interrupted agents left. \
           \Click a card to resume one, or:"
+        -- Only the agents the LATEST interruption took down: older ones are
+        -- not resumed wholesale.
+        forM_ latest $ \(host, sids) -> do
+          let k = T.pack (show (length sids))
+          (allB, _) <- elAttr' "button"
+            ("class" =: "agents-interrupted-btn"
+             <> "title" =: ("Resume the " <> k <> " agents the latest restart took \
+                            \down, each in its own tab, one at a time")) $
+            text ("Resume all " <> k)
+          performEvent_ $ ffor (domEvent Click allB) $ \_ -> liftIO . void . forkIO $ do
+            toast ("Resuming " <> k <> " agents, one at a time…")
+            _ <- agentResumeAll host sids
+            refresh
         (pickB, _) <- elAttr' "button"
           ("class" =: "agents-interrupted-btn"
            <> "title" =: "Ask the manager agent (starting one if there is none) \

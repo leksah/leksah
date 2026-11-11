@@ -33,6 +33,7 @@ module IDE.Web.AgentInfo
   , Interruption(..)
   , syncAgentLiveness
   , interruptedOffer
+  , latestInterruption
   , acknowledgeInterrupted
   , setAgentManager
   , agentManager
@@ -599,16 +600,26 @@ seedInterrupted = do
 -- cards until resumed, forgotten or a week old.
 interruptedOffer :: IO (Maybe (RanOn, [Text]))
 interruptedOffer = do
+  acked <- withHosts (\h -> (h, hsAcknowledged h))
+  latest <- latestInterruption
+  return $ case latest of
+    Just (host, _) | host `elem` acked -> Nothing
+    other -> other
+
+-- | The agents taken down together in the most recent interruption that still
+-- has any left to resume, whether or not its offer was answered — what the ↻
+-- filter's "Resume all" resumes (agents from older interruptions are not in
+-- it: they keep only their own cards).
+latestInterruption :: IO (Maybe (RanOn, [Text]))
+latestInterruption = do
   now   <- posixNow
   infos <- peekInfos
-  acked <- withHosts (\h -> (h, hsAcknowledged h))
   let ints = [ (x, aiSession i) | i <- M.elems infos, isInterrupted now i
+                                , isNothing (aiSuspended i)
                                 , Just x <- [aiInterrupted i] ]
   return $ case sortOn (Down . inAt . fst) ints of
     [] -> Nothing
-    ((x0, _) : _)
-      | inHost x0 `elem` acked -> Nothing
-      | otherwise -> Just (inHost x0, [ sid | (x, sid) <- ints, inHost x == inHost x0 ])
+    ((x0, _) : _) -> Just (inHost x0, [ sid | (x, sid) <- ints, inHost x == inHost x0 ])
 
 -- | The offer for @host@ has been answered (resumed, or dismissed).
 acknowledgeInterrupted :: RanOn -> IO ()
