@@ -83,16 +83,6 @@ let
   hsloggerNoNetworkJs = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isGhcjs ''
     packages: ${patchedHackage "hslogger" "1.3.2.0" ./patches/hslogger-no-network-js.patch}
   '';
-  # reflex-dom-core hard-selects its jsffi-flavored `src-ghcjs` module on
-  # arch(javascript), which only typechecks against ghcjs-dom's jsffi
-  # flavor.  Leksah's web UI is written against the JSADDLE flavor
-  # (cabal.project pins `ghcjs-dom -jsffi` for the JS build), so patch the
-  # conditional to keep `src-ghcjs` for legacy GHCJS only and use the
-  # jsaddle-flavored `src-ghc` module on the GHC JS backend (it is pure
-  # jsaddle and compiles there; JSM = IO).  The JS-arch deps are kept.
-  reflexDomCoreJsaddleJs = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isGhcjs ''
-    packages: ${patchedHackage "reflex-dom-core" "0.8.1.4" ./patches/reflex-dom-core-js-jsaddle.patch}
-  '';
   # Flags for the ghci multi-repl (leksah.sh --ghci).  The ObjC glue is kept OUT
   # of the Haskell archives (`-objc-in-library`) and preloaded as dylibs instead:
   # GHCi's RTS linker loads ObjC .o's but never registers their classes with the
@@ -154,7 +144,7 @@ rec {
     projectFileName = "cabal.project";
     cabalProjectLocal = clibNoRts + cabalDoctestPatched + posixPtyPatched
       + windowsProjectLocal
-      + hsloggerNoNetworkJs + reflexDomCoreJsaddleJs;
+      + hsloggerNoNetworkJs;
     # ghc914-sh: the stable-haskell GHC 9.14 (haskell.nix master) that can
     # cross-compile from darwin to Linux (musl) via hyper-linux.
     compiler-nix-name = "ghc914-sh";
