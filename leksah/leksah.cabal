@@ -253,7 +253,7 @@ library
         extra >=1.6.12 && <1.9,
         filepath >=1.1.0.1 && <1.6,
         generic-deriving >=1.10 && <1.15,
-        ghcjs-dom >=0.9.4.0 && <0.10,
+        ghcjs-dom >=0.10 && <0.11,
         hslogger >=1.0.7 && <1.4,
         http-types >=0.12.2 && <0.13,
         jsaddle >=0.9.4.0 && <0.10,
