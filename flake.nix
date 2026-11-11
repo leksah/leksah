@@ -20,7 +20,7 @@
   # jsaddle-webview2 live in the jsaddle monorepo; wire it so the haskell.nix
   # planner resolves the source-repository-package in cabal.project without a
   # network fetch (pure eval).
-  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/f00c4269ddd912b4274744ddc316f3385174d268";
+  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/0d92ead3b39059ee8d2ee8730b29099e73701b6f";
   inputs.jsaddle-terminal-src.flake = false;
   # jsaddle-dom / ghcjs-dom 0.10, ghcjs-base 0.8.1 and the reflex-dom-core
   # ported to them (see cabal.project).
@@ -28,9 +28,9 @@
   inputs.jsaddle-dom-src.flake = false;
   inputs.ghcjs-dom-src.url = "github:ghcjs/ghcjs-dom/f0a3d8fefc79a734cdc102c0922d15ee8bf8ea28";
   inputs.ghcjs-dom-src.flake = false;
-  inputs.ghcjs-base-src.url = "github:ghcjs/ghcjs-base/4b3718880732b4e61cdea467f2820173cae20d60";
+  inputs.ghcjs-base-src.url = "github:ghcjs/ghcjs-base/d011bf93e1609af70c7182054fc3d1f6900e0db4";
   inputs.ghcjs-base-src.flake = false;
-  inputs.reflex-dom-src.url = "github:ghcjs/reflex-dom/0e3549f3b6f130fdbb08bc93884eb252fa7872d3";
+  inputs.reflex-dom-src.url = "github:ghcjs/reflex-dom/e57a114c5121b8fecf9eece3ee196d28120e908a";
   inputs.reflex-dom-src.flake = false;
   # ffcabal lives in its own repo now; same wiring as above.
   inputs.ffcabal-src.url = "github:leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed";
@@ -99,11 +99,11 @@
                 # inputs so the haskell.nix planner resolves them without a
                 # network fetch (pure eval).
                 inputMap = {
-                  "https://github.com/ghcjs/jsaddle/f00c4269ddd912b4274744ddc316f3385174d268" = inputs.jsaddle-terminal-src;
+                  "https://github.com/ghcjs/jsaddle/0d92ead3b39059ee8d2ee8730b29099e73701b6f" = inputs.jsaddle-terminal-src;
                   "https://github.com/ghcjs/jsaddle-dom/8855bb6935d82571e943ab2e01d83072974bd2c5" = inputs.jsaddle-dom-src;
                   "https://github.com/ghcjs/ghcjs-dom/f0a3d8fefc79a734cdc102c0922d15ee8bf8ea28" = inputs.ghcjs-dom-src;
-                  "https://github.com/ghcjs/ghcjs-base/4b3718880732b4e61cdea467f2820173cae20d60" = inputs.ghcjs-base-src;
-                  "https://github.com/ghcjs/reflex-dom/0e3549f3b6f130fdbb08bc93884eb252fa7872d3" = inputs.reflex-dom-src;
+                  "https://github.com/ghcjs/ghcjs-base/d011bf93e1609af70c7182054fc3d1f6900e0db4" = inputs.ghcjs-base-src;
+                  "https://github.com/ghcjs/reflex-dom/e57a114c5121b8fecf9eece3ee196d28120e908a" = inputs.reflex-dom-src;
                   "https://github.com/leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed" = inputs.ffcabal-src;
                 };
               };

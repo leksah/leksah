@@ -55,8 +55,8 @@ source-repository-package
 -- Pinned to the dom-gen-regenerate branch: jsaddle master (fdf66f5, which has
 -- everything leksah needs: PRs #168, #169, #170, #171, #173) plus jsaddle
 -- 0.9.10.0's Int53/Word53 and the non-orphan Object/JSArray instances that
--- jsaddle-dom 0.10 needs.  Only the jsaddle core changed; the other subdirs
--- are as on master.  What the master PRs added, in
+-- jsaddle-dom 0.10 needs, and the Hackage version bumps (jsaddle-wkwebview
+-- 0.9.10.0, needing jsaddle >= 0.9.10.0).  What the master PRs added, in
 -- case a bisect lands here: registered ObjC↔Haskell callbacks + the
 -- objc-in-library flag that leksah.sh --ghci needs (GHCi's RTS linker can't
 -- register ObjC classes, so the ObjC is preloaded as dylibs);
@@ -69,7 +69,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: f00c4269ddd912b4274744ddc316f3385174d268
+  tag: 0d92ead3b39059ee8d2ee8730b29099e73701b6f
   subdir: jsaddle
           jsaddle-wkwebview
           jsaddle-terminal
@@ -96,15 +96,15 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/ghcjs/ghcjs-base
-  tag: 4b3718880732b4e61cdea467f2820173cae20d60
+  tag: d011bf93e1609af70c7182054fc3d1f6900e0db4
 
--- reflex-dom-core ported to ghcjs-dom 0.10 (the reflex-dom develop branch's
--- 0.8.1.4 plus the port, not Hackage's 0.8.1.4), with a manual `jsffi` flag
+-- reflex-dom-core 0.9.0.0: the reflex-dom develop branch plus the port to
+-- ghcjs-dom 0.10 (a major bump, since its API exposes the changed DOM types), with a manual `jsffi` flag
 -- mirroring ghcjs-dom's; see the arch(javascript) constraints below.
 source-repository-package
   type: git
   location: https://github.com/ghcjs/reflex-dom
-  tag: 0e3549f3b6f130fdbb08bc93884eb252fa7872d3
+  tag: e57a114c5121b8fecf9eece3ee196d28120e908a
   subdir: reflex-dom-core
 
 package reflex

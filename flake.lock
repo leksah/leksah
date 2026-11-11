@@ -152,17 +152,17 @@
     "ghcjs-base-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1794366653,
-        "narHash": "sha256-in4JvvwZK/T+IdPNqdncKabGQrjJHhTRVeL01a30h/M=",
+        "lastModified": 1794397172,
+        "narHash": "sha256-01u5MJUDkUGjOzLuIAQPOEG3Uln7Apu59+qqM6SidQI=",
         "owner": "ghcjs",
         "repo": "ghcjs-base",
-        "rev": "4b3718880732b4e61cdea467f2820173cae20d60",
+        "rev": "d011bf93e1609af70c7182054fc3d1f6900e0db4",
         "type": "github"
       },
       "original": {
         "owner": "ghcjs",
         "repo": "ghcjs-base",
-        "rev": "4b3718880732b4e61cdea467f2820173cae20d60",
+        "rev": "d011bf93e1609af70c7182054fc3d1f6900e0db4",
         "type": "github"
       }
     },
@@ -670,17 +670,17 @@
     "jsaddle-terminal-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1794366642,
-        "narHash": "sha256-mXKTXsin5KABrmQQniiMQUAgZo0t5n+1I/rDInaI1f8=",
+        "lastModified": 1794397161,
+        "narHash": "sha256-FfTkhnMX5qQR8LSwVgBj93axjCBhoOnT/21/WOacesI=",
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "f00c4269ddd912b4274744ddc316f3385174d268",
+        "rev": "0d92ead3b39059ee8d2ee8730b29099e73701b6f",
         "type": "github"
       },
       "original": {
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "f00c4269ddd912b4274744ddc316f3385174d268",
+        "rev": "0d92ead3b39059ee8d2ee8730b29099e73701b6f",
         "type": "github"
       }
     },
@@ -848,17 +848,17 @@
     "reflex-dom-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1794366669,
-        "narHash": "sha256-pMtsE9JFh9+R87D4tAIpTvLdzCdTQ5vUkox2F0PEtH4=",
+        "lastModified": 1794397172,
+        "narHash": "sha256-C2UyTQ8qA/y8QjPf8pDh1o4yfjbIk7JWGYI8S+sP/1Y=",
         "owner": "ghcjs",
         "repo": "reflex-dom",
-        "rev": "0e3549f3b6f130fdbb08bc93884eb252fa7872d3",
+        "rev": "e57a114c5121b8fecf9eece3ee196d28120e908a",
         "type": "github"
       },
       "original": {
         "owner": "ghcjs",
         "repo": "reflex-dom",
-        "rev": "0e3549f3b6f130fdbb08bc93884eb252fa7872d3",
+        "rev": "e57a114c5121b8fecf9eece3ee196d28120e908a",
         "type": "github"
       }
     },

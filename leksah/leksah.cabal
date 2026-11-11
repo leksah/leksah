@@ -269,7 +269,7 @@ library
         pretty-show >=1.6.3 && <1.11,
         process >=1.4.3.0 && <1.7,
         reflex >=0.8.0.0 && <0.10,
-        reflex-dom-core >=0.7.0.2 && <0.9,
+        reflex-dom-core >=0.7.0.2 && <0.10,
         reflex-dom-svg >=0.3.1.1 && <0.4,
         regex-base ==0.94.*,
         regex-tdfa >=1.3.1 && <1.4,
