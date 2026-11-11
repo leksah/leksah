@@ -20,7 +20,7 @@ module IDE.Web.Widget.Tree
   ) where
 
 import Control.Lens
-       ((#), (.~), (^.), _Wrapped)
+       ((#), (.~), _Wrapped)
 import Control.Monad (void)
 
 import Data.Bool (bool)
@@ -31,8 +31,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map (insertWith)
 import Data.Text (Text)
 
-import Language.Javascript.JSaddle
-       (liftJSM, toJSVal, obj, jss, js1, fun, jsg)
+import Language.Javascript.JSaddle (liftJSM)
 
 import Reflex
        (constDyn, switchHold, leftmost, tag, ffor,
@@ -48,6 +47,9 @@ import GHCJS.DOM.EventM (event, onSync)
 import GHCJS.DOM.GlobalEventHandlers (click, dblClick)
 import GHCJS.DOM.MouseEvent (getAltKey, getShiftKey)
 import GHCJS.DOM.Types (HTMLElement(..), uncheckedCastTo)
+import GHCJS.DOM.Element (scrollIntoView)
+import GHCJS.DOM.Enums (ScrollLogicalPosition(..))
+import GHCJS.DOM.ScrollIntoViewOptions (newScrollIntoViewOptions, setBlock)
 -- The source 'Element(..)' constructor must be in scope for uncheckedCastTo's
 -- Coercible (qualified so it doesn't clash with Reflex.Dom.Core's Element).
 import qualified GHCJS.DOM.Types as DOM (Element(..))
@@ -59,6 +61,7 @@ import Reflex.Dom.Widget.SVG.Types
 
 import IDE.Web.Widget.ContextMenu (contextMenu)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.Dom (nextFrame)
 
 simpleSvgPath
   :: MonadWidget t m
@@ -221,9 +224,7 @@ scrollIntoViewNearest
   -> m ()
 scrollIntoViewNearest e elm =
   performEvent_ $ ffor e $ \_ -> liftJSM $ do
-    rawV <- toJSVal (_element_raw elm)
-    o <- obj
-    _ <- o ^. jss ("block" :: Text) ("nearest" :: Text)
-    void $ jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
-        (fun $ \_ _ _ -> void $ rawV ^. js1 ("scrollIntoView" :: Text) o)
+    o <- newScrollIntoViewOptions
+    setBlock o ScrollLogicalPositionNearest
+    nextFrame . void $ scrollIntoView (_element_raw elm) (Just o)
 
