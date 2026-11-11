@@ -127,6 +127,7 @@ library
         IDE.Web.GitInfo
         IDE.Web.TerminalRefresh
         IDE.Web.HostFlags
+        IDE.Web.Dom
         IDE.Web.Layout
         IDE.Web.KittyGraphics
         IDE.Web.Main

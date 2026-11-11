@@ -112,7 +112,7 @@ import Reflex.Dom.Core
         elAttr', elDynAttr, elDynAttr', listWithKey, text,
         widgetHold, _element_raw, EventName(Click, Keydown), (=:))
 import Language.Javascript.JSaddle
-       (JSM, JSVal, MakeObject, fun, js, js0, js1, js2, js3, js4, jsg,
+       (JSM, JSVal, fun, js, js0, js1, js2, js3, js4, jsg,
         jss, liftJSM, new, obj, valIsNull, valIsUndefined, valToBool,
         valToNumber, valToText)
 
@@ -126,6 +126,10 @@ import IDE.Web.Model
         LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..))
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.WindowBridge (setFocusedLeaf)
+import IDE.Web.Dom
+       (nextFrame, observeResize, holdsFocus, activeTagName, focusElement,
+        focusFirst, toggleClassWhere)
+import GHCJS.DOM.Types (Element(..), IsParentNode)
 import IDE.Web.ReplTmux (tmuxSocket)
 import IDE.Web.SplitLayout
        (leafRects, LeafRect(..), treeDividers, NativeDivider(..), resizeNode,
@@ -266,7 +270,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 pbErr <- getPostBuild
                 reErr  <- delay 0.1 pbErr
                 performEvent_ $ ffor (leftmost [pbErr, reErr]) $ \_ -> liftJSM $
-                    void $ _element_raw rb ^. js0 ("focus" :: Text)
+                    focusElement (_element_raw rb)
                 performEvent_ $ liftIO (fireRetry ())    <$ domEvent Click rb
                 performEvent_ $ liftIO (fireCloseErr ()) <$ domEvent Click cb
             -- Escape (from anywhere in the view — it bubbles from the buttons)
@@ -550,12 +554,10 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 -- redraw (a resize, e.g. a manual split, was the only trigger).
                 -- Deferred to rAF so display:block has been applied first.
                 repaintTerm :: JSVal -> JSM ()
-                repaintTerm term = void $
-                    jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
-                        (fun $ \_ _ _ -> do
-                            rows <- valToNumber =<< term ^. js ("rows" :: Text)
-                            void $ term ^. js2 ("refresh" :: Text)
-                                (0 :: Int) (max 0 (round rows - 1) :: Int))
+                repaintTerm term = nextFrame $ do
+                    rows <- valToNumber =<< term ^. js ("rows" :: Text)
+                    void $ term ^. js2 ("refresh" :: Text)
+                        (0 :: Int) (max 0 (round rows - 1) :: Int)
             -- (The old displayed-window clamp mover lived here; clamps are
             -- now per leaf — see 'clampLeaf' above.  The old follow-tmux
             -- handler — %session-window-changed activating a stack member —
@@ -604,9 +606,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                     mbC <- liftIO $ readIORef containerRef
                     case mbC of
                       Nothing -> return False
-                      Just c  -> do
-                        ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
-                        valToBool =<< c ^. js1 ("contains" :: Text) ae
+                      Just c  -> holdsFocus c
                 -- Does the ACTIVE pane specifically hold the keyboard (not just
                 -- some pane in the container)?  A fresh ⌘D split makes the NEW
                 -- pane active before its xterm widget is built, while the OLD
@@ -632,9 +632,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                               Just term -> do
                                 el <- term ^. js ("element" :: Text)
                                 nul <- valIsNull el
-                                if nul then return False else do
-                                  ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
-                                  valToBool =<< el ^. js1 ("contains" :: Text) ae
+                                if nul then return False else holdsFocus (Element el)
                 focusActivePane :: JSM ()
                 focusActivePane = do
                     mbP <- liftIO $ readIORef activePaneRef
@@ -672,11 +670,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                     inFocus <- containerHasFocus
                     unless (inFocus || haveActiveTarget) $ do
                         mbC <- liftIO $ readIORef containerRef
-                        forM_ mbC $ \c -> do
-                            ta <- c ^. js1 ("querySelector" :: Text)
-                                    (".xterm-helper-textarea" :: Text)
-                            nul <- valIsNull ta
-                            unless nul $ void $ ta ^. js0 ("focus" :: Text)
+                        forM_ mbC $ \c -> focusFirst c ".xterm-helper-textarea"
                 -- Focusing an element is a no-op until it is actually visible, and
                 -- selecting a tab flips it visibility:hidden→visible via a DOM
                 -- write that jsaddle-wkwebview dispatches asynchronously — so a
@@ -698,9 +692,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                               then focusLog $ "[" <> T.unpack sessionId
                                      <> "] focusActivePaneSoon DONE (stuck) at n=" <> show n
                               else when (n > (0 :: Int)) $
-                                void $ jsg ("window" :: Text)
-                                    ^. js1 ("requestAnimationFrame" :: Text)
-                                        (fun $ \_ _ _ -> go (n - 1))
+                                nextFrame (go (n - 1))
                      in go (30 :: Int)
                 -- Highlight the new active pane and, IF this terminal already
                 -- owned the keyboard, hand the keyboard to it too: activating
@@ -715,8 +707,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 followActive = do
                     applyActive
                     had <- containerHasFocus
-                    ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
-                    tagName <- valToText =<< ae ^. js ("tagName" :: Text)
+                    tagName <- activeTagName
                     mbP <- liftIO $ readIORef activePaneRef
                     focusLog $ "[" <> T.unpack sessionId <> "] followActive pane="
                         <> show (T.unpack <$> mbP) <> " had=" <> show had
@@ -739,8 +730,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 liftJSM $ do
                     applyActive
                     had <- containerHasFocus
-                    ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
-                    tagName <- valToText =<< ae ^. js ("tagName" :: Text)
+                    tagName <- activeTagName
                     pend <- liftIO $ readIORef pendingFocusRef
                     -- A pending request only claims the keyboard while this is
                     -- still the terminal on screen — a slow (remote) connection
@@ -1007,8 +997,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
               mcontent <- maybe (liftIO readFocusedContent) (pure . Just) mgiven
               forM_ mcontent $ \(lid, kind) -> do
                 had <- liftJSM containerHasFocus
-                ae <- liftJSM $ jsg ("document" :: Text) ^. js ("activeElement" :: Text)
-                tagName <- liftJSM $ valToText =<< ae ^. js ("tagName" :: Text)
+                tagName <- liftJSM activeTagName
                 pend <- liftIO $ readIORef pendingFocusRef
                 desired <- liftIO $ isActiveTerminal sessionId
                 let want = forced || had || tagName == "BODY" || (pend && desired)
@@ -1083,8 +1072,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                     -- imminent %window-pane-changed sets the right pane and its
                     -- followActive (BODY branch) focuses it.
                     when (not (M.null gone)) $ do
-                        ae <- jsg ("document" :: Text) ^. js ("activeElement" :: Text)
-                        tagName <- valToText =<< ae ^. js ("tagName" :: Text)
+                        tagName <- activeTagName
                         mbP <- liftIO $ readIORef activePaneRef
                         liveTerms <- liftIO $ readIORef termsRef
                         let liveActive = maybe False (`M.member` liveTerms) mbP
@@ -1291,9 +1279,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                             when (w > 0 && h > 0) . liftIO $
                                                 fireLeafSize (cols, rows)
                                       measure
-                                      roL <- new (jsg ("ResizeObserver" :: Text))
-                                                 (fun $ \_ _ _ -> measure)
-                                      void $ roL ^. js1 ("observe" :: Text) (_element_raw bodyEl)
+                                      observeResize (_element_raw bodyEl) measure
                                   leafSizeD <- holdUniqDyn =<< holdDyn (0, 0) leafSizeE
                                   clampTargetD <- holdUniqDyn $
                                       (\mbW (c, r) vis ->
@@ -1439,11 +1425,10 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 -- selected) fires the observer with a 0→N size change; repaint
                 -- every pane then, since 'refit' alone dedupes by size and would
                 -- skip a re-show at the same dimensions, leaving panes blank.
-                ro <- new (jsg ("ResizeObserver" :: Text)) (fun $ \_ _ _ -> do
-                        refit
-                        terms <- liftIO $ readIORef termsRef
-                        forM_ (M.elems terms) repaintTerm)
-                void $ ro ^. js1 ("observe" :: Text) (_element_raw containerEl)
+                observeResize (_element_raw containerEl) $ do
+                    refit
+                    terms <- liftIO $ readIORef termsRef
+                    forM_ (M.elems terms) repaintTerm
 
     -- Route %output to the pane's xterm (via the pause states above), and
     -- assemble capture-based replays from their stream-ordered replies.
@@ -2290,15 +2275,9 @@ renderDividers cc (cw, ch) l =
 -- | Mark the chrome box (see 'renderHlSegments') belonging to pane @mbP@ as
 -- @active@ (the max-contrast ring) and unmark all others.  The boxes stay
 -- visible either way — they carry every pane's always-on grey ring.
-applyPaneHighlight :: MakeObject e => e -> Maybe PaneId -> JSM ()
-applyPaneHighlight c mbP = do
-    els <- c ^. js1 ("querySelectorAll" :: Text) (".terminal-cc-hl" :: Text)
-    len <- valToNumber =<< els ^. js ("length" :: Text)
-    forM_ [0 .. (floor len - 1) :: Int] $ \i -> do
-        e <- els ^. js1 ("item" :: Text) i
-        pn <- valToText =<< e ^. js1 ("getAttribute" :: Text) ("data-pane" :: Text)
-        cl <- e ^. js ("classList" :: Text)
-        void $ cl ^. js2 ("toggle" :: Text) ("active" :: Text) (Just pn == mbP)
+applyPaneHighlight :: IsParentNode p => p -> Maybe PaneId -> JSM ()
+applyPaneHighlight c mbP =
+    toggleClassWhere c ".terminal-cc-hl" "data-pane" "active" ((== mbP) . Just)
 
 -- | Initial state sync (an attach replays nothing): current window + layouts.
 -- Pane content is replayed per-pane by 'requestReplay' when its xterm is created.
