@@ -461,7 +461,7 @@ executable leksah
         containers >=0.2.0.0 && <0.9,
         filepath >=1.1.0.1 && <1.6,
         jsaddle >=0.9.4.0 && <0.10,
-        jsaddle-webkitgtk >=0.9.9.3 && <0.10,
+        jsaddle-webkitgtk >=0.9.9.3 && <0.11,
         gi-glib >=2.0.14 && <2.1,
         gi-gio >=2.0.14 && <2.1,
         gi-gdk4 >=4.0.2 && <4.1,

@@ -56,7 +56,7 @@ source-repository-package
 -- everything leksah needs: PRs #168, #169, #170, #171, #173) plus jsaddle
 -- 0.9.10.0's Int53/Word53 and the non-orphan Object/JSArray instances that
 -- jsaddle-dom 0.10 needs, and the Hackage version bumps (jsaddle-wkwebview
--- 0.9.10.0, needing jsaddle >= 0.9.10.0).  What the master PRs added, in
+-- 0.9.10.0, needing jsaddle >= 0.9.10.0; jsaddle-webkitgtk 0.10.0.0).  What the master PRs added, in
 -- case a bisect lands here: registered ObjC↔Haskell callbacks + the
 -- objc-in-library flag that leksah.sh --ghci needs (GHCi's RTS linker can't
 -- register ObjC classes, so the ObjC is preloaded as dylibs);
@@ -69,7 +69,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: 0d92ead3b39059ee8d2ee8730b29099e73701b6f
+  tag: 23e748b94c64e39a6a09b3309d87675b5b4fd43c
   subdir: jsaddle
           jsaddle-wkwebview
           jsaddle-terminal
