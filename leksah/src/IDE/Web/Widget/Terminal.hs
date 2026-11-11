@@ -122,6 +122,7 @@ import IDE.DebugLog (focusLog)
 import IDE.Problems.Types (Loc(..), Pos(..), pointRange)
 import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Widget.Menu (menu)
+import IDE.Web.Dom (nextFrame, observeResize)
 import qualified IDE.LSP as LSP
 
 import Reflex
@@ -808,12 +809,11 @@ terminalWidget ctx termId selectedE = do
       -- layout changes alike (e.g. showing/hiding the side pane, which resizes
       -- the editor column).  The scroll-based resize detector misses grid track
       -- changes; ResizeObserver catches them.
-      ro <- new (jsg ("ResizeObserver" :: Text)) (fun $ \_ _ _ -> do
+      observeResize (_element_raw el) $ do
           _ <- fit ^. js0 ("fit" :: Text)
           c <- valToNumber =<< term ^. js ("cols" :: Text)
           r <- valToNumber =<< term ^. js ("rows" :: Text)
-          liftIO $ ignorePtyError (resizePty pty (round c, round r)))
-      _ <- ro ^. js1 ("observe" :: Text) rawEl
+          liftIO $ ignorePtyError (resizePty pty (round c, round r))
 
       -- keystrokes -> shell
       _ <- term ^. js1 ("onData" :: Text) (fun $ \_ _ args -> case args of
@@ -871,9 +871,7 @@ terminalWidget ctx termId selectedE = do
   performEvent_ $ ffor (attach (current termFitD) focusE) $ \case
       (Just (term, _), ()) -> do
           focusLog $ "[classic " <> T.unpack termId <> "] focusE -> term.focus()"
-          liftJSM . void $
-            jsg ("window" :: Text) ^. js1 ("requestAnimationFrame" :: Text)
-              (fun $ \_ _ _ -> void $ term ^. js0 ("focus" :: Text))
+          liftJSM . nextFrame . void $ term ^. js0 ("focus" :: Text)
       _ -> return ()
 
   -- Write each batch of shell output to the terminal.  Gated on the terminal
