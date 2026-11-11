@@ -58,6 +58,7 @@ module IDE.Web.Agent
   , agentRoleList
   , agentSuspend
   , agentResume
+  , agentResumeAll
   , agentRefresh
   , agentManagerStatus
   , agentManagerStart
@@ -102,7 +103,8 @@ import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
         moveAgentRecord, recordAgentFork, setAgentManager, setAgentRole,
-        setAgentSuspended)
+        setAgentSuspended, acknowledgeInterrupted)
+import IDE.Web.AgentHost (RanOn)
 import IDE.Web.AgentNames
        (adoptContinuation, agentNameFor, agentNames, renameAgent,
         resolveAgentName, touchAgentNames)
@@ -289,11 +291,22 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
 -- in one of leksah's), directory, title.  The caller's own session is marked,
 -- so an agent reading this can tell itself apart from its peers.  Ordered like
 -- the status surfaces: needs-you first, then working, then idle.
-agentList :: Maybe Text -> IO Text
-agentList me = do
+agentList :: Bool -> Maybe Text -> IO Text
+agentList withStopped me = do
   live  <- claudeLiveBySession
   panes <- panesBySession
-  if M.null live then return "No Claude Code sessions are running.\n" else do
+  -- (--all) The agents that are not running but are still waiting to be
+  -- brought back: interrupted by a restart, or suspended.  Same columns, the
+  -- pane always "-".
+  stopped <- if not withStopped then return [] else do
+    forest <- agentForest
+    let flat ns = concatMap (\n -> n : flat (anChildren n)) ns
+    return [ T.intercalate "\t"
+               [ anSession n, if T.null (anName n) then "-" else anName n
+               , anState n, anDetail n, "-", T.pack (anDir n)
+               , T.takeWhile (/= '\n') (anTitle n), "" ]
+           | n <- flat forest, anState n `elem` ["interrupted", "suspended"] ]
+  if M.null live && null stopped then return "No Claude Code sessions are running.\n" else do
     names  <- touchAgentNames (M.keys live)
     titles <- agentTitles
     events <- sessionEvents
@@ -313,7 +326,7 @@ agentList me = do
         , T.takeWhile (/= '\n') title
         , if me == Just (clSession l) then "(you)" else "" ]
     return . T.unlines $
-      "# session\tname\tstate\tdetail\tpane\tdir\ttitle" : rows
+      "# session\tname\tstate\tdetail\tpane\tdir\ttitle" : rows <> stopped
   where
     rank l = case clStatus l of
       Just "waiting" -> 0 :: Int
@@ -616,6 +629,18 @@ agentResume sid = do
           , asParent = aiParent i, asRoleNote = roleNote <$> mrole
           , asResume = True, asManager = aiManager i }
         return (Right ("Resuming " <> name <> " in its own tab.\n"))
+
+-- | Resume every one of these agents (the Agents pane's "Resume all", for the
+-- agents a restart took down together), one at a time with a pause between —
+-- a burst of a couple of dozen @claude@ start-ups at once is a burst of
+-- logins, MCP servers and API calls.  The offer is answered first, so it is
+-- not made again while they come back.  Answers one line per agent.
+agentResumeAll :: RanOn -> [Text] -> IO [Text]
+agentResumeAll host sids = do
+  acknowledgeInterrupted host
+  forM (zip [0 :: Int ..] sids) $ \(k, sid) -> do
+    when (k > 0) (threadDelay 1500000)
+    either id id <$> agentResume sid
 
 -- | @agent refresh@: ask an agent to rewrite its title, description and bio
 -- (what the Agents pane's ⟳ does).

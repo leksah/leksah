@@ -30,6 +30,10 @@ module IDE.Web.AgentInfo
   , markAgentDone
   , setAgentRole
   , setAgentSuspended
+  , Interruption(..)
+  , syncAgentLiveness
+  , interruptedOffer
+  , acknowledgeInterrupted
   , setAgentManager
   , agentManager
   , agentInfoOf
@@ -42,10 +46,11 @@ module IDE.Web.AgentInfo
   , sanitizeAgentHtml
   ) where
 
-import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.MVar (MVar, newMVar, modifyMVar, modifyMVar_)
 import Control.Exception (catch, SomeException)
 import Control.Applicative ((<|>))
-import Control.Monad (forM, when)
+import Control.Monad (forM, unless, void, when)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
@@ -77,10 +82,12 @@ import System.IO.Unsafe (unsafePerformIO)
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentEvents (SessionEvents(..), sessionEvents)
-import IDE.Web.AgentNames (agentContinuations, agentNames)
+import IDE.Web.AgentHost (Host(..), RanOn(..), currentHost, diedWithHost, ranOnFor)
+import IDE.Web.AgentNames
+       (agentContinuations, agentLastSeen, agentNames, holdAgentNames)
 import IDE.Web.Claude
-       (ClaudeLive(..), claudeLatestActivity, claudeLiveBySession, claudeSessionLabel,
-        claudeTranscriptPath)
+       (ClaudeLive(..), claudeFindTranscript, claudeLatestActivity,
+        claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
@@ -115,7 +122,28 @@ data AgentInfo = AgentInfo
                                --   process ended on purpose, and it stays on the
                                --   team until it is resumed
   , aiManager :: Bool          -- ^ it is the workspace's manager agent
+  , aiRanOn   :: Maybe RanOn   -- ^ it was RUNNING, there, when leksah last
+                               --   looked ('syncAgentLiveness'); 'Nothing' once
+                               --   it is known to have stopped
+  , aiInterrupted :: Maybe Interruption
+                               -- ^ it did not stop: its host went down under it
+                               --   (a restart, leksah's tmux server dying) —
+                               --   offered back until resumed or forgotten
   } deriving (Eq, Show)
+
+-- | An agent taken down with its host: when leksah found out, and the host it
+-- was running on (the agents that went down together share it — which is
+-- what "Resume all" resumes).
+data Interruption = Interruption
+  { inAt   :: Double  -- ^ when leksah noticed (POSIX seconds)
+  , inHost :: RanOn
+  } deriving (Eq, Show)
+
+instance ToJSON Interruption where
+  toJSON i = object [ "at" .= inAt i, "host" .= inHost i ]
+
+instance FromJSON Interruption where
+  parseJSON = withObject "Interruption" $ \o -> Interruption <$> o .: "at" <*> o .: "host"
 
 instance ToJSON AgentInfo where
   toJSON i = object
@@ -123,7 +151,8 @@ instance ToJSON AgentInfo where
     , "title" .= aiTitle i, "desc" .= aiDesc i, "when" .= aiWhen i
     , "born" .= aiBorn i, "done" .= aiDone i, "doneAt" .= aiDoneAt i
     , "role" .= aiRole i, "bio" .= aiBio i, "bioAt" .= aiBioAt i
-    , "suspended" .= aiSuspended i, "manager" .= aiManager i ]
+    , "suspended" .= aiSuspended i, "manager" .= aiManager i
+    , "ranOn" .= aiRanOn i, "interrupted" .= aiInterrupted i ]
 
 instance FromJSON AgentInfo where
   parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
@@ -132,6 +161,7 @@ instance FromJSON AgentInfo where
     <*> o .:? "done" <*> o .:? "doneAt" <*> o .:? "role"
     <*> o .:? "bio" <*> o .:? "bioAt" <*> o .:? "suspended"
     <*> (fromMaybe False <$> o .:? "manager")
+    <*> o .:? "ranOn" <*> o .:? "interrupted"
 
 -- | One row of the Agents pane: an agent, and the agents it forked.
 data AgentNode = AgentNode
@@ -366,7 +396,10 @@ setAgentSuspended sid on = do
   let dir = maybe "" clDir (M.lookup sid live)
   withInfos $ \m ->
     let cur = fromMaybe (blank sid dir) (M.lookup sid m)
-    in (M.insert sid cur { aiSuspended = if on then Just now else Nothing } m, ())
+    in (M.insert sid cur { aiSuspended = if on then Just now else Nothing
+                         -- (resumed — or suspended on purpose — it is no
+                         -- longer waiting to be brought back)
+                         , aiInterrupted = Nothing } m, ())
 
 -- | Make @sid@ the workspace's manager (and nobody else).
 setAgentManager :: Text -> FilePath -> IO ()
@@ -403,7 +436,184 @@ blank sid dir = AgentInfo
   , aiDir = dropTrailingPathSeparator dir
   , aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
   , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing
-  , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False }
+  , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False
+  , aiRanOn = Nothing, aiInterrupted = Nothing }
+
+--------------------------------------------------------------------------------
+-- liveness: which agents were running, and which of them were interrupted
+
+-- | How long an interrupted agent is offered back (by its card, and by "Resume
+-- all") before it becomes an ordinary exited one — the same week its name is
+-- reserved for ("IDE.Web.AgentNames").
+interruptedMaxAge :: Double
+interruptedMaxAge = 7 * 24 * 3600
+
+-- | An agent that vanished from leksah's tmux while that server still LOOKS
+-- alive waits this long before it is called exited: when the server dies, its
+-- panes' processes go a moment before it does, and the poll can land in
+-- between.  (No grace is needed for anything else — see 'diedWithHost'.)
+vanishGrace :: Double
+vanishGrace = 4
+
+isInterrupted :: Double -> AgentInfo -> Bool
+isInterrupted now i = maybe False (\x -> now - inAt x < interruptedMaxAge) (aiInterrupted i)
+
+posixNow :: IO Double
+posixNow = realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
+
+-- | Like 'withInfos', but writes the sidecar only when something changed —
+-- the liveness sync runs on every change of the live set.
+withInfosChanged :: (Map Text AgentInfo -> (Map Text AgentInfo, a)) -> IO a
+withInfosChanged f = modifyMVar infoVar $ \m0 -> do
+  m <- maybe loadInfos return m0
+  let (m', a) = f m
+  when (m' /= m) (saveInfos m')
+  return (Just m', a)
+
+-- | One pass of liveness tracking (serialised; the state is the vanished
+-- agents still in their 'vanishGrace').  Run on every change of the live set
+-- and once at startup:
+--
+--   * every running session gets a record — whoever started it, ＋, a
+--     terminal, the resume picker — and 'aiRanOn' says where it runs;
+--   * a recorded agent that is no longer running was either SUSPENDED, taken
+--     down with its host ('diedWithHost': the machine rebooted, or leksah's
+--     tmux server is gone — whichever of leksah and tmux went first), or it
+--     EXITED on its own.  Only the second becomes 'aiInterrupted'.
+--
+-- Leksah being down when the agents went changes nothing: their records
+-- still say they were running, and the first pass after startup decides.
+syncAgentLiveness :: IO ()
+syncAgentLiveness = (`catch` \(_ :: SomeException) -> return ()) $
+  modifyMVar_ syncVar $ \pending -> do
+    seedInterrupted
+    live <- claudeLiveBySession
+    host <- currentHost
+    now  <- posixNow
+    (pending', held) <- withInfosChanged $ \m0 ->
+      let running l mi =
+            let i = fromMaybe (blank (clSession l) (clDir l)) mi
+            in i { aiRanOn = Just (ranOnFor host (clPid l))
+                 , aiInterrupted = Nothing
+                 , aiDir = if null (aiDir i) then dropTrailingPathSeparator (clDir l)
+                                             else aiDir i }
+          m1 = M.foldr (\l -> M.alter (Just . running l) (clSession l)) m0 live
+          gone = [ (sid, i, r) | (sid, i) <- M.toList m1, Just r <- [aiRanOn i]
+                               , sid `M.notMember` live ]
+          stopped i = i { aiRanOn = Nothing }
+          decide (m, pend) (sid, i, r)
+            | isJust (aiSuspended i) = (M.insert sid (stopped i) m, pend)
+            | diedWithHost host r    =
+                (M.insert sid (stopped i) { aiInterrupted = Just (Interruption now r) } m, pend)
+            | isJust (roTmux r)
+            , let since = M.findWithDefault now sid pending
+            , now - since < vanishGrace = (m, M.insert sid since pend)
+            | otherwise              = (M.insert sid (stopped i) m, pend)
+          (m2, pend') = foldl decide (m1, M.empty) gone
+          heldSids = [ sid | (sid, i) <- M.toList m2
+                           , isJust (aiSuspended i) || isInterrupted now i ]
+      in (m2, (pend', heldSids))
+    holdAgentNames held
+    -- Look again once the grace is over, whether or not anything else changes.
+    unless (M.null pending') . void . forkIO $ do
+      threadDelay (round (vanishGrace * 1000000) + 500000)
+      syncAgentLiveness
+    return pending'
+
+{-# NOINLINE syncVar #-}
+syncVar :: MVar (Map Text Double)
+syncVar = unsafePerformIO (newMVar M.empty)
+
+-- | The other half of the record: which "Resume all" offers have been answered,
+-- and whether the one-off recovery ('seedInterrupted') has run.
+data HostsState = HostsState
+  { hsSeeded       :: Bool
+  , hsAcknowledged :: [RanOn]  -- ^ newest first, bounded
+  } deriving (Eq, Show)
+
+instance ToJSON HostsState where
+  toJSON h = object [ "seeded" .= hsSeeded h, "acknowledged" .= hsAcknowledged h ]
+
+instance FromJSON HostsState where
+  parseJSON = withObject "HostsState" $ \o -> HostsState
+    <$> (fromMaybe False <$> o .:? "seeded") <*> (fromMaybe [] <$> o .:? "acknowledged")
+
+{-# NOINLINE hostsVar #-}
+hostsVar :: MVar (Maybe HostsState)
+hostsVar = unsafePerformIO (newMVar Nothing)
+
+withHosts :: (HostsState -> (HostsState, a)) -> IO a
+withHosts f = modifyMVar hostsVar $ \h0 -> do
+  p <- sidecarPath "agent-hosts.json"
+  h <- case h0 of
+    Just h  -> return h
+    Nothing -> (`catch` \(_ :: SomeException) -> return emptyHosts) $ do
+      ex <- doesFileExist p
+      if ex then fromMaybe emptyHosts . decode' <$> LBS.readFile p else return emptyHosts
+  let (h', a) = f h
+  when (h' /= h) . (`catch` \(_ :: SomeException) -> return ()) $
+    LBS.writeFile p (encode h')
+  return (Just h', a)
+  where emptyHosts = HostsState False []
+
+-- | The one-off recovery, for the restart that happened before leksah tracked
+-- liveness: the agents whose names were last touched together, just before
+-- this boot, were the ones running when it went down (the name store marks
+-- every live session seen, within 10 minutes, on the status poll).  Runs once;
+-- a no-op on a machine with nothing of the kind.
+seedInterrupted :: IO ()
+seedInterrupted = do
+  done <- withHosts (\h -> (h { hsSeeded = True }, hsSeeded h))
+  unless done . (`catch` \(_ :: SomeException) -> return ()) $ do
+    host <- currentHost
+    seen <- agentLastSeen
+    live <- claudeLiveBySession
+    now  <- posixNow
+    infos <- peekInfos
+    let tracked = M.filter (isJust . aiRanOn) infos
+    case hBoot host of
+      Just boot | M.null tracked -> do
+        let before = [ (sid, t) | (sid, t) <- M.toList seen, t < boot
+                                , sid `M.notMember` live ]
+        unless (null before) $ do
+          let newest  = maximum (map snd before)
+              cluster = [ sid | (sid, t) <- before, t >= newest - 600
+                              , now - t < interruptedMaxAge ]
+              from = RanOn { roBoot = Nothing
+                           , roTmux = Just ("before boot " <> T.pack (show (round boot :: Integer))) }
+          dirs <- forM cluster $ \sid -> case M.lookup sid infos of
+            Just i | not (null (aiDir i)) -> return (sid, Just (aiDir i))
+            _ -> (,) sid <$> claudeFindTranscript sid
+          withInfosChanged $ \m ->
+            let add m' (sid, Just d) = flip (M.alter (Just . mark sid d)) m' sid
+                add m' (_, Nothing)  = m'
+                mark sid d mi = let i = fromMaybe (blank sid d) mi
+                                in if isJust (aiSuspended i) then i
+                                   else i { aiInterrupted = Just (Interruption now from) }
+            in (foldl add m dirs, ())
+      _ -> return ()
+
+-- | The agents to offer back with "Resume all": those taken down together in
+-- the most recent interruption, while that offer is unanswered.  Older
+-- interruptions are never offered wholesale — their agents keep their own
+-- cards until resumed, forgotten or a week old.
+interruptedOffer :: IO (Maybe (RanOn, [Text]))
+interruptedOffer = do
+  now   <- posixNow
+  infos <- peekInfos
+  acked <- withHosts (\h -> (h, hsAcknowledged h))
+  let ints = [ (x, aiSession i) | i <- M.elems infos, isInterrupted now i
+                                , Just x <- [aiInterrupted i] ]
+  return $ case sortOn (Down . inAt . fst) ints of
+    [] -> Nothing
+    ((x0, _) : _)
+      | inHost x0 `elem` acked -> Nothing
+      | otherwise -> Just (inHost x0, [ sid | (x, sid) <- ints, inHost x == inHost x0 ])
+
+-- | The offer for @host@ has been answered (resumed, or dismissed).
+acknowledgeInterrupted :: RanOn -> IO ()
+acknowledgeInterrupted host = withHosts $ \h ->
+  (h { hsAcknowledged = take 20 (host : filter (/= host) (hsAcknowledged h)) }, ())
 
 --------------------------------------------------------------------------------
 -- the tree
@@ -537,7 +747,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   now   <- getCurrentTime
   let posix = realToFrac (utcTimeToPOSIXSeconds now)
       liveRows = M.fromList [ (csrSession r, r) | r <- csRows st ]
-  exited <- exitedNodes now infos liveRows
+  lastSeen <- agentLastSeen
+  exited <- exitedNodes now infos liveRows lastSeen
   liveNodes <- forM (csRows st) $ \r -> do
     (br, pr) <- agentGit posix (T.unpack (csrDir r))
     act <- agentActivity r
@@ -613,7 +824,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       "shell"   -> 1
       "idle"    -> 2
       "done"    -> 2
-      _         -> 3
+      "interrupted" -> 3
+      _         -> 4
 
     node r i = AgentNode
       { anSession = csrSession r
@@ -643,7 +855,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     -- is when they last did anything) or not yet registered — a pane leksah just
     -- made, which may be stuck on a first-run question.  Newest first, capped.
     -- No transcript and not recently born means nothing is left to look at.
-    exitedNodes now infos liveRows = do
+    exitedNodes now infos liveRows lastSeen = do
       let posix = realToFrac (utcTimeToPOSIXSeconds now) :: Double
       cands <- fmap (mapMaybe id) . forM (M.elems infos) $ \i ->
         if aiSession i `M.member` liveRows || null (aiDir i) then return Nothing
@@ -653,8 +865,10 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           if not ex then return (starting now i) else do
             t <- getModificationTime p
             let age = realToFrac (diffUTCTime now t) :: Double
-            -- A suspended agent is still on the team: no age limit.
+            -- A suspended agent is still on the team, and an interrupted one
+            -- is waiting to be brought back: no age limit for either.
             return $ if age > exitedMaxAge && isNothing (aiSuspended i)
+                          && not (isInterrupted posix i)
                        then Nothing else Just (Right (t, i))
       startedNodes <- forM [ i | Left i <- cands ] $ \i -> do
         (br, pr) <- agentGit posix (aiDir i)
@@ -681,10 +895,14 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anEdits = [], anError = Nothing, anCwd = Nothing
           , anChildren = [] }
       let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
-          (suspendedCands, goneCands) =
+          interrupted i = isNothing (aiSuspended i) && isInterrupted posix i
+          (suspendedCands, interruptedCands, goneCands) =
             ( [ x | x@(_, i) <- exitedCands, isJust (aiSuspended i) ]
-            , [ x | x@(_, i) <- exitedCands, isNothing (aiSuspended i) ] )
-      goneNodes <- forM (suspendedCands <> take exitedMaxRows goneCands) $ \(t, i) -> do
+            , [ x | x@(_, i) <- exitedCands, interrupted i ]
+            , [ x | x@(_, i) <- exitedCands, isNothing (aiSuspended i)
+                                            , not (interrupted i) ] )
+      goneNodes <- forM (suspendedCands <> interruptedCands <> take exitedMaxRows goneCands)
+                     $ \(t, i) -> do
         title <- case aiTitle i of
           Just x | not (T.null (T.strip x)) -> return (T.strip x)
           _ -> fromMaybe "" <$> claudeSessionLabel (aiDir i) (aiSession i)
@@ -694,16 +912,26 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anName    = ""
           , anTitle   = firstNonEmpty [ T.takeWhile (/= '\n') title
                                       , T.take 8 (aiSession i) ]
-          , anState   = if isJust (aiSuspended i) then "suspended" else "gone"
+          , anState   = if isJust (aiSuspended i) then "suspended"
+                        else if interrupted i then "interrupted" else "gone"
           , anActivity = Nothing
           , anDone    = aiDone i
           , anRole    = aiRole i
           , anDetail  = if isJust (aiSuspended i)
                           then "Suspended — resume it to carry on where it left off"
+                          else if interrupted i
+                          then "Stopped by a restart (its terminal went away under it)"
+                               <> " — click to resume it"
                           else "Exited — click to resume it here"
           , anDir     = aiDir i
           , anDesc    = aiDesc i
-          , anAge     = humanAge now t
+          -- An interrupted agent's transcript time says nothing (every
+          -- transcript is touched as its process is killed): when it was last
+          -- seen running is the time that means something.
+          , anAge     = case M.lookup (aiSession i) lastSeen of
+              Just seenAt | interrupted i ->
+                "last seen " <> humanAge now (posixSecondsToUTCTime (realToFrac seenAt))
+              _ -> humanAge now t
           , anLive    = False
           , anBranch  = br
           , anPr      = pr

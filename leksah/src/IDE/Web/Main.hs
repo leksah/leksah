@@ -264,8 +264,8 @@ import IDE.Web.AISession
 #if !defined(ghcjs_HOST_OS)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
-        claudeStatusTooltip, startClaudeStatusPoll)
-import IDE.Web.AgentInfo (agentTitles)
+        claudeStatusTooltip, registerClaudeStatusPush, startClaudeStatusPoll)
+import IDE.Web.AgentInfo (agentTitles, syncAgentLiveness)
 #endif
 import IDE.Web.NewLwRequest
        (beginConversion, endConversion, conversionActive, consolidateLock)
@@ -989,6 +989,11 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       liftIO $ do
         tid <- startClaudeStatusPoll agentTitles
         when ghciMode $ registerGhciCleanupNamed "claude-status-poll" (killThread tid)
+        -- Which agents are running, and — after a restart, or leksah's tmux
+        -- server dying — which were interrupted (the Agents pane's ↻ cards
+        -- and its "Resume all" offer).  Once now, then on every change of the
+        -- live set; off the poll thread, as push handlers must be quick.
+        registerClaudeStatusPush (\_ -> void (forkIO syncAgentLiveness))
 #endif
 #if !defined(ghcjs_HOST_OS)
       -- Detach control-mode clients left over from previous runs BEFORE any

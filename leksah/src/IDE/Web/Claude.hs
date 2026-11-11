@@ -42,6 +42,7 @@ module IDE.Web.Claude
   , mruClaudePane
   , claudeLatestPlan
   , claudeTranscriptPath
+  , claudeFindTranscript
   , activateMruClaude
   , showLiveSession
   , showTmuxPane
@@ -428,6 +429,22 @@ claudeSessionsFor dir = (`catch` \(_ :: SomeException) -> return []) $ do
           , csLabel    = maybe "(untitled session)" id mlabel
           , csName     = M.lookup sid renamed
           }
+
+-- | Where a session ran, when nothing but its id is known: its transcript is
+-- looked for in every project folder, and its head read for the @cwd@.  A full
+-- directory scan — for one-off recovery, not for a poll.
+claudeFindTranscript :: Text -> IO (Maybe FilePath)
+claudeFindTranscript sid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  home <- getHomeDirectory
+  let root = home </> ".claude" </> "projects"
+      leaf = T.unpack sid <> ".jsonl"
+  ex <- doesDirectoryExist root
+  if not ex then return Nothing else do
+    ds <- listDirectory root
+    found <- filterM doesFileExist [ root </> d </> leaf | d <- ds ]
+    case found of
+      (f : _) -> fmap (dropTrailingPathSeparator . T.unpack) . fst <$> scanHead f
+      []      -> return Nothing
 
 -- | Read a transcript's head for @(cwd, first-user-prompt)@, stopping as soon as
 -- both are found (or after a small line budget) so we never read a huge file.

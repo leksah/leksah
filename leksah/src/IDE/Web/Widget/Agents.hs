@@ -73,9 +73,12 @@ import IDE.Reactive (readCell)
 import IDE.Workspace (WorkspaceService(..), activeProject, prDir)
 import IDE.Web.Agent
        (ForkRequest(..), agentLastSaid, agentManagerStart, agentRefresh,
-        agentResume, agentSuspend, emptyForkRequest, forkAgent,
+        agentResume, agentResumeAll, agentSuspend, emptyForkRequest, forkAgent,
         renameAgentEverywhere, showAgentPane)
-import IDE.Web.AgentInfo (AgentNode(..), agentForest, dismissAgent)
+import IDE.Web.AgentHost (RanOn)
+import IDE.Web.AgentInfo
+       (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
+        interruptedOffer)
 import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
@@ -131,10 +134,14 @@ agentsWidget mruNamesD = do
     pb   <- getPostBuild
     tick <- tickLossyFromPostBuildTime 2
     (forestE, fireForest) <- newTriggerEvent
+    (offerE, fireOffer) <- newTriggerEvent
     -- The read runs OFF the reflex thread: it stats transcripts of exited
     -- agents, and a synchronous performEvent would hitch the whole UI.
-    let refresh = void . forkIO $ agentForest >>= fireForest
+    let refresh = void . forkIO $ do
+          agentForest >>= fireForest
+          interruptedOffer >>= fireOffer
     forestD <- holdUniqDyn =<< holdDyn [] forestE
+    offerD  <- holdUniqDyn =<< holdDyn (Nothing :: Maybe (RanOn, [Text])) offerE
     -- One-line notices (a click that finds no pane, an agent that started or
     -- agent or failed): fired from whichever thread knows, shown as a toast on
     -- the frame thread.
@@ -214,6 +221,33 @@ agentsWidget mruNamesD = do
           Nothing -> toast "Open a project first: the manager starts in the active project"
           Just d  -> agentManagerStart d >>= either toast (const refresh)
 
+    -- The agents a restart took down together (leksah's terminals went away
+    -- under them), offered back once — never started without being asked.
+    -- Older interruptions are not offered wholesale: their cards stay, marked
+    -- ↻, for a week.
+    dyn_ $ ffor offerD $ \case
+      Nothing -> blank
+      Just (host, sids) -> divClass "agents-interrupted" $ do
+        let n = length sids
+            many = if n == 1 then "1 agent was" else T.pack (show n) <> " agents were"
+        elClass "span" "agents-interrupted-text" . text $
+          "↻ " <> many <> " running when leksah's terminals last went away \
+          \(a restart?).  Click a ↻ card to resume one, or:"
+        (allB, _) <- elAttr' "button"
+          ("class" =: "agents-interrupted-btn"
+           <> "title" =: "Resume each of them in its own tab, one at a time") $
+          text ("Resume all " <> T.pack (show n))
+        (noB, _) <- elAttr' "button"
+          ("class" =: "agents-interrupted-btn"
+           <> "title" =: "Don't offer this again — their cards stay, marked ↻") $
+          text "Dismiss"
+        performEvent_ $ ffor (domEvent Click allB) $ \_ -> liftIO . void . forkIO $ do
+          toast ("Resuming " <> T.pack (show n) <> " agents, one at a time…")
+          _ <- agentResumeAll host sids
+          refresh
+        performEvent_ $ ffor (domEvent Click noB) $ \_ -> liftIO . void . forkIO $
+          acknowledgeInterrupted host >> refresh
+
     performEvent_ $ liftIO refresh <$ leftmost [() <$ pb, () <$ tick, hdrE]
     -- Nothing running: say how one starts, rather than showing an empty box.
     dyn_ $ ffor (null <$> forestD) $ \empty' -> if not empty' then blank else
@@ -241,6 +275,7 @@ agentsWidget mruNamesD = do
             , ("busy",      "◆", "working",         colourOf "busy")
             , ("idle",      "●", "idle",            colourOf "idle")
             , ("done",      "✓", "done",            colourOf "done")
+            , ("interrupted", "↻", "interrupted by a restart", colourOf "interrupted")
             , ("suspended", "❚", "suspended",       colourOf "suspended") ]
 
     -- What the list shows, as session → slot.  The top agent first (always in
@@ -339,9 +374,10 @@ rankOf = \case
   "shell"     -> 1
   "starting"  -> 1
   "idle"      -> 2
-  "done"      -> 3
-  "suspended" -> 4
-  _           -> 5
+  "interrupted" -> 3
+  "done"      -> 4
+  "suspended" -> 5
+  _           -> 6
 
 -- | The active project's directory, if there is one.
 activeProjectDir :: IO (Maybe FilePath)
@@ -471,6 +507,21 @@ agentsCss = do
         "margin" -: "0 0 6px 2px"
         "align-self" -: "flex-start"
         padding (px 2) (px 8) (px 2) (px 8)
+    ".agents-pane .agents-interrupted" ? do
+        "margin" -: "0 0 6px 0"
+        padding (px 4) (px 6) (px 4) (px 6)
+        "border" -: "1px solid #db6d28"
+        borderRadius (px 6) (px 6) (px 6) (px 6)
+        fontSize (px 12)
+        "display" -: "flex"
+        "flex-wrap" -: "wrap"
+        "gap" -: "4px 6px"
+        "align-items" -: "center"
+    ".agents-pane .agents-interrupted-text" ? do
+        "flex" -: "1 1 100%"
+        "overflow-wrap" -: "anywhere"
+    ".agents-pane .agents-interrupted-btn" ?
+        padding (px 1) (px 8) (px 1) (px 8)
     ".agents-pane .agents-empty" ? do
         color dimColor
         fontSize (px 12)

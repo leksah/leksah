@@ -24,9 +24,13 @@ module IDE.Web.AgentNames
   , sessionOfRunKey
   , adoptContinuation
   , agentContinuations
+  , agentLastSeen
+  , holdAgentNames
   ) where
 
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
+import Data.IORef (IORef, newIORef, readIORef, atomicWriteIORef)
+import qualified Data.Set as S
 import Control.Exception (catch, SomeException)
 import Control.Monad (mfilter, when)
 
@@ -125,27 +129,55 @@ withNames f = do
 
 -- | The session's name, giving it one if it has none yet.
 agentNameFor :: Text -> IO Text
-agentNameFor sid = withNames $ \now m -> let m' = touch now m sid
-                                         in (m', maybe "" nrName (M.lookup sid m'))
+agentNameFor sid = do
+  held <- readIORef heldRef
+  withNames $ \now m -> let m' = touch held now m sid
+                        in (m', maybe "" nrName (M.lookup sid m'))
 
 -- | Name every one of these sessions that has no name yet, mark them all as
 -- seen, and answer the whole session → name map.  The status poll's call: it
 -- is how a session leksah did NOT start (@claude -c@, one typed in a terminal)
 -- gets a name.
 touchAgentNames :: [Text] -> IO (Map Text Text)
-touchAgentNames sids = withNames $ \now m ->
-  let m' = foldl' (touch now) m sids in (m', M.map nrName m')
+touchAgentNames sids = do
+  held <- readIORef heldRef
+  withNames $ \now m ->
+    let m' = foldl' (touch held now) m sids in (m', M.map nrName m')
+
+-- | When each session was last seen running (POSIX seconds; accurate to
+-- 'seenSlack'), without changing anything.  Sessions that carried on under
+-- another id are left out: their own clock stopped when they handed over.
+agentLastSeen :: IO (Map Text Double)
+agentLastSeen = withNames $ \_ m ->
+  (m, M.map nrSeen (M.filter (isNothing . nrContinuedIn) m))
+
+-- | Sessions that keep their names whatever their clock says: suspended
+-- agents, and agents interrupted by a restart, are still on the team, and
+-- one resumed after a week must not come back to find its name handed to a
+-- newcomer.  Replaces the previous set (process-local; whoever tracks those
+-- states calls it again whenever they change).
+holdAgentNames :: [Text] -> IO ()
+holdAgentNames = atomicWriteIORef heldRef . S.fromList
+
+{-# NOINLINE heldRef #-}
+heldRef :: IORef (S.Set Text)
+heldRef = unsafePerformIO (newIORef S.empty)
+
+-- | Is this record's name still taken?
+reserved :: S.Set Text -> Double -> Text -> NameRec -> Bool
+reserved held now sid r = isNothing (nrContinuedIn r)
+  && (now - nrSeen r < reserveFor || sid `S.member` held)
 
 -- | The session → name map, without changing anything.
 agentNames :: IO (Map Text Text)
 agentNames = withNames $ \_ m -> (m, M.map nrName m)
 
 -- | Mark one session seen, naming it first if it has no name.
-touch :: Double -> Map Text NameRec -> Text -> Map Text NameRec
-touch now m sid = case M.lookup sid m of
+touch :: S.Set Text -> Double -> Map Text NameRec -> Text -> Map Text NameRec
+touch held now m sid = case M.lookup sid m of
   Just r | now - nrSeen r < seenSlack -> m
          | otherwise                  -> M.insert sid r { nrSeen = now } m
-  Nothing -> M.insert sid (NameRec (pick now m sid) now Nothing) m
+  Nothing -> M.insert sid (NameRec (pick held now m sid) now Nothing) m
 
 -- | A name for a new session: an animal no other session holds (seen within
 -- 'reserveFor'), the one whose last use is oldest — so a name that has just
@@ -153,14 +185,13 @@ touch now m sid = case M.lookup sid m of
 -- confusing.  Ties (never-used animals) go by a hash of the session id, so the
 -- choice doesn't always walk the alphabet.  With every animal held, one gets a
 -- number (@Wren-2@).
-pick :: Double -> Map Text NameRec -> Text -> Text
-pick now m sid = case sortOn order free of
+pick :: S.Set Text -> Double -> Map Text NameRec -> Text -> Text
+pick heldSids now m sid = case sortOn order free of
     (n : _) -> n
     []      -> numbered (2 :: Int)
   where
     -- (A session that continued elsewhere has handed its name on.)
-    held    = [ nrName r | r <- M.elems m, now - nrSeen r < reserveFor
-                         , isNothing (nrContinuedIn r) ]
+    held    = [ nrName r | (s, r) <- M.toList m, reserved heldSids now s r ]
     free    = [ a | a <- rotated, a `notElem` held ]
     lastUse = M.fromListWith max [ (nrName r, nrSeen r) | r <- M.elems m ]
     rotated = let (a, b) = splitAt (hashOf sid `mod` length agentAnimals) agentAnimals
@@ -179,10 +210,10 @@ renameAgent :: Text -> Text -> IO (Either Text Text)
 renameAgent sid raw
   | T.null name = return (Left "a name needs at least one letter or digit")
   | T.length name > 24 = return (Left "names are at most 24 characters")
-  | otherwise = withNames $ \now m ->
+  | otherwise = readIORef heldRef >>= \held -> withNames $ \now m ->
       let clash = [ s | (s, r) <- M.toList m, s /= sid
                       , T.toLower (nrName r) == T.toLower name
-                      , now - nrSeen r < reserveFor, isNothing (nrContinuedIn r) ]
+                      , reserved held now s r ]
       in case clash of
            (_ : _) -> (m, Left (name <> " is already another agent's name"))
            []      -> (M.insert sid (NameRec name now Nothing) m, Right name)

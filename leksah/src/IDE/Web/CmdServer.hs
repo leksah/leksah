@@ -811,7 +811,7 @@ handleConn app conn = do
             forkAgent fr >>= \case
               Left err       -> reply ("agent fork: " <> err <> "\n")
               Right (_, msg) -> reply msg
-        ("list" : _)  -> agentList me >>= reply
+        ("list" : rest) -> agentList ("--all" `elem` rest) me >>= reply
         ("me" : _)    -> reply $ case me of
             Just sid -> sid <> "\n"
             Nothing  -> "not called from a Claude Code session\n"
@@ -1011,6 +1011,8 @@ handleConn app conn = do
       , "      --dir DIR         work here (only with --fresh: see `agent fork`)"
       , "  list                  live sessions: id, name, state (waiting/busy/idle),"
       , "                        detail, pane, dir, title"
+      , "      --all             also the agents not running but waiting to be"
+      , "                        brought back (interrupted by a restart, suspended)"
       , "  find QUERY            which agent fits this? ranked by what they are doing"
       , "  roles                 the roles `fork --as` can start (.claude/agents/*.md)"
       , "  done --summary TEXT   say you have finished (✓ in the Agents pane; the"

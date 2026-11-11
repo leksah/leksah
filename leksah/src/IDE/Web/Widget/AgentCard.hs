@@ -326,6 +326,7 @@ stateWord = \case
   "done"      -> "done"
   "starting"  -> "starting"
   "suspended" -> "suspended"
+  "interrupted" -> "interrupted"
   _           -> "exited"
 
 -- | Shape AND colour per state, like the workspace tree's badges, so the
@@ -339,6 +340,7 @@ glyphOf = \case
   "done"      -> "\10003"  -- ✓ said it is done (`agent done`)
   "starting"  -> "\9678"   -- ◎ a pane exists, no session registered yet
   "suspended" -> "\10074"  -- ❚ suspended: its process ended on purpose
+  "interrupted" -> "\8635" -- ↻ its host went down under it: resume it
   _           -> "\9675"   -- ○ exited
 
 -- | The state colours — the same literal colours as every other Claude status
@@ -352,6 +354,7 @@ colourOf = \case
   "done"      -> "#3fb950"
   "starting"  -> "#d29922"
   "suspended" -> "#58a6ff"
+  "interrupted" -> "#db6d28"
   _           -> "#8b949e"
 
 -- | Card styling, shared by both panes.  The face is three lines of the card's
