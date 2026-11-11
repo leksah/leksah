@@ -73,7 +73,7 @@ import IDE.Reactive (readCell)
 import IDE.Workspace (WorkspaceService(..), activeProject, prDir)
 import IDE.Web.Agent
        (ForkRequest(..), agentLastSaid, agentManagerStart, agentRefresh,
-        agentResume, agentResumeAll, agentSuspend, emptyForkRequest, forkAgent,
+        agentManagerTriage, agentResume, agentResumeAll, agentSuspend, emptyForkRequest, forkAgent,
         renameAgentEverywhere, showAgentPane)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.AgentInfo
@@ -237,6 +237,13 @@ agentsWidget mruNamesD = do
           ("class" =: "agents-interrupted-btn"
            <> "title" =: "Resume each of them in its own tab, one at a time") $
           text ("Resume all " <> T.pack (show n))
+        (pickB, _) <- elAttr' "button"
+          ("class" =: "agents-interrupted-btn"
+           <> "title" =: "Ask the manager agent (starting one if there is none) \
+                         \to resume only the ones you probably still want — \
+                         \not the finished, superseded or throwaway ones — and \
+                         \to tell you which it left and why") $
+          text "Let the manager choose"
         (noB, _) <- elAttr' "button"
           ("class" =: "agents-interrupted-btn"
            <> "title" =: "Don't offer this again — their cards stay, marked ↻") $
@@ -245,8 +252,37 @@ agentsWidget mruNamesD = do
           toast ("Resuming " <> T.pack (show n) <> " agents, one at a time…")
           _ <- agentResumeAll host sids
           refresh
+        performEvent_ $ ffor (domEvent Click pickB) $ \_ -> liftIO . void . forkIO $ do
+          toast "Asking the manager which agents to resume…"
+          d <- activeProjectDir
+          agentManagerTriage d (Just host) sids >>= either toast toast
+          refresh
         performEvent_ $ ffor (domEvent Click noB) $ \_ -> liftIO . void . forkIO $
           acknowledgeInterrupted host >> refresh
+
+    -- Once the offer is answered (or for agents from older interruptions) the
+    -- banner stays away — but with the ↻ filter on, the manager can still be
+    -- asked to sort out every interrupted agent that is left.
+    let leftD = ffor ((,,) <$> stateD <*> offerD <*> forestD) $ \(st, off, f) ->
+          if st == Just "interrupted" && null off
+            then [ anSession n | n <- flatten f, anState n == "interrupted" ] else []
+    dyn_ $ ffor leftD $ \left -> if null left then blank else
+      divClass "agents-interrupted" $ do
+        elClass "span" "agents-interrupted-text" . text $
+          "↻ " <> T.pack (show (length left)) <> " interrupted agents left. \
+          \Click a card to resume one, or:"
+        (pickB, _) <- elAttr' "button"
+          ("class" =: "agents-interrupted-btn"
+           <> "title" =: "Ask the manager agent (starting one if there is none) \
+                         \to resume only the ones you probably still want — \
+                         \not the finished, superseded or throwaway ones — and \
+                         \to tell you which it left and why") $
+          text "Let the manager choose"
+        performEvent_ $ ffor (domEvent Click pickB) $ \_ -> liftIO . void . forkIO $ do
+          toast "Asking the manager which agents to resume…"
+          d <- activeProjectDir
+          agentManagerTriage d Nothing left >>= either toast toast
+          refresh
 
     performEvent_ $ liftIO refresh <$ leftmost [() <$ pb, () <$ tick, hdrE]
     -- Nothing running: say how one starts, rather than showing an empty box.

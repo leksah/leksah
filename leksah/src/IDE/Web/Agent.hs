@@ -59,6 +59,7 @@ module IDE.Web.Agent
   , agentSuspend
   , agentResume
   , agentResumeAll
+  , agentManagerTriage
   , agentRefresh
   , agentManagerStatus
   , agentManagerStart
@@ -641,6 +642,105 @@ agentResumeAll host sids = do
   forM (zip [0 :: Int ..] sids) $ \(k, sid) -> do
     when (k > 0) (threadDelay 1500000)
     either id id <$> agentResume sid
+
+-- | "Let the manager choose": hand the agents a restart took down together to
+-- the team's manager, which resumes only the ones the user probably still
+-- wants — not the finished, the superseded or the throwaway ones — and says
+-- which it left and why.  Starts the manager with this as its first task when
+-- there is none (in @mdir@, else where most of the agents ran), resumes it
+-- first when it is not running, and waits for it to be ready rather than
+-- typing into an approval prompt.  The offer (@mhost@, when it came from
+-- one) is answered either way: the agents left behind keep their ↻ cards.
+agentManagerTriage :: Maybe FilePath -> Maybe RanOn -> [Text] -> IO (Either Text Text)
+agentManagerTriage mdir mhost sids0 = do
+  mgr <- agentManager
+  let mgrSid = aiSession <$> mgr
+  forest <- agentForest
+  let flat ns = concatMap (\n -> n : flat (anChildren n)) ns
+      nodes = [ n | n <- flat forest, anSession n `elem` sids0
+                  , Just (anSession n) /= mgrSid, anState n == "interrupted" ]
+  if null nodes then return (Left "There are no interrupted agents left to choose from.") else do
+    let brief = triageBrief nodes
+    case mgr of
+      Nothing -> do
+        let dirs = map anDir nodes
+            common = fst . last $ sortOn snd (M.toList (M.fromListWith (+) [ (d, 1 :: Int) | d <- dirs ]))
+            dir = fromMaybe common mdir
+        r <- forkAgent (emptyForkRequest dir)
+               { frFresh = True, frDir = Just dir, frPlace = PlaceTab
+               , frManager = True, frPrompt = Just brief }
+        case r of
+          Left err -> return (Left err)
+          Right _  -> do
+            mapM_ acknowledgeInterrupted mhost
+            return (Right "Started a manager to choose which agents to resume.")
+      Just i -> do
+        let sid = aiSession i
+        name <- agentNameFor sid
+        live <- claudeLiveBySession
+        started <- if sid `M.member` live then return (Right "")
+                   else agentResume sid
+        case started of
+          Left err -> return (Left err)
+          Right _  -> waitReady sid (120 :: Int) >>= \case
+            False -> return . Left $ name <> " (the manager) is not ready for input — \
+                                             \it may be waiting on an approval prompt."
+            True  -> do
+              _ <- agentSend sid True brief
+              mapM_ acknowledgeInterrupted mhost
+              return (Right ("Asked " <> name <> " to choose which agents to resume."))
+  where
+    -- Running and not blocked on a prompt (busy is fine: a submitted message
+    -- queues until its turn ends).
+    waitReady _ 0 = return False
+    waitReady sid k = do
+      live <- claudeLiveBySession
+      case M.lookup sid live of
+        Just l | clStatus l /= Just "waiting" -> paneForSession sid >>= \case
+          Just _  -> return True
+          Nothing -> threadDelay 1000000 >> waitReady sid (k - 1)
+        _ -> threadDelay 1000000 >> waitReady sid (k - 1)
+
+-- | The manager's brief for 'agentManagerTriage': what happened, how to judge
+-- each agent, and one line of what leksah knows about each.
+triageBrief :: [AgentNode] -> Text
+triageBrief ns = T.unlines $
+  [ "The machine restarted (or leksah's terminals went away) and these "
+      <> T.pack (show (length ns)) <> " agents were interrupted mid-session. \
+    \Resume only the ones the user is likely to want back, with \
+    \`leksah-cmd agent resume NAME` (one at a time)."
+  , ""
+  , "Do NOT resume an agent that is probably not needed any more:"
+  , "- it said it was done, or its work is evidently finished (its PR is merged, \
+    \its last message reports the task complete with nothing left to do);"
+  , "- it has been superseded: another agent — running now, or in this list — \
+    \has taken over the same task, branch or PR, or a later fork carries its \
+    \work on (resume only the most recent);"
+  , "- it was a throwaway: a test of leksah's agent tools, a one-question \
+    \helper that has answered, a forked helper whose task is complete or whose \
+    \parent is not being resumed."
+  , "When in doubt, resume agents with unfinished work, especially on an open \
+    \branch or PR. Look before deciding: `leksah-cmd agent read NAME --last 3` \
+    \(what it last said), `leksah-cmd agent list` (who is running now), and \
+    \git / gh for the state of its branch and PR. Do not resume yourself."
+  , ""
+  , "Then reply with a short table — name, resumed or left, a one-line reason. \
+    \The ones you leave keep their ↻ card in the Agents pane, so the user can \
+    \still resume them."
+  , ""
+  , "The interrupted agents:" ]
+  <> concatMap one ns
+  where
+    one n =
+      [ "- " <> (if T.null (anName n) then T.take 8 (anSession n) else anName n)
+          <> " (" <> T.take 8 (anSession n) <> ") · " <> T.pack (anDir n)
+          <> maybe "" (" · branch " <>) (anBranch n)
+          <> maybe "" (\(k, st) -> " · PR #" <> T.pack (show k) <> " " <> st) (anPr n)
+          <> maybe "" (" · role " <>) (anRole n)
+          <> maybe "" (" · started by " <>) (anParentName n)
+          <> (if T.null (anAge n) then "" else " · " <> anAge n)
+      , "  title: " <> T.take 160 (T.takeWhile (/= '\n') (anTitle n)) ]
+      <> [ "  said it was done: " <> T.take 200 d | Just d <- [anDone n] ]
 
 -- | @agent refresh@: ask an agent to rewrite its title, description and bio
 -- (what the Agents pane's ⟳ does).
