@@ -54,6 +54,7 @@ import IDE.App (appConfig, getGlobalApp)
 import IDE.Config
        (Config(..), RemoteC(..), WakeOnLan(..), currentConfig, saveConfig)
 import IDE.Web.WakeOnLan (detectMac, parseMac, wakeAndWait)
+import IDE.Web.TmuxServer (remoteTmux)
 import IDE.Utils.RemoteExec (runSsh)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.TextAssist (noTextAssist)
@@ -181,6 +182,17 @@ addServerIO host skipProbe mwol progress fire =
                         , rcWake  = maybe (rcWake rc)
                             (\w -> filter ((/= h) . wolHost) (rcWake rc) <> [w]) mwake } }
                 fire (Right ())
+              -- …and that it can run tmux there (its own, or nix's).
+              checkTmuxThenSave = do
+                progress ("Checking for tmux on " <> h <> "…")
+                remoteTmux h >>= \case
+                  Left err -> fire (Left (True, err <> " — press Add again to add it anyway."))
+                  Right (_, viaNix) -> do
+                    if viaNix
+                      then progress ("tmux is not installed on " <> h
+                                     <> " — using nixpkgs' (kept in ~/.cache/leksah-tmux there).")
+                      else return ()
+                    save
           if known && isNothing mwake
             then fire (Left (False, h <> " is already in the server list."))
           else if known || skipProbe then save
@@ -188,12 +200,12 @@ addServerIO host skipProbe mwol progress fire =
             progress ("Checking " <> h <> "…")
             probed <- probeHost h
             case (probed, mwake) of
-              (Right (), _) -> save
+              (Right (), _) -> checkTmuxThenSave
               (Left err, Nothing) -> fire (Left (True, err))
               (Left _, Just w) -> do
                 progress (h <> " is not answering — sent Wake-on-LAN, waiting for it to come up (up to 2 minutes)…")
                 wakeAndWait w >>= \case
-                  Right True  -> save
+                  Right True  -> checkTmuxThenSave
                   Right False -> fire (Left (True, h <> " did not come up after the Wake-on-LAN packet — press Add again to add it anyway."))
                   Left e      -> fire (Left (False, "Could not send the Wake-on-LAN packet: " <> e))
 

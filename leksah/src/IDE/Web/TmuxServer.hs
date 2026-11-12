@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | WHICH tmux server a command runs on, and the one place that runs it.
 --
@@ -25,6 +26,7 @@ module IDE.Web.TmuxServer
   , qualifyTmuxId
   , tmuxOnIds
   , tmuxRunOn
+  , remoteTmux
   , tmuxCmdOn
   , tmuxOkOn
   , tmuxOutOn
@@ -35,7 +37,11 @@ module IDE.Web.TmuxServer
 import Control.Exception (SomeException, catch)
 import Data.Aeson
        (FromJSON(..), ToJSON(..), Value(..), object, withObject, (.:), (.=))
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (isPrefixOf)
+import qualified Data.Map.Strict as M
+import System.IO.Unsafe (unsafePerformIO)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -116,13 +122,19 @@ tmuxRunOn srv args input = (`catch` \(_ :: SomeException) -> return Nothing) $
     LocalServer -> findExecutable "tmux" >>= maybe (return Nothing) (\tmux ->
         Just <$> readProcessWithExitCode tmux
                    (["-L", tmuxServerSocket] <> args) input)
-    SshServer host -> Just <$> readProcessWithExitCode "ssh"
+    SshServer host -> remoteTmux host >>= \case
+      -- (no tmux there: the reason, as the command's error)
+      Left err       -> return (Just (ExitFailure 127, "", T.unpack err))
+      Right (bin, _) -> Just <$> readProcessWithExitCode "ssh"
         [ "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", T.unpack host
-        , unwords ("tmux" : map shellQuote args) ] input
-  where
-    shellQuote s = "'" <> concatMap esc s <> "'"
-    esc '\'' = "'\\''"
-    esc c    = [c]
+        , unwords (shellQuote bin : map shellQuote args) ] input
+
+
+-- | Single-quote one word for a remote (ssh) shell.
+shellQuote :: String -> String
+shellQuote s = "'" <> concatMap esc s <> "'"
+  where esc '\'' = "'\\''"
+        esc c    = [c]
 
 -- | Does a target-ish flag (@-t@, @-s@) carry a server-qualified id?
 foreignTarget :: [String] -> Bool
@@ -130,6 +142,64 @@ foreignTarget (f : v : rest)
   | f `elem` ["-t", "-s"], "ssh://" `isPrefixOf` v = True
   | otherwise = foreignTarget (v : rest)
 foreignTarget _ = False
+
+-- | The tmux to run on remote @host@ (cached per host once found): its own
+-- @tmux@ if it has one; otherwise — when it has nix, as NixOS does — nixpkgs'
+-- tmux, built once into @~\/.cache\/leksah-tmux@ on that host (an out-link,
+-- so the garbage collector keeps it); otherwise a 'Left' saying tmux is not
+-- installed there.  The 'Bool' is True for the nix fallback.
+remoteTmux :: Text -> IO (Either Text (String, Bool))
+remoteTmux host = M.lookup host <$> readIORef remoteTmuxRef >>= \case
+  Just bin -> return (Right (bin, bin /= "tmux"))
+  -- Serialised per host: every tmux command for it waits on this, and the
+  -- first nix build of tmux can take a minute or more — concurrent callers
+  -- must not each start one.  (Re-checks the cache once it has the lock.)
+  Nothing -> hostLock host >>= \lock -> withMVar lock $ \_ ->
+   M.lookup host <$> readIORef remoteTmuxRef >>= \case
+   Just bin -> return (Right (bin, bin /= "tmux"))
+   Nothing  -> (`catch` \(e :: SomeException) -> return (Left (T.pack (show e)))) $ do
+    (c, out, err) <- readProcessWithExitCode "ssh"
+      [ "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", T.unpack host
+      , "sh -c " <> shellQuote script ] ""
+    let bin = lastLine out
+    case c of
+      ExitSuccess | not (null bin) -> do
+        atomicModifyIORef' remoteTmuxRef (\m -> (M.insert host bin m, ()))
+        return (Right (bin, bin /= "tmux"))
+      ExitFailure 3 -> return . Left $
+        "tmux is not installed on " <> host
+        <> " (and it has no nix to run it with) — install tmux there."
+      ExitFailure 255 -> return . Left $ "Cannot reach " <> host <> firstErr err
+      _ -> return . Left $
+        "tmux is not installed on " <> host
+        <> ", and building it with nix failed" <> firstErr err
+  where
+    lastLine = reverse . takeWhile (/= '\n') . dropWhile (== '\n') . reverse
+    firstErr e = case filter (not . null) (lines e) of
+      (l : _) -> ": " <> T.pack l
+      []      -> "."
+    script = unwords
+      [ "if command -v tmux >/dev/null 2>&1; then echo tmux;"
+      , "elif [ -x \"$HOME/.cache/leksah-tmux/bin/tmux\" ]; then echo \"$HOME/.cache/leksah-tmux/bin/tmux\";"
+      , "elif command -v nix >/dev/null 2>&1; then mkdir -p \"$HOME/.cache\" &&"
+      , "nix --extra-experimental-features 'nix-command flakes' build nixpkgs#tmux"
+      , "--out-link \"$HOME/.cache/leksah-tmux\" >&2 && echo \"$HOME/.cache/leksah-tmux/bin/tmux\";"
+      , "else exit 3; fi" ]
+
+hostLock :: Text -> IO (MVar ())
+hostLock host = do
+  fresh <- newMVar ()
+  atomicModifyIORef' remoteTmuxLocks $ \m -> case M.lookup host m of
+    Just l  -> (m, l)
+    Nothing -> (M.insert host fresh m, fresh)
+
+{-# NOINLINE remoteTmuxLocks #-}
+remoteTmuxLocks :: IORef (M.Map Text (MVar ()))
+remoteTmuxLocks = unsafePerformIO (newIORef M.empty)
+
+{-# NOINLINE remoteTmuxRef #-}
+remoteTmuxRef :: IORef (M.Map Text String)
+remoteTmuxRef = unsafePerformIO (newIORef M.empty)
 
 -- | Run a command for its effect, ignoring the outcome.
 tmuxCmdOn :: TmuxServer -> [String] -> IO ()

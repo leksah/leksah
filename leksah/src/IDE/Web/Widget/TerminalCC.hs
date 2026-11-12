@@ -80,7 +80,7 @@ module IDE.Web.Widget.TerminalCC
 
 import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newMVar, withMVar)
-import Control.Exception (try, SomeException)
+import Control.Exception (AsyncException(ThreadKilled), SomeException, throwIO, try)
 import Control.Lens ((^.))
 import Control.Monad (forM, forM_, forever, unless, when, void)
 import Control.Monad.IO.Class (liftIO)
@@ -128,6 +128,7 @@ import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.WindowBridge (setFocusedLeaf)
 import IDE.Web.NewLwRequest (reportWindowGone)
 import IDE.Web.WakeOnLan (ensureAwake)
+import IDE.Web.TmuxServer (remoteTmux)
 import IDE.Web.Dom
        (nextFrame, observeResize, holdsFocus, activeTagName, focusElement,
         focusFirst, toggleClassWhere)
@@ -335,25 +336,33 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
         cc <- case T.stripPrefix "ssh://" sessionId of
             -- (a sleeping host with Wake-on-LAN set up is woken first; the
             -- "(connecting…)" placeholder shows meanwhile)
-            Just hostTarget -> ensureAwake (T.takeWhile (/= '#') hostTarget) >>
-                let (host, hash) = T.breakOn "#" hostTarget
-                    attach = case T.stripPrefix "#" hash of
-                        Just target | not (T.null target) ->
-                            ["attach-session", "-t", T.unpack target]
-                        _ -> ["new-session", "-A", "-s", "leksah"]
-                    -- ssh joins the remote command's words with spaces and hands
-                    -- them to the login shell, so a tmux session id like "$0"
-                    -- (what the Terminals tree keys a listed remote session by)
-                    -- would be expanded by the remote shell — to the shell's own
-                    -- name — unless every word is single-quoted for it.  Without
-                    -- this, attaching any listed remote session ("ssh://host#$N")
-                    -- ran `attach-session -t <shellname>`, no such session, and
-                    -- the connection closed at once.  Same escaping as 'sshTmux'.
-                    shellQuote s = "'" <> concatMap esc s <> "'"
-                    esc '\'' = "'\\''"
-                    esc c    = [c]
-                    remoteCmd = unwords (map shellQuote ("tmux" : "-C" : attach))
-                in startCCWith
+            Just hostTarget -> do
+              let host0 = T.takeWhile (/= '#') hostTarget
+              _ <- ensureAwake host0
+              -- The tmux to run there: its own, or nix's (see 'remoteTmux');
+              -- none at all → say so on the connection-error page and stop
+              -- (ThreadKilled ends this thread quietly).
+              bin <- remoteTmux host0 >>= \case
+                Right (b, _) -> return b
+                Left err     -> fireConnErr err >> throwIO ThreadKilled
+              let (host, hash) = T.breakOn "#" hostTarget
+                  attach = case T.stripPrefix "#" hash of
+                      Just target | not (T.null target) ->
+                          ["attach-session", "-t", T.unpack target]
+                      _ -> ["new-session", "-A", "-s", "leksah"]
+                  -- ssh joins the remote command's words with spaces and hands
+                  -- them to the login shell, so a tmux session id like "$0"
+                  -- (what the Terminals tree keys a listed remote session by)
+                  -- would be expanded by the remote shell — to the shell's own
+                  -- name — unless every word is single-quoted for it.  Without
+                  -- this, attaching any listed remote session ("ssh://host#$N")
+                  -- ran `attach-session -t <shellname>`, no such session, and
+                  -- the connection closed at once.  Same escaping as 'sshTmux'.
+                  shellQuote s = "'" <> concatMap esc s <> "'"
+                  esc '\'' = "'\\''"
+                  esc c    = [c]
+                  remoteCmd = unwords (map shellQuote (bin : "-C" : attach))
+              startCCWith
                     [ "ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"
                     , T.unpack host, remoteCmd ]
             Nothing -> startCC ["-L", tmuxSocket] ["attach-session", "-t", T.unpack sessionId]
