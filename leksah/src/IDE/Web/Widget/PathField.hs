@@ -76,6 +76,7 @@ import IDE.Utils.RemoteExec (remoteHomeDir)
 import IDE.Utils.RemotePath (renderRemotePath)
 import IDE.Web.FS (fsListDirectory)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | The server name that means "this machine".  Not an ssh host, so it can
 -- never collide with one ('rcHosts' entries are host names).
@@ -141,7 +142,7 @@ popupField fid placeholder initial setE recentsD mkCompletions =
                    <> "class" =: "leksah-popup-field"
                    -- The browser's own autofill dropdown would sit on top of
                    -- ours and eat the arrow keys.
-                   <> "autocomplete" =: "off" <> "spellcheck" =: "false"
+                   <> noTextAssist
                    <> "style" =: fieldStyle)
       let valueD = _textInput_value ti
           typedE = _textInput_input ti          -- user keystrokes only, not setValue

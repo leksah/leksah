@@ -1655,6 +1655,13 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- window page-zoom helpers.  Eval'd BEFORE the blobs below, which use them.
   _ <- eval zoomJs
 
+  -- No spell checking by default, anywhere (the attribute is inherited): every
+  -- text field here takes hosts, paths, commands or identifiers.  Each field
+  -- also carries the full 'IDE.Web.TextAssist.noTextAssist' set, which this
+  -- cannot give it (autocorrect / autocapitalize / autocomplete are not
+  -- inherited).
+  _ <- eval ("document.documentElement.setAttribute('spellcheck','false');" :: Text)
+
   -- Drag-to-resize the side (tall) and bottom (wide1) panes by their divider
   -- edge handles; the widths persist in localStorage across reloads.
   _ <- eval resizeBarsJs

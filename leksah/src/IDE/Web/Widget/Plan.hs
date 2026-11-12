@@ -47,6 +47,7 @@ import IDE.Web.Claude (claudeLatestPlan, mruClaudePane)
 import IDE.Web.ReplTmux (sendKeysTo)
 import IDE.Web.Events (PlanEvents)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 planWidget
   :: forall t m . MonadWidget t m
@@ -86,7 +87,7 @@ planWidget dir transcript selectE = divClass "plan" $ do
     ti <- textInput $ (def :: TextInputConfig t)
       { _textInputConfig_attributes = constDyn
           ("placeholder" =: "what to change — sent with “tell Claude what to change”"
-           <> "style" =: "flex:1 1 auto;min-width:0") }
+           <> "style" =: "flex:1 1 auto;min-width:0" <> noTextAssist) }
     (sendEl, _) <- elAttr' "button" ("class" =: "review-btn") $ text "Revise"
     performEvent_ $ ffor (tag (current (_textInput_value ti))
                               (domEvent Click sendEl)) $ \note ->

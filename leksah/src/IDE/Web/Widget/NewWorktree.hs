@@ -39,6 +39,7 @@ import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
 import IDE.Web.Worktree (newClaudeWorktree, slugify)
 import IDE.Workspace (projectOpenPath)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | Render the modal for starting a Claude session in a fresh worktree of the
 -- repo containing @dir@.  Returns an 'Event' that fires (once) when the caller
@@ -56,7 +57,7 @@ newWorktreeDialog dir = do
                   \ never step on each other's files.  Repo: " <> T.pack dir)
         nameTi <- textInput $ def & attributes .~ constDyn
             ("placeholder" =: "task name — e.g. fix flaky tests"
-             <> "style" =: fieldStyle)
+             <> "style" =: fieldStyle <> noTextAssist)
         -- Live preview of what will be created.
         elAttr "p" ("style" =: hintStyle) $
             dynText $ ffor (_textInput_value nameTi) $ \n ->

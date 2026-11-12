@@ -53,6 +53,7 @@ import IDE.Config
        (Config(..), RemoteC(..), currentConfig, saveConfig)
 import IDE.Utils.RemoteExec (runSsh)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | Render the modal.  Returns an 'Event' that fires (once) when the caller
 -- should tear the modal down: on Cancel, or after a server is successfully
@@ -69,7 +70,7 @@ addServerDialog = do
             text "Add Server (over ssh)"
         hostTi <- textInput $ def & attributes .~ constDyn
             ("placeholder" =: "ssh host — e.g. user@host or an ssh-config alias"
-             <> "style" =: fieldStyle)
+             <> "style" =: fieldStyle <> noTextAssist)
         let failE = fmapMaybe (either Just (const Nothing)) resultE
         errD <- holdDyn "" $ leftmost
             [ snd <$> failE

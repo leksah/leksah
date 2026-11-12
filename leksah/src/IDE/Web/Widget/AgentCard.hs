@@ -61,6 +61,7 @@ import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.Dom (focusElement)
 import GHCJS.DOM.HTMLInputElement (select)
 import GHCJS.DOM.Types (Element(..), HTMLInputElement(..), uncheckedCastTo)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | What a card's buttons do.  Each runs off the reflex thread.
 data CardActions = CardActions
@@ -136,7 +137,7 @@ agentCard acts mustD startOpen nD = mdo
       inp <- inputElement $ def
         & inputElementConfig_initialValue .~ anName n0
         & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
-            ("class" =: "agent-card-rename" <> "spellcheck" =: "false")
+            ("class" =: "agent-card-rename" <> noTextAssist)
       -- Focus it with the current name selected, so typing replaces it.  Not
       -- at postBuild itself: the input is not attached to the page yet then
       -- (wkwebview batches DOM changes), and an unattached element cannot take

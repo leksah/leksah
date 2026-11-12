@@ -168,6 +168,7 @@ library
         IDE.Web.AgentFace
         IDE.Web.AgentInfo
         IDE.Web.AgentHost
+        IDE.Web.TextAssist
         IDE.Web.AgentNames
         IDE.Web.AgentRoles
         IDE.Web.Widget.AgentCard

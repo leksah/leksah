@@ -44,6 +44,7 @@ import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Workspace (setProjectCmdPrefix, wsCell, wsCmdPrefix)
 import IDE.Ws.Types (ProjectKey(..))
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | Render the modal for a project.  Reads the project's current command
 -- prefix, lets the user edit it, and on Save persists it (empty clears it).
@@ -66,7 +67,8 @@ remoteSettingsDialog pk = do
             text "Command prefix (e.g. nix develop -c) — used to open terminals, and to run tools on remote projects:"
         prefTi <- textInput $ def
             & attributes .~ constDyn
-                ("placeholder" =: "e.g. nix develop -c" <> "style" =: fieldStyle)
+                ("placeholder" =: "e.g. nix develop -c" <> "style" =: fieldStyle
+                 <> noTextAssist)
             & textInputConfig_initialValue .~ current0
         (saveEl, _)   <- elAttr' "button" ("style" =: primaryBtnStyle) $ text "Save"
         (cancelEl, _) <- elAttr' "button" ("style" =: btnStyle) $ text "Cancel"

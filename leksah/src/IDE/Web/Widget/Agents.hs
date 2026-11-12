@@ -88,6 +88,7 @@ import IDE.Web.Widget.AgentCard
 import IDE.Web.Command (Command(CommandShowTeam))
 import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | What the cards' buttons do, for a pane that shows notices with @toast@ and
 -- re-reads the agents with @refresh@.  Shared with the Team pane.
@@ -203,7 +204,7 @@ agentsWidget mruNamesD = do
       inp <- inputElement $ def
         & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
             ("class" =: "agents-search" <> "placeholder" =: "Search agents  (/)"
-             <> "spellcheck" =: "false")
+             <> noTextAssist)
       return (hdr', stE, _inputElement_value inp, flat')
     -- The state filter: click a chip to show only that state, click it again
     -- (or another) to change.

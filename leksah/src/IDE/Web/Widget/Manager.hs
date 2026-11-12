@@ -51,6 +51,7 @@ import IDE.Web.Widget.AgentCard (colourOf, displayName)
 import IDE.Web.Widget.Agents (activeProjectDir)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import GHCJS.DOM.Element (getScrollHeight, setScrollTop)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | What the pane shows: the manager (if there is one) and its last turns.
 data View = View
@@ -153,7 +154,7 @@ mdoInput toast soon mgrD = do
   rec inp <- inputElement $ def
         & inputElementConfig_setValue .~ ("" <$ sentE)
         & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
-            ( "class" =: "manager-line" <> "spellcheck" =: "false"
+            ( "class" =: "manager-line" <> noTextAssist
            <> "placeholder" =: "Tell the manager what you need…  (Enter to send)" )
       (b, _) <- elAttr' "button" ("class" =: "manager-btn") (text "Send")
       let goE = leftmost [keypress Enter inp, domEvent Click b]

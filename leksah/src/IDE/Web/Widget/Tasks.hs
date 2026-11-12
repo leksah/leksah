@@ -42,6 +42,7 @@ import IDE.Web.ClaudeQueue
         queueStartNow, requestCompare)
 import IDE.Web.Worktree (requestReview)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 tasksWidget
   :: forall t m . MonadWidget t m
@@ -61,11 +62,12 @@ tasksWidget seedDir = divClass "tasks" $ do
     dirTi <- textInput $ (def :: TextInputConfig t)
       { _textInputConfig_initialValue = T.pack seedDir
       , _textInputConfig_attributes   = constDyn
-          ("placeholder" =: "project directory" <> "class" =: "tasks-dir") }
+          ("placeholder" =: "project directory" <> "class" =: "tasks-dir"
+           <> noTextAssist) }
     promptTi <- textInput $ (def :: TextInputConfig t)
       { _textInputConfig_attributes = constDyn
           ("placeholder" =: "task prompt — e.g. add property tests for the parser"
-           <> "class" =: "tasks-prompt") }
+           <> "class" =: "tasks-prompt" <> noTextAssist) }
     -- Compare-N-approaches: ×N runs the same prompt in N separate worktree
     -- sessions (tagged "approach k/N"), each reviewed independently.
     countTi <- textInput $ (def :: TextInputConfig t)

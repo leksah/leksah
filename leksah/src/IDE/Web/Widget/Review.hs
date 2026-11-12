@@ -74,6 +74,7 @@ import IDE.Web.Worktree
 import IDE.Workspace (workspaceRemoveProject)
 import IDE.Ws.Types (ProjectKey(..))
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 --------------------------------------------------------------------------------
 -- Widget
@@ -176,7 +177,7 @@ reviewWidget useMonaco dir = divClass "gitlog review" $ do
         & attributes .~ constDyn
             ("placeholder" =: "comment on the selected diff lines — sent to \
                               \this worktree's Claude session as @file#Lx-Ly note"
-             <> "style" =: "flex:1 1 auto;min-width:0")
+             <> "style" =: "flex:1 1 auto;min-width:0" <> noTextAssist)
       (sendEl, _) <- elAttr' "button" ("class" =: "review-btn") $ text "Send to Claude"
       return (ti, domEvent Click sendEl)
 

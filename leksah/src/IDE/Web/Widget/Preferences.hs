@@ -55,6 +55,7 @@ import IDE.Web.ColorPick (hasColorPickImpl, requestColorPick)
 import IDE.Web.Ctx (Ctx(..))
 import IDE.Web.Events (PreferencesEvents(..))
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 preferencesWidget
   :: forall t m. MonadWidget t m
@@ -272,7 +273,7 @@ textField
   => Wired -> Config -> Text -> (Config -> Text) -> (Text -> Config -> Config)
   -> m (Event t (Config -> Config))
 textField w cfg0 lbl get set = prefRow w lbl $ do
-  inp <- textInputAttrs (get cfg0) ("type" =: "text" <> "class" =: "pref-input")
+  inp <- textInputAttrs (get cfg0) ("type" =: "text" <> "class" =: "pref-input" <> noTextAssist)
   return $ set <$> updated (_inputElement_value inp)
 
 -- | The 'Editor' choice: one row for the whole ADT — a dropdown picking
@@ -302,7 +303,7 @@ editorField w cfg0 lbl = prefRow w lbl $ do
              if sel == 2 then mempty else "style" =: "display:none") $
     textInputAttrs cmd0
       ("type" =: "text" <> "class" =: "pref-input"
-       <> "placeholder" =: "command — the file path is appended")
+       <> "placeholder" =: "command — the file path is appended" <> noTextAssist)
   edD <- holdUniqDyn $ mk <$> _dropdown_value dd <*> _inputElement_value inp
   return $ ffor (updated edD) $ \v -> onEditor $ \s -> s { ecEditor = v }
   where
@@ -374,7 +375,8 @@ textInputAttrs v attrs = inputElement $ def
 textArea :: MonadWidget t m => Text -> m (TextAreaElement EventResult (DomBuilderSpace m) t)
 textArea v = textAreaElement $ def
   & textAreaElementConfig_initialValue .~ v
-  & textAreaElementConfig_elementConfig . elementConfig_initialAttributes .~ ("class" =: "pref-textarea")
+  & textAreaElementConfig_elementConfig . elementConfig_initialAttributes .~
+      ("class" =: "pref-textarea" <> noTextAssist)
 
 preferencesCss :: Css
 preferencesCss = do

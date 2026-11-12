@@ -79,6 +79,7 @@ import IDE.Paths (sidecarPath)
 import IDE.Web.Events (BrowserEvents)
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), getNativeBrowserOps)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 --
 -- The pane registry: ids + last driven URL, persisted as a tiny JSON sidecar
@@ -305,8 +306,7 @@ externalTip = "Open in system browser"
 urlBarAttrs :: Text -> Map Text Text
 urlBarAttrs urlClass =
     "class" =: ("browser-url " <> urlClass)
-    <> "spellcheck" =: "false" <> "autocorrect" =: "off"
-    <> "autocapitalize" =: "off" <> "autocomplete" =: "off"
+    <> noTextAssist
 #if defined(ghcjs_HOST_OS)
     <> "readonly" =: "" <> "tabindex" =: "-1"
     <> "title" =: "The demo's browser pane only shows this page"

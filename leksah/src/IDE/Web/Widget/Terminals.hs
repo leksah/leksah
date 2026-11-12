@@ -90,6 +90,7 @@ import IDE.Web.Widget.Menu (rowMenu)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 -- | Shared positioning for the close control's contents: pinned to the right of
 -- its (relative) slot and vertically centred, out of normal flow so it overlays
@@ -877,7 +878,7 @@ renameControl nameD rename = elClass "span" "terminals-rename-slot" $ do
       editField nm = do
         ti <- textInput $ def
                 & textInputConfig_initialValue .~ nm
-                & attributes .~ constDyn ("class" =: "terminals-rename")
+                & attributes .~ constDyn ("class" =: "terminals-rename" <> noTextAssist)
         -- Focus + select the field once it's in the DOM (a fresh input isn't
         -- focused automatically, so keystrokes/Enter would otherwise never reach
         -- it).  Deferred to the next animation frame so it runs after the ✎

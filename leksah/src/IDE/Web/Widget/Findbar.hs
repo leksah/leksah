@@ -52,6 +52,7 @@ import IDE.Web.Theme
         barTopColor, barBottomColor, inputTopColor, inputBottomColor)
 import IDE.Web.Events (FindbarEvents(..), TabKey(..))
 import IDE.Web.Frame (MonadWidget, performEvent_)
+import IDE.Web.TextAssist (noTextAssist)
 
 findbarCss :: Css
 findbarCss = do
@@ -205,8 +206,7 @@ findbarWidget activePaneD visibleD = do
   return $ leftmost [innerE, FindHide <$ escE]
   where
     -- Stop the browser "helpfully" rewriting what's typed into the find boxes.
-    noCorrect = "autocorrect" =: "off" <> "autocapitalize" =: "off"
-             <> "spellcheck" =: "false" <> "autocomplete" =: "off"
+    noCorrect = noTextAssist
 
 -- | Build a match predicate from the query and the flag bitmask
 -- (bit 0 = case sensitive, bit 1 = whole word, bit 2 = regexp).  Built once per
