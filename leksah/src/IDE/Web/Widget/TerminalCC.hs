@@ -103,7 +103,7 @@ import System.Process (createProcess, proc)
 import Text.Read (readMaybe)
 
 import Reflex
-       (Dynamic, Event, attachWith, current, ffilter, ffor, fmapMaybe,
+       (Dynamic, Event, attachWith, attachWithMaybe, current, ffilter, ffor, fmapMaybe,
         foldDyn, delay, gate, getPostBuild, holdDyn, holdUniqDyn, leftmost,
         never, newTriggerEvent, switchHold,
         tag, updated)
@@ -199,6 +199,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
     (bellE, triggerBell) <- newTriggerEvent
     -- A nested child window's own window add/close (see the nested leaf).
     (nestedTreeE, fireNestedTree) <- newTriggerEvent
+    (nestedEvE, fireNestedEv) <- newTriggerEvent
     -- Hovering a file link in a pane's output asks the LSP layer for a tooltip
     -- (file diagnostics + a symbol hover when a line is known); the reply is
     -- fired here and pushed back into JS (LeksahTermLinks.resolveHover) on this
@@ -1008,13 +1009,51 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- with the focused leaf's KIND, and re-apply the highlight — this is
             -- what turns the terminal's ring off when a view leaf takes focus,
             -- and back on when a tmux leaf does.
+            -- …and when THIS window is a nested child, its ring is lit only
+            -- while the parent's focused leaf is the one showing it (inside
+            -- the child its single leaf is always "focused").
+            nestedAwayD <- holdUniqDyn $ (\i ->
+                let lws = i ^. leksahWindows
+                in or [ lwFocused plw /= Just l
+                      | plw <- M.elems lws
+                      , (l, PaneContent (PaneNested c) _) <- M.toList (lwPanes plw)
+                      , c == lwId ]) <$> cUi ctx
+            let ringOffD = (\mc away -> away || case mc of
+                    Just (_, PaneView{})   -> True
+                    -- a nested child window: ITS widget draws the ring (on
+                    -- its own active pane), so none of ours may
+                    Just (_, PaneNested{}) -> True
+                    _                      -> False) <$> focusedContentD <*> nestedAwayD
             performEvent_ $ ffor
-                (leftmost [updated focusedContentD, tag (current focusedContentD) pbSync]) $
-                \mc -> do
-                    liftIO . writeIORef viewFocusedRef $ case mc of
-                        Just (_, PaneView{}) -> True
-                        _                    -> False
+                (leftmost [updated ringOffD, tag (current ringOffD) pbSync]) $
+                \off -> do
+                    liftIO $ writeIORef viewFocusedRef off
                     liftJSM applyActive
+            -- When the ring is ON, make sure it is on one of THIS window's
+            -- panes: the session's active pane (all the connection learns at
+            -- start) can be in another window of the session — a fresh nested
+            -- child shows one window of a session that has others.  Ask tmux
+            -- for the focused window's active pane and highlight that (only
+            -- the highlight: the keyboard is the focus reconciler's business).
+            (ringPaneE, fireRingPane) <- newTriggerEvent
+            performEvent_ $ ffor ringPaneE $ \p -> do
+                liftIO $ writeIORef activePaneRef (Just p)
+                liftJSM applyActive
+            ringSettledE <- delay 1.0 pbSync
+            performEvent_ $ ffor (attachWithMaybe
+                    (\(off, mc) _ -> case mc of
+                        Just (_, PaneTmux w) | not off -> Just w
+                        _                              -> Nothing)
+                    ((,) <$> current ringOffD <*> current focusedContentD)
+                    (leftmost [ () <$ ffilter not (updated ringOffD), ringSettledE
+                              -- (the panes' highlight segments exist only once
+                              -- the layout has arrived and they mounted)
+                              , () <$ updated allPanesD ])) $ \w ->
+                liftIO . void . forkIO $ do
+                    r <- ccCommand cc ("display-message -p -t " <> unqual w <> " -F '#{pane_id}'")
+                    case r of
+                      Right (ln : _) | p <- T.strip ln, not (T.null p) -> fireRingPane p
+                      _ -> return ()
             (paneResolvedE, firePaneResolved) <- newTriggerEvent
             selectedSettledE <- delay 0 selectedE
             -- One frame after the request, so the pendingFocusRef write (its
@@ -1421,6 +1460,9 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                           isTree e = case e of
                                             TerminalTreeChanged -> True
                                             _                   -> False
+                                          paneFocus e = case e of
+                                            TerminalPaneFocused{} -> Just e
+                                            _                     -> Nothing
                                       performEvent_ $ ffor (ffilter isBell evs) $
                                           \_ -> liftIO (triggerBell ())
                                       -- its windows coming and going re-poll
@@ -1428,6 +1470,13 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                       -- poll for a tab holding remote children)
                                       performEvent_ $ ffor (ffilter isTree evs) $
                                           \_ -> liftIO (fireNestedTree ())
+                                      -- a leksah-issued focus of one of its
+                                      -- panes floats it in the flipper MRU
+                                      -- (which also orders this tab's pane
+                                      -- icons) — the event carries the child's
+                                      -- own session, so it resolves there
+                                      performEvent_ $ ffor (fmapMaybe paneFocus evs) $
+                                          liftIO . fireNestedEv
                             -- Focus entering this leaf makes it the layout's
                             -- focused leaf — the target of ⌘S/⌥⌘=/⌥⌘−/splits.
                             -- A mouse-DOWN counts too, because a click does not
@@ -1670,6 +1719,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
       -- ⌘-number offset (and tab badges) lag until the next unrelated poll.
       , TerminalTreeChanged <$ paneSetChangedE
       , TerminalTreeChanged <$ nestedTreeE
+      , nestedEvE
       -- The active window closed: the IDE activates the ⌘1 button (below).
       , TerminalActiveWinClosed <$ activeWinClosedE
       -- A leksah-issued pane focus (⌘-number split select): float it to the MRU.

@@ -7100,7 +7100,9 @@ main showMenubar macTitlebar wid ctx = mdo
         -- (a bare activation isn't a pane recency signal) and the pane click
         -- promoter needs a real mousedown.
         lwTabFlipE = fmapMaybe id $ attachWith
-          (\(lws, tree) lwi -> do
+          (\(lws, tree) lwi0 -> do
+              -- (through nested leaves: the pane that really has the focus)
+              let lwi = focusedLwOf lws lwi0
               lw <- M.lookup lwi lws
               let viewAt ls = listToMaybe
                     [ FlipView lwi l
@@ -9247,6 +9249,13 @@ main showMenubar macTitlebar wid ctx = mdo
                         return True
                     _ -> return False
               _ -> return False
+        -- A drop onto a window lands the keyboard in the moved pane: float it
+        -- in the flipper MRU (which also orders the tab's pane icons), as
+        -- clicking that window's tab would — a moment later, once the move
+        -- (and a nested child's connection) has settled.
+        forM_ parsed $ \(_, dst) -> case dst of
+          LDDstPane dlw _ _ _ -> void . forkIO $ threadDelay 700000 >> fireLwTabClick dlw
+          _                   -> return ()
         forM_ ((\(a, b) -> (qualSrc a, qualDst b)) <$> parsed) $ \(src, dst) -> do
          handled <- unnestFirst src dst
          unless handled $ if crossServer (srcTmuxServer src) dst then nestThen src else case dst of
