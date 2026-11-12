@@ -20,13 +20,13 @@ import Language.Javascript.JSaddle (liftJSM, eval, valToNumber)
 import qualified System.IO as IO (hPutStrLn, stderr)
 
 import Data.Bool (bool)
-import Data.List (stripPrefix, isPrefixOf, dropWhileEnd, find, nub, sortBy, sortOn)
+import Data.List (stripPrefix, isPrefixOf, isSuffixOf, dropWhileEnd, find, nub, sortBy, sortOn)
 import Data.Ord (comparing)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import qualified Data.Map as M
        (Map, elems, empty, filterWithKey, findWithDefault, fromList,
-        fromListWith, insert, keys, lookup, singleton, toList, null, union, size)
-import Data.Maybe (listToMaybe, fromMaybe, mapMaybe)
+        fromListWith, insert, keys, lookup, singleton, toList, null, union, size, member)
+import Data.Maybe (listToMaybe, fromMaybe, mapMaybe, isJust, isNothing, maybeToList)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
 import System.IO.Unsafe (unsafePerformIO)
@@ -49,7 +49,7 @@ import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.FilePath
        ((<.>), (</>), dropTrailingPathSeparator, takeDirectory, takeExtension,
-        takeFileName, splitDirectories, joinPath, makeRelative)
+        takeFileName, splitDirectories, joinPath, makeRelative, isRelative)
 import System.IO (IOMode(ReadMode), withFile)
 import System.Info (os)
 import System.Process (proc, createProcess, readProcessWithExitCode)
@@ -80,7 +80,7 @@ import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffor,
         current, getPostBuild, holdUniqDyn, holdDyn, newTriggerEvent, Dynamic, updated, delay, tag,
         Event, never, fmapMaybe, tagPromptlyDyn, sample,
-        tickLossyFromPostBuildTime)
+        tickLossyFromPostBuildTime, zipDynWith)
 import Reflex.Dom.Core
        (elDynClass, elAttr, dyn, (=:), elDynAttr,
         divClass, text, el, elClass, dynText, domEvent, elDynHtmlAttr', EventName(..))
@@ -96,18 +96,20 @@ import IDE.Web.Ctx (Ctx(..))
 import IDE.Workspace
        (Ws, WorkspaceService(..), activeComponent, activePackage,
         activeProject, packageIdText, prDir, projectOpenPath,
-        workspaceActivatePackage,
+        workspaceActivatePackage, wsProjectFor, ensureTemporary,
         workspacePinProject, workspaceRemoveProject, wsIsTemporary, wsProjects,
         wsSpecFor)
 import IDE.Ws.Cabal (componentTarget)
 import IDE.Ws.File (applyOverrides)
-import IDE.Ws.Registry (typeById)
+import IDE.Ws.Registry (typeById, detectProject, enumerateProject)
 import IDE.Ws.Types
        (Component(..), ComponentKind(..), Package(..), Project(..),
         ProjectKey(..), ProjectType(..), Scope(..), ToolCmd(..), Verb(..),
         verbId)
-import IDE.Web.Command (Command(..))
+import IDE.Web.Command (Command(..), commandAction)
 import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
+import Control.Lens (view)
+import Control.Applicative ((<|>))
 import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
         flakeTreeWidget, execButton, openNixWindow, developAttr)
@@ -124,8 +126,8 @@ import IDE.Web.AgentInfo (agentDirOf, agentTitles)
 import IDE.Web.AgentNames (agentNames)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentWorktrees
-       (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, worktreesBySession,
-        worktreesOfAgent)
+       (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, currentClaimants,
+        worktreesBySession, worktreesOfAgent)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.WorktreeRegistry
@@ -828,35 +830,25 @@ gitSubmodulesNode dir = do
                   return ()
               return (never :: Event t ()))
 
--- | \"Worktrees (N)\": the repo's OTHER worktrees, as a DIRECT child of the
--- project row (not buried in the git subtree) — juggling several worktrees is
--- a top-level activity now that agent sessions each get one.  Self-hides when
--- the checkout has no linked worktrees.  The rows only build once the node is
--- expanded (a repo can have a dozen worktrees; their scans shouldn't run for a
--- node nobody opened).
-worktreesNode :: forall t m . MonadWidget t m
-              => FilePath
-              -> Dynamic t (M.Map FilePath ProjectKey)
-                 -- ^ open workspace projects by (trailing-slash-normalised)
-                 --   root, for the promote\/remove menu flip
-              -> m ()
-worktreesNode dir rootKeysD = do
+-- | \"Worktrees (N)\": the repo's OTHER worktrees — those not in the workspace
+-- (those are under \"Pinned Worktrees\") — as a DIRECT child of the project
+-- row (not buried in the git subtree): juggling several worktrees is a
+-- top-level activity now that agent sessions each get one.  Self-hides when
+-- there are none.  The rows only build once the node is expanded (a repo can
+-- have a dozen worktrees; their scans shouldn't run for a node nobody opened).
+worktreesNode :: forall t m . MonadWidget t m => PNEnv t -> FilePath -> m ()
+worktreesNode env dir = do
   pb <- getPostBuild
   (wtE, fireWt) <- newTriggerEvent
   scan <- liftIO . newCoalescer $
       (filter (not . isCurrentWorktree dir) <$> gitWorktrees dir) >>= fireWt
   performEvent_ $ liftIO scan <$ pb
   liftIO $ registerGitRefresh dir scan
-  wtD <- holdDyn [] wtE
-  claudeAvail <- liftIO claudeAvailable
-  -- The session badges ride the ClaudeStatus cache (the same poll that feeds
-  -- the traffic light and the menu-bar item) — a plain IORef read, safe on
-  -- the frame thread, so a slow tick per project node costs nothing.
-  (stE, fireSt) <- newTriggerEvent
-  stTick <- tickLossyFromPostBuildTime 3
-  performEvent_ $ liftIO (claudeStatusNow >>= fireSt)
-      <$ leftmost [() <$ pb, () <$ stTick]
-  statusD <- holdUniqDyn =<< holdDyn [] (csRows <$> stE)
+  allD <- holdDyn [] wtE
+  wtD <- holdUniqDyn $ zipDynWith (\wts open ->
+    [ wt | wt <- wts
+         , not (dropTrailingPathSeparator (fullWorktreePath dir wt) `M.member` open) ])
+      allD (rootKeysD env)
   void . dyn $ ffor wtD $ \wts -> when (not (null wts)) . void $
     treeItem "worktrees" False
       (treeSelect "workspace" (return never) $ do
@@ -864,28 +856,29 @@ worktreesNode dir rootKeysD = do
           text ("Worktrees (" <> T.pack (show (length wts)) <> ")")
           return (never :: Event t ()))
       (el "ul" $ do
-          forM_ wts $ \wt ->
-              worktreeRow claudeAvail dir rootKeysD statusD wt
+          forM_ wts $ \wt -> worktreeProjectNode env dir wt
           return (never :: Event t ()))
 
--- | One worktree row: name, live branch (+PR number), working-tree \/
--- ahead-behind counts, a session badge when a Claude session is running in it,
--- and the newest registered note as the dim suffix.  The tooltip carries the
--- registry's whole story (claims + branch history).  Click opens a terminal
--- there (⌥ = into a split); the menu is 'worktreeMenu'.
+-- | One worktree, as a PROJECT node built lazily.  The row is the worktree's
+-- own: name, live branch (+PR number), working-tree \/ ahead-behind counts,
+-- the faces of the agents working in it, a session badge, and the newest
+-- registered note; the tooltip carries the registry's whole story.  Click
+-- opens a terminal there (⌥ = into a split); the menu is 'worktreeMenu'.
 --
--- The row EXPANDS to the worktree's Claude sessions: the 'agentsNode' for
--- sessions whose transcripts live in the worktree itself, plus one
--- 'worktreeClaimRow' per session the registry links to it — which is how the
--- session that CREATED a worktree is reachable even though it ran (and its
--- transcript lives) in a sibling checkout.
-worktreeRow :: forall t m . MonadWidget t m
-            => Bool -> FilePath -> Dynamic t (M.Map FilePath ProjectKey)
-            -> Dynamic t [ClaudeStatusRow] -> GitWorktree -> m ()
-worktreeRow claudeAvail dir rootKeysD statusD wt = do
+-- Expanded, it is the full project ('projectBody'), of the same type as its
+-- main checkout's project ('worktreeProjectKey') — nothing is detected or
+-- enumerated before that.  A worktree that is not in the workspace is
+-- enumerated here, privately; a command run from it (Activate, Build, …)
+-- first adds it to the workspace as a TEMPORARY project ('ensureTemporary'),
+-- after which it shows under the main project's \"Pinned Worktrees\".
+worktreeProjectNode :: forall t m . MonadWidget t m
+                    => PNEnv t -> FilePath -> GitWorktree -> m ()
+worktreeProjectNode env dir wt = do
+  claudeAvail <- liftIO claudeAvailable
+  statusD <- claudeStatusRowsD
   let p     = fullWorktreePath dir wt
       pNorm = dropTrailingPathSeparator p
-      pKeyD = M.lookup pNorm <$> rootKeysD
+      pKeyD = M.lookup pNorm <$> rootKeysD env
   (giE, fireGi)   <- newTriggerEvent
   (regE, fireReg) <- newTriggerEvent
   rpb <- getPostBuild
@@ -896,6 +889,7 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
   liftIO $ registerGitRefresh dir scan
   giD  <- holdDyn Nothing (Just <$> giE)
   regD <- holdDyn ("", Nothing, []) regE
+  facesD <- pollD [] (currentClaimants pNorm)
   let badgeD = ffor statusD $ \rows ->
         let here = [ r | r <- rows, T.unpack (csrDir r) == pNorm ]
         in if | any ((== "waiting") . csrState) here ->
@@ -917,6 +911,10 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
     (do (rowEl, mE) <- treeSelect' "workspace"
                          (worktreeMenu claudeAvail dir wt pKeyD) $ do
             gitIcon
+            -- The agents whose worktree this is now (current claims).
+            void . dyn $ ffor facesD $ mapM_ $ \(_, name) ->
+              elAttr "span" ("title" =: (name <> " works here")) $
+                agentFace (constDyn (Just name))
             elDynAttr "span" (("title" =:) <$> titleD) $ dynText labelD
             -- PR number, then +added −deleted vs HEAD, then ↑ahead ↓behind.
             void . dyn $ ffor giD $ \case
@@ -944,17 +942,102 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
               else openTerminalInDir p
         performEvent_ $ liftIO <$> mE
         return (never :: Event t ()))
-    (el "ul" $ do
-        -- Sessions whose transcripts live in the worktree itself (self-hides
-        -- when there are none).
-        -- Each session row expands to its agent's worktrees.
-        let kids = agentWorktreeRows claudeAvail rootKeysD statusD
-        when claudeAvail $ agentsNodeKids "workspace" p (constDyn []) (Just kids)
-        -- Sessions the REGISTRY links to this worktree (creator, workers,
-        -- reviewers) — they usually live in a sibling checkout.
-        void . dyn $ ffor regD $ \(_, _, claims) ->
-            forM_ claims $ \c -> worktreeClaimRow dir p statusD (Just kids) c
-        return (never :: Event t ()))
+    -- ('projectBody' brings its own @ul@.)
+    (worktreeProjectChildren env dir p >> return (never :: Event t ()))
+
+-- | The expanded worktree project: resolve its key, get its 'Project' (the
+-- workspace's when it is open there, else a private enumeration kept fresh
+-- by git refreshes), and render 'projectBody'.  Its commands run here
+-- ('runProjectEvents'), each first making sure the project is in the
+-- workspace.
+worktreeProjectChildren :: forall t m . MonadWidget t m
+                        => PNEnv t -> FilePath -> FilePath -> m ()
+worktreeProjectChildren env dir p = do
+  pb <- getPostBuild
+  (kE, fireK) <- newTriggerEvent
+  open <- sample (current (rootKeysD env))
+  performEvent_ $ ffor pb $ \_ -> liftIO . void . forkIO $
+    worktreeProjectKey open dir p >>= fireK
+  kD <- holdDyn Nothing (Just <$> kE)
+  void . dyn $ ffor kD $ \case
+    Nothing -> dimLi "Loading…"
+    Just Nothing -> dimLi "No project type recognises this worktree"
+    Just (Just key) -> do
+      wsProjD <- holdUniqDyn (wsProjectFor key <$> cWs (ctx env))
+      inWs0 <- sample (current wsProjD)
+      (enE, fireEn) <- newTriggerEvent
+      -- Enumerate privately only while the workspace doesn't have it.
+      enum <- liftIO . newCoalescer $ withApp $ \app -> do
+        ws <- readCell (wsCell (appWorkspace app))
+        when (isNothing (wsProjectFor key ws)) $
+          enumerateProject (wsEffects (appWorkspace app)) key >>= \case
+            Right pr -> fireEn pr
+            Left err -> fireEn (Project key []) >> appNote app
+                          ("enumerate " <> T.pack (pkRoot key) <> ": " <> err)
+      when (isNothing inWs0) $ do
+        pb' <- getPostBuild
+        performEvent_ $ liftIO enum <$ pb'
+        liftIO $ registerGitRefresh p enum
+      localD <- holdDyn Nothing (Just <$> enE)
+      let mprojD = (<|>) <$> wsProjD <*> localD
+      hasD <- holdUniqDyn (isJust <$> mprojD)
+      void . dyn $ ffor hasD $ \case
+        False -> dimLi "Loading…"
+        True  -> do
+          let projectD = fromMaybe (Project key []) <$> mprojD
+              isActiveD = (== Just key) <$> activeProjectKeyD env
+          (brD, prD) <- gitBranchPr p
+          evE <- projectBody env True key projectD isActiveD brD prD
+          runProjectEvents key evE
+  where
+    dimLi t = el "ul" $
+      elAttr "li" ("style" =: "color:var(--leksah-fg-dim);font-style:italic") (text t)
+
+-- | The project key for worktree @p@: its main checkout's project (the open
+-- project at @dirHint@, else at the worktree's main root) RELOCATED into the
+-- worktree — same type, same project file at the same relative path — when
+-- that file exists there; else whatever 'detectProject' finds in it.
+worktreeProjectKey :: M.Map FilePath ProjectKey -> FilePath -> FilePath -> IO (Maybe ProjectKey)
+worktreeProjectKey open dirHint p = do
+  parent <- case M.lookup (dropTrailingPathSeparator dirHint) open of
+    Just k  -> return (Just k)
+    Nothing -> (>>= \r -> M.lookup r open) <$> cachedMainRoot p
+  relocated <- case parent of
+    Nothing -> return Nothing
+    Just pk -> do
+      let root = if "/" `isSuffixOf` pkRoot pk then p <> "/" else p
+          file = ffor (pkFile pk) $ \f ->
+            let rel = makeRelative (pkRoot pk) f
+            in if isRelative rel then Just (p </> rel) else Nothing
+      case file of
+        Just Nothing   -> return Nothing        -- its file lives outside it
+        Just (Just f') -> do
+          ok <- fsDoesFileExist f' `catch` \(_ :: SomeException) -> return False
+          return $ if ok then Just pk { pkRoot = root, pkFile = Just f' } else Nothing
+        Nothing        -> return (Just pk { pkRoot = root })
+  case relocated of
+    Just k  -> return (Just k)
+    Nothing -> getGlobalApp >>= \case
+      Nothing  -> return Nothing
+      Just app -> detectProject (wsEffects (appWorkspace app)) p
+                    `catch` \(_ :: SomeException) -> return Nothing
+
+-- | Run a worktree project node's commands here (Main never sees its events),
+-- each first making sure the project is in the workspace — as a temporary
+-- one when it isn't ('ensureTemporary'): Activate, Build and the rest read
+-- the workspace.
+runProjectEvents :: forall t m . MonadWidget t m => ProjectKey -> Event t ProjectEvent -> m ()
+runProjectEvents key evE = performEvent_ $ ffor evE $ \ev -> liftIO $
+  case actionsOf ev of
+    []   -> return ()
+    acts -> void . forkIO . withApp $ \app -> do
+      ensureTemporary (appWorkspace app) key
+      mapM_ ($ app) acts
+  where
+    actionsOf (ProjectCommand c) = maybeToList (view commandAction c)
+    actionsOf (ProjectPackageEvents m) =
+      [ a | PackageCommand c <- M.elems m, Just a <- [view commandAction c] ]
+    actionsOf _ = []
 
 -- | One registered-session row under a worktree: role + the session's own
 -- Agents-pane title (or its short id), with a live badge.  Double-click (or
@@ -1253,7 +1336,7 @@ gitSubmodulePaths dir = do
             [ p | l <- T.lines out, Just p <- [listToMaybe (reverse (T.words l))] ]
         _ -> []
 
-data GitWorktree = GitWorktree { gwPath :: Text, gwBranch :: Text }
+data GitWorktree = GitWorktree { gwPath :: Text, gwBranch :: Text } deriving (Eq)
 
 gitWorktrees :: FilePath -> IO [GitWorktree]
 gitWorktrees dir = do
@@ -1712,6 +1795,395 @@ allOutputsNode dir = void $ treeItem "flake-node" False
         flakeTreeWidget dir resultD
         return never)
 
+-- | What a project node needs from its surroundings — the workspace's
+-- dynamics, built once per tree ('mkPNEnv') and shared by every project node,
+-- including the lazily-built worktree project nodes.
+data PNEnv t = PNEnv
+  { ctx                :: Ctx t
+  , activeFileD        :: Dynamic t (Maybe FilePath)
+  , revealFileD        :: Dynamic t (Maybe FilePath)
+  , showHiddenD        :: Dynamic t Bool
+  , showIgnoredD       :: Dynamic t Bool
+  , allProjectDirsD    :: Dynamic t [FilePath]
+  , activeProjectKeyD  :: Dynamic t (Maybe ProjectKey)
+  , activePackageFileD :: Dynamic t (Maybe FilePath)
+  , activeComponentD   :: Dynamic t (Maybe Component)
+  , groupedD           :: Dynamic t ( M.Map (Int, ProjectKey) Project
+                                    , M.Map FilePath (M.Map (Int, ProjectKey) Project) )
+    -- ^ top-level projects, and the worktree projects nested under each
+    --   main checkout's root
+  , rootKeysD          :: Dynamic t (M.Map FilePath ProjectKey)
+    -- ^ open projects by (trailing-slash-normalised) root
+  }
+
+mkPNEnv :: forall t m . MonadWidget t m
+        => Ctx t -> Dynamic t (Maybe FilePath) -> Dynamic t (Maybe FilePath) -> m (PNEnv t)
+mkPNEnv ctx activeFileD revealFileD = do
+  wsPb <- getPostBuild
+
+  showHiddenD  <- holdUniqDyn $ uiShowHiddenFiles  . cfgUi <$> cCfg ctx
+  showIgnoredD <- holdUniqDyn $ uiShowIgnoredFiles . cfgUi <$> cCfg ctx
+  let addFileToKey = map (\(n, p) -> ((n, prKey p), p))
+      projectsD = M.fromList . addFileToKey . zip [0..] . wsProjects <$> cWs ctx
+  -- Every project's directory, for computing the shortest label suffix
+  -- that uniquely identifies each project (see 'shortProjectSuffix').
+  allProjectDirsD <- holdUniqDyn $ map (pkRoot . snd) . M.keys <$> projectsD
+  activeProjectKeyD <- holdUniqDyn $ fmap prKey . activeProject <$> cWs ctx
+  activePackageFileD <- holdUniqDyn $ fmap pkgManifest . activePackage <$> cWs ctx
+  activeComponentD <- holdUniqDyn $ activeComponent <$> cWs ctx
+  -- Which open project is a linked WORKTREE of which other open project,
+  -- resolved off-frame ('cachedMainRoot' — a checkout's common dir never
+  -- changes, so each path is one git call ever): worktree projects render
+  -- NESTED under their main repo's row instead of as unrelated top-level
+  -- rows.  A worktree whose main checkout is not itself open stays
+  -- top-level, exactly as before.
+  (mainRootsE, fireMainRoots) <- newTriggerEvent
+  performEvent_ $ ffor (leftmost [tag (current projectsD) wsPb, updated projectsD]) $ \projs ->
+    liftIO . void . forkIO $ do
+      ms <- mapM (\(_, k) -> (,) (dropTrailingPathSeparator (pkRoot k))
+                               <$> cachedMainRoot (pkRoot k))
+                 (M.keys projs)
+      fireMainRoots (M.fromList ms)
+  mainRootsD <- holdUniqDyn =<< holdDyn M.empty mainRootsE
+  rootKeysD  <- holdUniqDyn $
+      M.fromList . map (\(_, k) -> (dropTrailingPathSeparator (pkRoot k), k)) . M.keys
+        <$> projectsD
+  let groupedD = (\projs mains ->
+          let norm k = dropTrailingPathSeparator (pkRoot k)
+              openRoots = S.fromList [ norm k | (_, k) <- M.keys projs ]
+              mainOf k = case M.lookup (norm k) mains of
+                  Just (Just mr) | mr `S.member` openRoots
+                                 , mr /= norm k -> Just mr
+                  _ -> Nothing
+              tops = M.filterWithKey (\(_, k) _ -> mainOf k == Nothing) projs
+              kids = M.fromListWith M.union
+                  [ (mr, M.singleton key v)
+                  | (key@(_, k), v) <- M.toList projs
+                  , Just mr <- [mainOf k] ]
+          in (tops, kids)) <$> projectsD <*> mainRootsD
+  return PNEnv{..}
+
+-- | One project's row ('workspaceWidget' lists them; nested = a worktree
+-- project under its main checkout's "Pinned Worktrees").
+projectNodeW :: forall t m . MonadWidget t m
+             => PNEnv t -> Bool -> (Int, ProjectKey) -> Dynamic t Project
+             -> m (Event t ProjectEvent)
+projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
+  let isActiveProjectD = (== Just pKey) <$> activeProjectKeyD
+  -- Opened only because a pane shows something in it: dimmed, and
+  -- offering "Pin to Workspace" to keep it.
+  isTempD <- holdUniqDyn $ wsIsTemporary pKey <$> cWs ctx
+  -- Reveal (expand) the project when the active file is anywhere under it.
+  projNodeRevealD <- revealUnder (constDyn (pkRoot pKey)) revealFileD
+  -- Current branch + open PR for this project's checkout, scanned once
+  -- here and shared by the git subtree, the collapsed summary and the
+  -- "Open PR" menu item.
+  (brD, prD) <- gitBranchPr (pkRoot pKey)
+  -- Only the active project starts expanded; activating another project
+  -- collapses this one (and expands that one).
+  initActive <- sample (current isActiveProjectD)
+  treeItemDynAttrSet' (updated isActiveProjectD) projNodeRevealD
+    ((\act temp -> "class" =: ("project" <> (if nested then " worktree-project" else "")
+                                <> bool "" " active" act <> bool "" " temporary" temp)
+       <> (if temp then "title" =: "Temporary: open while a pane shows something in it" else mempty))
+       <$> isActiveProjectD <*> isTempD) initActive
+    (do
+      claudeAvail <- liftIO claudeAvailable
+      -- ⌥-clicking the terminal/Claude items opens them into a split of
+      -- the active pane (⌥⇧ = the other direction), like the ⌥-open
+      -- tree gestures; wrapSplit embeds the request in the menu's
+      -- command type.  Remote projects can't split (a split runs on the
+      -- local tmux server), so their items carry no target.
+      let wrapSplit t sh = ProjectCommand (CommandIDEAction "" ""
+                             (const (requestSplitOpen (t, sh))))
+          localTgt t = if isRemotePath (pkRoot pKey) then Nothing else Just t
+          plain = fmap (fmap (Nothing,))
+      (projRowEl, rowE) <- treeSelect' "workspace" (menuSplitWith wrapSplit $
+        [ plain . constDyn $ ("Activate", ProjectCommand . CommandIDEAction "Set as Active Project" "" $
+            \app -> workspaceActivatePackage (appWorkspace app) pKey Nothing Nothing)
+        ] <> case pkFile pKey of
+                Just file -> [ constDyn ("Open Project File", (Just (STFile file), ProjectFileEvents . ("" =:) $ OpenFile False file)) ]
+                _ -> []
+          <> case pkFile pKey of
+                Just file | pkType pKey == "cabal" ->
+                  [ let f = file <.> "local"
+                    in constDyn ("Open Project Configuration File", (Just (STFile f), ProjectFileEvents . ("" =:) $ OpenFile True f)) ]
+                _ -> []
+        <> [ constDyn $ ("Open Terminal Here",) . (localTgt (STTermDir (pkRoot pKey)),) . ProjectCommand . CommandIDEAction "" "" $
+            const (openTerminalInDir (pkRoot pKey))
+        , plain . constDyn $ ("Refresh Nix Environment Varialbes", ProjectCommand . CommandIDEAction "" "" $
+            \app -> appNote app "nix env refresh is not reimplemented yet")
+        , plain $ ffor isTempD $ \temp ->
+            ( if temp then "Pin to Workspace" else ""
+            , ProjectCommand (CommandIDEAction "" "" (\app -> workspacePinProject (appWorkspace app) pKey)) )
+        , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandIDEAction "" "" (\app -> workspaceRemoveProject (appWorkspace app) pKey)))
+        , plain $ constDyn ("Project Settings…", ProjectCommand (CommandIDEAction "" "" (const (requestRemoteSettings pKey))))
+        , plain $ ffor prD $ \mpr ->
+            ( "Open PR" <> prSuffix mpr
+            , ProjectCommand (CommandIDEAction "" "" (const (maybe (return ()) (openUrl . snd) mpr))) )
+        ]
+        -- Claude Code (only when the CLI is on PATH): start a fresh
+        -- session or continue the most recent one in the project dir.
+        <> [ constDyn ("New Claude Session", (localTgt (STClaudeNew (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeNew (pkRoot pKey))))))) | claudeAvail ]
+        <> [ constDyn ("Continue Last Claude Session", (localTgt (STClaudeContinue (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeContinue (pkRoot pKey))))))) | claudeAvail ]) $ do
+        elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
+        -- A worktree project: the faces of the agents working in it.
+        when nested $ do
+          facesD <- pollD [] (currentClaimants (dropTrailingPathSeparator (pkRoot pKey)))
+          void . dyn $ ffor facesD $ mapM_ $ \(_, name) ->
+            elAttr "span" ("title" =: (name <> " works here")) $
+              agentFace (constDyn (Just name))
+        -- Label = (for a remote project) the server name, then the
+        -- shortest right-anchored path suffix that uniquely identifies
+        -- this project among the workspace; the full path is the
+        -- tooltip.  The server name is plain text, not a highlighted
+        -- pill.
+        let keyFileOrDir = fromMaybe (pkRoot pKey) (pkFile pKey)
+            (mbHost, fullLocal) = case parseRemotePath keyFileOrDir of
+                Just (host, l) -> (Just host, l)
+                Nothing        -> (Nothing, keyFileOrDir)
+            fullTitle = maybe id (\h t -> h <> ":" <> t) mbHost (T.pack fullLocal)
+        -- A nested worktree row's parent already says which repo
+        -- this is — the worktree's own name (+ branch, via the
+        -- summary span) is the whole label.
+        suffixD <- if nested
+          then return . constDyn $
+                 T.pack (takeFileName (dropTrailingPathSeparator (pkRoot pKey)))
+          else holdUniqDyn $ shortProjectSuffix (pkRoot pKey) <$> allProjectDirsD
+        let labelD = maybe id (\h s -> h <> ":" <> s) mbHost <$> suffixD
+        elAttr "span" ("title" =: fullTitle) $ dynText labelD
+        -- Git icon + branch + PR number, shown inline only while the
+        -- project is collapsed (CSS keys off the li's tree-collapsed
+        -- class); rendered only when the checkout has a branch.
+        elClass "span" "proj-git-summary" $
+            void . dyn $ ffor ((,) <$> brD <*> prD) $ \case
+                (Nothing, _)   -> return ()
+                (Just b, mpr)  -> gitIcon >> text (b <> prSuffix mpr)
+        return never
+      -- Double-click a project row → open a terminal at its directory.
+      -- ⌥ opens it into a split of the active pane instead (local only).
+      pmE <- dblclickMods projRowEl
+      performEvent_ $ ffor pmE $ \(alt, sh) ->
+        if alt && not (isRemotePath (pkRoot pKey))
+          then liftIO (requestSplitOpen (STTermDir (pkRoot pKey), sh))
+          else openTerminalInDir (pkRoot pKey)
+      return rowE) $
+    (projectBody env nested pKey projectD isActiveProjectD brD prD)
+
+-- | A project's children: its git tree, worktrees, agents, packages, files,
+-- flake and manifest nodes.  Shared by the project rows and the worktree
+-- project nodes ('worktreeProjectNode'), which build it only when expanded.
+projectBody :: forall t m . MonadWidget t m
+            => PNEnv t -> Bool -> ProjectKey -> Dynamic t Project -> Dynamic t Bool
+            -> Dynamic t (Maybe Text) -> Dynamic t (Maybe (Int, Text))
+            -> m (Event t ProjectEvent)
+projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
+  el "ul" $ do
+    -- Top item: the project's git tree (self-hides unless the project
+    -- dir is itself a git checkout).
+    gitTreeNode (pkRoot pKey) brD prD
+    -- The repo's worktrees, one expand away from the project row
+    -- (self-hides when there are none).  A NESTED row is itself a
+    -- worktree: its siblings are already listed on the parent, so
+    -- it doesn't repeat them.
+    unless nested $ worktreesNode env (pkRoot pKey)
+    -- Worktree PROJECTS of this repo (the ones in the workspace), as full
+    -- project rows under "Pinned Worktrees" (the 'groupedD' split).  Their
+    -- events collapse into this row's stream — Main only ever traverses
+    -- the map's values, and every command closes over its own key.
+    worktreeProjectsE <- if nested then return never else do
+        let pinnedD = M.findWithDefault M.empty
+                        (dropTrailingPathSeparator (pkRoot pKey)) . snd <$> groupedD
+        hasPinnedD <- holdUniqDyn (not . M.null <$> pinnedD)
+        switchHold never =<< dyn (ffor hasPinnedD $ \has -> if not has then return never else
+          treeItem "pinned-worktrees" False
+            (treeSelect "workspace" (return never) $ do
+                gitIcon
+                elAttr "span" ("title" =: "This repo's worktrees that are in the workspace") $
+                  dynText (ffor pinnedD $ \m -> "Pinned Worktrees (" <> T.pack (show (M.size m)) <> ")")
+                return never)
+            (el "ul" $ fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey pinnedD
+                         $ projectNodeW env True))
+    -- The project's Claude Code sessions, surfaced right under the
+    -- project row (self-hides unless the project dir has sessions) so
+    -- it's reachable without drilling into the Files node.
+    claudeAvail <- liftIO claudeAvailable
+    when claudeAvail $ do
+        -- A project dir that is itself a worktree also lists
+        -- the sessions the registry links to it, INSIDE its
+        -- Agents node after its own sessions ('worktreeClaims').
+        let kids = agentWorktreeRows env
+        claimsD <- worktreeClaims (Just kids) (pkRoot pKey)
+        agentsNodeKids "workspace" (pkRoot pKey) claimsD (Just kids)
+    let packagesD = M.fromList . map (\p -> (pkgManifest p, p)) . prPackages <$> projectD
+    packagesE <- listViewWithKey packagesD $ \_manifest packageD -> do
+      cabalFileD <- holdUniqDyn $ pkgManifest <$> packageD
+      hasLibD <- holdUniqDyn $ any ((== KLib) . cKind) . pkgComponents <$> packageD
+      pkgDirD <- holdUniqDyn $ pkgDir <$> packageD
+      -- Directories of other packages *nested inside* this one (a file
+      -- there belongs to the nested package, not this one): used to hide
+      -- them from this package's tree and to not reveal towards them.
+      nestedPkgDirsD <- holdUniqDyn $ (\proj p ->
+            let myDir = dropTrailingPathSeparator (pkgDir p)
+            in S.fromList
+               [ d | p' <- prPackages proj, pkgManifest p' /= pkgManifest p
+                   , let d = dropTrailingPathSeparator (pkgDir p')
+                   , (myDir <> "/") `isPrefixOf` d ])
+          <$> projectD <*> packageD
+      pkgRevealE <- revealUnderExcept pkgDirD nestedPkgDirsD revealFileD
+      let isActivePackageD = (&&) <$> isActiveProjectD <*> ((==) <$> activePackageFileD <*> (Just <$> cabalFileD))
+          -- Build-family menu items dispatch through the builder
+          -- service ('runVerb'), scoped to this package.
+          pkgVerb t v = plainPkg $ (t,) . PackageCommand . CommandIDEAction "" ""
+              . (\pkg app -> runVerb (appBuilder app) pKey (Just pkg) Nothing v)
+              <$> packageD
+          -- A Claude launch item for the package's directory (Dynamic
+          -- because the package dir is); @st@ is its ⌥-split target
+          -- (local dirs only — a split runs on the local tmux server).
+          pkgClaude t c st = (\d -> (t, ( if isRemotePath d then Nothing else Just (st d)
+                                        , PackageCommand (CommandIDEAction "" "" (const (runClaudeCmd (c d))))))) <$> pkgDirD
+          -- ⌥-split plumbing for the package menu (see the project
+          -- menu's wrapSplit/plain above).
+          wrapSplitPkg t sh = PackageCommand (CommandIDEAction "" ""
+                                (const (requestSplitOpen (t, sh))))
+          plainPkg = fmap (fmap ((,) Nothing))
+      -- claudeAvail is the project-level binding above (in scope here).
+      treeItemDynAttr' pkgRevealE (("class" =:) . ("package" <>) <$> (bool "" " active" <$> isActivePackageD)) False
+        (treeSelect "workspace" (menuSplitWith wrapSplitPkg $
+            [ plainPkg $ ("Activate",) . PackageCommand . CommandIDEAction "Set as Active Package" "" <$>
+                ((\pkg app -> workspaceActivatePackage (appWorkspace app) pKey (Just (pkgManifest pkg)) Nothing) <$> packageD)
+            , pkgVerb "Build" VBuild
+            , pkgVerb "Run" VRun
+            , pkgVerb "Test" VTest
+            , pkgVerb "Benchmark" VBench
+            , pkgVerb "Clean" VClean
+            , (\cf -> ("Open Package File", (Just (STFile cf), PackageFileEvents (("" =:) (OpenFile False cf)))))
+                . pkgManifest <$> packageD
+            ]
+            <> [ pkgClaude "New Claude Session" ClaudeNew STClaudeNew | claudeAvail ]
+            <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue STClaudeContinue | claudeAvail ]) $ do
+          elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-package.svg") $ return ()
+          -- The package's cabal-file path (relative to the project)
+          -- is a tooltip, not an inline label — it was crowding the
+          -- row.
+          relPathD <- holdUniqDyn $
+              (\cf -> T.pack $ fromMaybe cf $ stripPrefix (pkRoot pKey) cf) <$> cabalFileD
+          elDynAttr "div" ((\p -> "class" =: "package-id" <> "title" =: p) <$> relPathD) $ do
+            dynText $ packageIdText <$> packageD
+            dynText $ do
+              isActive <- isActivePackageD
+              activeComp <- activeComponentD
+              hasLib <- hasLibD
+              pkg <- packageD
+              return $ if isActive
+                then maybe (if hasLib then " (library)" else "")
+                         (\comp -> " (" <> componentTarget pkg comp <> ")") activeComp
+                else ""
+          return never) $
+        el "ul" $ do
+          -- Top item: the package's git tree — only when the package
+          -- is NOT the project root and is itself a git checkout.
+          pkgDirNow <- sample (current pkgDirD)
+          when (dropTrailingPathSeparator pkgDirNow /= dropTrailingPathSeparator (pkRoot pKey)) $ do
+              (pkgBrD, pkgPrD) <- gitBranchPr pkgDirNow
+              gitTreeNode pkgDirNow pkgBrD pkgPrD
+          componentsE <- treeItem "components" False
+            (treeSelect "workspace" (return never) $ do
+                elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
+                text "Components"
+                return never) $
+            el "ul" $
+              fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey (M.fromList . zip [0::Int ..] . pkgComponents <$> packageD) $ \_ componentD -> do
+                let isActiveComponentD = (&&) <$> isActivePackageD <*> ((==) <$> activeComponentD <*> (Just <$> componentD))
+                elDynClass "li" (("component" <>) <$> (bool "" " active" <$> isActiveComponentD)) $ do
+                  let mkActD f = (\proj pkg comp ->
+                          PackageCommand . CommandIDEAction "" "" $
+                            f proj pkg comp)
+                        <$> projectD <*> packageD <*> componentD
+                  (rowEl, rowE) <- treeSelect' "workspace" (menu
+                    [ ("Activate",) . PackageCommand . CommandIDEAction "Set as Active Component" "" <$>
+                        ((\pkg comp app -> workspaceActivatePackage (appWorkspace app) pKey (Just (pkgManifest pkg)) (Just comp))
+                           <$> packageD <*> componentD)
+                    ]) $ do
+                    elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
+                    dynText $ componentTarget <$> packageD <*> componentD
+                    -- A ▶ button on runnable components (exe/test/bench,
+                    -- of a cabal project) runs the component in a
+                    -- terminal (cabal run/test/bench); libraries have
+                    -- none.  Opening the repl is the row's double-click.
+                    if pkType pKey == "cabal"
+                      then switchHold never =<< dyn (ffor ((,) <$> packageD <*> componentD) $ \(pkg, comp) ->
+                        if cKind comp `elem` [KExe, KTest, KBench]
+                          then do
+                            runE <- execButton (runComponentTip pkg comp)
+                            return $ tagPromptlyDyn (mkActD packageRunComponentTerm) runE
+                          else return never)
+                      else return never
+                  -- Double-click a component opens its ffcabal repl as
+                  -- a terminal tab (replacing the old inline repl button
+                  -- that used to clutter every row).
+                  let dblE = if pkType pKey == "cabal"
+                        then tagPromptlyDyn (mkActD packageOpenRepl) (domEvent Dblclick rowEl)
+                        else never
+                  return $ leftmost [rowE, dblE]
+          filesE <- treeItem' pkgRevealE "package-files" False (treeSelect "workspace" (return never) $ do
+            elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
+            text "Files"
+            return never) $
+              el "ul" $ do
+                sourceDirsD <- holdUniqDyn $ absolutSourceDirs <$> packageD
+                (switchHold never =<<) . dyn $
+                  -- Show the package's own Claude node unless the
+                  -- package sits at the project root (the project row
+                  -- already surfaces that dir's Claude node).
+                  (\sd ig d -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD
+                      (dropTrailingPathSeparator d /= dropTrailingPathSeparator (pkRoot pKey)) d)
+                    <$> sourceDirsD <*> nestedPkgDirsD <*> pkgDirD
+          return $ leftmost [componentsE, PackageFileEvents <$> filesE]
+    prSourceDirsD <- holdUniqDyn $ mconcat . (fmap absolutSourceDirs . prPackages) <$> projectD
+    -- The project's own ("Other Files") tree excludes the directory of
+    -- every package under the project root; and it's left out entirely
+    -- when a package sits at the project root (its files would just
+    -- duplicate that package's tree).
+    let projDir = dropTrailingPathSeparator (pkRoot pKey)
+    pkgDirsD <- holdUniqDyn $ (\proj -> S.fromList
+        [ d | p <- prPackages proj
+            , let d = dropTrailingPathSeparator (pkgDir p)
+            , (projDir <> "/") `isPrefixOf` d ])
+      <$> projectD
+    hasRootPackageD <- holdUniqDyn $
+      any ((== projDir) . dropTrailingPathSeparator . pkgDir) . prPackages <$> projectD
+    projectFilesE <- switchHold never =<< dyn (ffor hasRootPackageD $ \hasRoot ->
+      if hasRoot then return never else do
+        projRevealE <- revealUnderExcept (constDyn (pkRoot pKey)) pkgDirsD revealFileD
+        treeItem' projRevealE "project-files" False (treeSelect "workspace" (return never) $ do
+            elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
+            -- A directory project (nix-flake / make / plain "Open
+            -- Folder" dir) has no package "Files" nodes to distinguish
+            -- from, so plain "Files" reads better than "Other Files".
+            text $ if pkType pKey `elem` ["nix-flake", "make", "dir"]
+              then "Files"
+              else "Other Files"
+            return never) $
+              el "ul" $
+                (switchHold never =<<) . dyn $
+                  -- The project row already surfaces the Claude node
+                  -- for the project dir, so suppress it on this
+                  -- "Other Files" tree.
+                  (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD False (pkRoot pKey))
+                    <$> prSourceDirsD <*> pkgDirsD)
+    -- Any project with a flake.nix gets a (collapsed) Flake node;
+    -- it self-hides when there's no flake and only evaluates once
+    -- expanded, so there's no overhead otherwise.
+    flakeNode (pkRoot pKey)
+    -- Rust (Cargo.toml) / Python (pyproject.toml / setup.py) manifest
+    -- introspection, self-hiding like the flake node.
+    manifestNode (pkRoot pKey)
+    return $ leftmost
+      [ ProjectPackageEvents <$> packagesE
+      , ProjectFileEvents <$> projectFilesE
+      , worktreeProjectsE ]
+
 workspaceWidget
   :: MonadWidget t m
   => Ctx t
@@ -1719,20 +2191,13 @@ workspaceWidget
   -> Dynamic t (Maybe FilePath)   -- ^ the file to reveal (expand/scroll to), or
                                   --   Nothing when an occurrence is already shown
   -> m (Event t ProjectEvents)
-workspaceWidget ctx activeFileD revealFileD = do
-  showHiddenD  <- holdUniqDyn $ uiShowHiddenFiles  . cfgUi <$> cCfg ctx
-  showIgnoredD <- holdUniqDyn $ uiShowIgnoredFiles . cfgUi <$> cCfg ctx
+workspaceWidget ctx0 activeFileD0 revealFileD0 = do
+  env@PNEnv{..} <- mkPNEnv ctx0 activeFileD0 revealFileD0
   divClass "workspace leksah-nav" $
     divClass "workspace-body" $ do
       elClass "ul" "projects" $ do
         let addFileToKey = map (\(n, p) -> ((n, prKey p), p))
             projectsD = M.fromList . addFileToKey . zip [0..] . wsProjects <$> cWs ctx
-        -- Every project's directory, for computing the shortest label suffix
-        -- that uniquely identifies each project (see 'shortProjectSuffix').
-        allProjectDirsD <- holdUniqDyn $ map (pkRoot . snd) . M.keys <$> projectsD
-        activeProjectKeyD <- holdUniqDyn $ fmap prKey . activeProject <$> cWs ctx
-        activePackageFileD <- holdUniqDyn $ fmap pkgManifest . activePackage <$> cWs ctx
-        activeComponentD <- holdUniqDyn $ activeComponent <$> cWs ctx
         -- Self-heal (rare, pathological cold ghci boots): the project rows can
         -- build exactly once yet never be ATTACHED to the live DOM — frames all
         -- settle, model and statusbar are current, but `.projects` stays
@@ -1756,334 +2221,12 @@ workspaceWidget ctx activeFileD revealFileD = do
                   <> show (length (M.keys projs))
                   <> " projects in the model) — self-heal rebuild"
               fireRebuild 1
-        -- Which open project is a linked WORKTREE of which other open project,
-        -- resolved off-frame ('cachedMainRoot' — a checkout's common dir never
-        -- changes, so each path is one git call ever): worktree projects render
-        -- NESTED under their main repo's row instead of as unrelated top-level
-        -- rows.  A worktree whose main checkout is not itself open stays
-        -- top-level, exactly as before.
-        (mainRootsE, fireMainRoots) <- newTriggerEvent
-        performEvent_ $ ffor (leftmost [tag (current projectsD) wsPb, updated projectsD]) $ \projs ->
-          liftIO . void . forkIO $ do
-            ms <- mapM (\(_, k) -> (,) (dropTrailingPathSeparator (pkRoot k))
-                                     <$> cachedMainRoot (pkRoot k))
-                       (M.keys projs)
-            fireMainRoots (M.fromList ms)
-        mainRootsD <- holdUniqDyn =<< holdDyn M.empty mainRootsE
-        rootKeysD  <- holdUniqDyn $
-            M.fromList . map (\(_, k) -> (dropTrailingPathSeparator (pkRoot k), k)) . M.keys
-              <$> projectsD
-        let groupedD = (\projs mains ->
-                let norm k = dropTrailingPathSeparator (pkRoot k)
-                    openRoots = S.fromList [ norm k | (_, k) <- M.keys projs ]
-                    mainOf k = case M.lookup (norm k) mains of
-                        Just (Just mr) | mr `S.member` openRoots
-                                       , mr /= norm k -> Just mr
-                        _ -> Nothing
-                    tops = M.filterWithKey (\(_, k) _ -> mainOf k == Nothing) projs
-                    kids = M.fromListWith M.union
-                        [ (mr, M.singleton key v)
-                        | (key@(_, k), v) <- M.toList projs
-                        , Just mr <- [mainOf k] ]
-                in (tops, kids)) <$> projectsD <*> mainRootsD
-        let projectNode nested (_, pKey) projectD = do
-              let isActiveProjectD = (== Just pKey) <$> activeProjectKeyD
-              -- Opened only because a pane shows something in it: dimmed, and
-              -- offering "Pin to Workspace" to keep it.
-              isTempD <- holdUniqDyn $ wsIsTemporary pKey <$> cWs ctx
-              -- Reveal (expand) the project when the active file is anywhere under it.
-              projNodeRevealD <- revealUnder (constDyn (pkRoot pKey)) revealFileD
-              -- Current branch + open PR for this project's checkout, scanned once
-              -- here and shared by the git subtree, the collapsed summary and the
-              -- "Open PR" menu item.
-              (brD, prD) <- gitBranchPr (pkRoot pKey)
-              -- Only the active project starts expanded; activating another project
-              -- collapses this one (and expands that one).
-              initActive <- sample (current isActiveProjectD)
-              treeItemDynAttrSet' (updated isActiveProjectD) projNodeRevealD
-                ((\act temp -> "class" =: ("project" <> (if nested then " worktree-project" else "")
-                                            <> bool "" " active" act <> bool "" " temporary" temp)
-                   <> (if temp then "title" =: "Temporary: open while a pane shows something in it" else mempty))
-                   <$> isActiveProjectD <*> isTempD) initActive
-                (do
-                  claudeAvail <- liftIO claudeAvailable
-                  -- ⌥-clicking the terminal/Claude items opens them into a split of
-                  -- the active pane (⌥⇧ = the other direction), like the ⌥-open
-                  -- tree gestures; wrapSplit embeds the request in the menu's
-                  -- command type.  Remote projects can't split (a split runs on the
-                  -- local tmux server), so their items carry no target.
-                  let wrapSplit t sh = ProjectCommand (CommandIDEAction "" ""
-                                         (const (requestSplitOpen (t, sh))))
-                      localTgt t = if isRemotePath (pkRoot pKey) then Nothing else Just t
-                      plain = fmap (fmap (Nothing,))
-                  (projRowEl, rowE) <- treeSelect' "workspace" (menuSplitWith wrapSplit $
-                    [ plain . constDyn $ ("Activate", ProjectCommand . CommandIDEAction "Set as Active Project" "" $
-                        \app -> workspaceActivatePackage (appWorkspace app) pKey Nothing Nothing)
-                    ] <> case pkFile pKey of
-                            Just file -> [ constDyn ("Open Project File", (Just (STFile file), ProjectFileEvents . ("" =:) $ OpenFile False file)) ]
-                            _ -> []
-                      <> case pkFile pKey of
-                            Just file | pkType pKey == "cabal" ->
-                              [ let f = file <.> "local"
-                                in constDyn ("Open Project Configuration File", (Just (STFile f), ProjectFileEvents . ("" =:) $ OpenFile True f)) ]
-                            _ -> []
-                    <> [ constDyn $ ("Open Terminal Here",) . (localTgt (STTermDir (pkRoot pKey)),) . ProjectCommand . CommandIDEAction "" "" $
-                        const (openTerminalInDir (pkRoot pKey))
-                    , plain . constDyn $ ("Refresh Nix Environment Varialbes", ProjectCommand . CommandIDEAction "" "" $
-                        \app -> appNote app "nix env refresh is not reimplemented yet")
-                    , plain $ ffor isTempD $ \temp ->
-                        ( if temp then "Pin to Workspace" else ""
-                        , ProjectCommand (CommandIDEAction "" "" (\app -> workspacePinProject (appWorkspace app) pKey)) )
-                    , plain $ constDyn ("Remove From Workspace", ProjectCommand (CommandIDEAction "" "" (\app -> workspaceRemoveProject (appWorkspace app) pKey)))
-                    , plain $ constDyn ("Project Settings…", ProjectCommand (CommandIDEAction "" "" (const (requestRemoteSettings pKey))))
-                    , plain $ ffor prD $ \mpr ->
-                        ( "Open PR" <> prSuffix mpr
-                        , ProjectCommand (CommandIDEAction "" "" (const (maybe (return ()) (openUrl . snd) mpr))) )
-                    ]
-                    -- Claude Code (only when the CLI is on PATH): start a fresh
-                    -- session or continue the most recent one in the project dir.
-                    <> [ constDyn ("New Claude Session", (localTgt (STClaudeNew (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeNew (pkRoot pKey))))))) | claudeAvail ]
-                    <> [ constDyn ("Continue Last Claude Session", (localTgt (STClaudeContinue (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeContinue (pkRoot pKey))))))) | claudeAvail ]) $ do
-                    elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
-                    -- Label = (for a remote project) the server name, then the
-                    -- shortest right-anchored path suffix that uniquely identifies
-                    -- this project among the workspace; the full path is the
-                    -- tooltip.  The server name is plain text, not a highlighted
-                    -- pill.
-                    let keyFileOrDir = fromMaybe (pkRoot pKey) (pkFile pKey)
-                        (mbHost, fullLocal) = case parseRemotePath keyFileOrDir of
-                            Just (host, l) -> (Just host, l)
-                            Nothing        -> (Nothing, keyFileOrDir)
-                        fullTitle = maybe id (\h t -> h <> ":" <> t) mbHost (T.pack fullLocal)
-                    -- A nested worktree row's parent already says which repo
-                    -- this is — the worktree's own name (+ branch, via the
-                    -- summary span) is the whole label.
-                    suffixD <- if nested
-                      then return . constDyn $
-                             T.pack (takeFileName (dropTrailingPathSeparator (pkRoot pKey)))
-                      else holdUniqDyn $ shortProjectSuffix (pkRoot pKey) <$> allProjectDirsD
-                    let labelD = maybe id (\h s -> h <> ":" <> s) mbHost <$> suffixD
-                    elAttr "span" ("title" =: fullTitle) $ dynText labelD
-                    -- Git icon + branch + PR number, shown inline only while the
-                    -- project is collapsed (CSS keys off the li's tree-collapsed
-                    -- class); rendered only when the checkout has a branch.
-                    elClass "span" "proj-git-summary" $
-                        void . dyn $ ffor ((,) <$> brD <*> prD) $ \case
-                            (Nothing, _)   -> return ()
-                            (Just b, mpr)  -> gitIcon >> text (b <> prSuffix mpr)
-                    return never
-                  -- Double-click a project row → open a terminal at its directory.
-                  -- ⌥ opens it into a split of the active pane instead (local only).
-                  pmE <- dblclickMods projRowEl
-                  performEvent_ $ ffor pmE $ \(alt, sh) ->
-                    if alt && not (isRemotePath (pkRoot pKey))
-                      then liftIO (requestSplitOpen (STTermDir (pkRoot pKey), sh))
-                      else openTerminalInDir (pkRoot pKey)
-                  return rowE) $
-                el "ul" $ do
-                  -- Top item: the project's git tree (self-hides unless the project
-                  -- dir is itself a git checkout).
-                  gitTreeNode (pkRoot pKey) brD prD
-                  -- The repo's worktrees, one expand away from the project row
-                  -- (self-hides when there are none).  A NESTED row is itself a
-                  -- worktree: its siblings are already listed on the parent, so
-                  -- it doesn't repeat them.
-                  unless nested $ worktreesNode (pkRoot pKey) rootKeysD
-                  -- Worktree PROJECTS of this repo, as full project rows nested
-                  -- under this one (the 'groupedD' split above).  Their events
-                  -- collapse into this row's stream — Main only ever traverses
-                  -- the map's values, and every command closes over its own key.
-                  worktreeProjectsE <- if nested then return never else
-                      fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey
-                          (M.findWithDefault M.empty
-                             (dropTrailingPathSeparator (pkRoot pKey)) . snd
-                             <$> groupedD)
-                          $ projectNode True
-                  -- The project's Claude Code sessions, surfaced right under the
-                  -- project row (self-hides unless the project dir has sessions) so
-                  -- it's reachable without drilling into the Files node.
-                  claudeAvail <- liftIO claudeAvailable
-                  when claudeAvail $ do
-                      -- A project dir that is itself a worktree also lists
-                      -- the sessions the registry links to it, INSIDE its
-                      -- Agents node after its own sessions ('worktreeClaims').
-                      statusD <- claudeStatusRowsD
-                      let kids = agentWorktreeRows claudeAvail rootKeysD statusD
-                      claimsD <- worktreeClaims (Just kids) (pkRoot pKey)
-                      agentsNodeKids "workspace" (pkRoot pKey) claimsD (Just kids)
-                  let packagesD = M.fromList . map (\p -> (pkgManifest p, p)) . prPackages <$> projectD
-                  packagesE <- listViewWithKey packagesD $ \_manifest packageD -> do
-                    cabalFileD <- holdUniqDyn $ pkgManifest <$> packageD
-                    hasLibD <- holdUniqDyn $ any ((== KLib) . cKind) . pkgComponents <$> packageD
-                    pkgDirD <- holdUniqDyn $ pkgDir <$> packageD
-                    -- Directories of other packages *nested inside* this one (a file
-                    -- there belongs to the nested package, not this one): used to hide
-                    -- them from this package's tree and to not reveal towards them.
-                    nestedPkgDirsD <- holdUniqDyn $ (\proj p ->
-                          let myDir = dropTrailingPathSeparator (pkgDir p)
-                          in S.fromList
-                             [ d | p' <- prPackages proj, pkgManifest p' /= pkgManifest p
-                                 , let d = dropTrailingPathSeparator (pkgDir p')
-                                 , (myDir <> "/") `isPrefixOf` d ])
-                        <$> projectD <*> packageD
-                    pkgRevealE <- revealUnderExcept pkgDirD nestedPkgDirsD revealFileD
-                    let isActivePackageD = (&&) <$> isActiveProjectD <*> ((==) <$> activePackageFileD <*> (Just <$> cabalFileD))
-                        -- Build-family menu items dispatch through the builder
-                        -- service ('runVerb'), scoped to this package.
-                        pkgVerb t v = plainPkg $ (t,) . PackageCommand . CommandIDEAction "" ""
-                            . (\pkg app -> runVerb (appBuilder app) pKey (Just pkg) Nothing v)
-                            <$> packageD
-                        -- A Claude launch item for the package's directory (Dynamic
-                        -- because the package dir is); @st@ is its ⌥-split target
-                        -- (local dirs only — a split runs on the local tmux server).
-                        pkgClaude t c st = (\d -> (t, ( if isRemotePath d then Nothing else Just (st d)
-                                                      , PackageCommand (CommandIDEAction "" "" (const (runClaudeCmd (c d))))))) <$> pkgDirD
-                        -- ⌥-split plumbing for the package menu (see the project
-                        -- menu's wrapSplit/plain above).
-                        wrapSplitPkg t sh = PackageCommand (CommandIDEAction "" ""
-                                              (const (requestSplitOpen (t, sh))))
-                        plainPkg = fmap (fmap ((,) Nothing))
-                    -- claudeAvail is the project-level binding above (in scope here).
-                    treeItemDynAttr' pkgRevealE (("class" =:) . ("package" <>) <$> (bool "" " active" <$> isActivePackageD)) False
-                      (treeSelect "workspace" (menuSplitWith wrapSplitPkg $
-                          [ plainPkg $ ("Activate",) . PackageCommand . CommandIDEAction "Set as Active Package" "" <$>
-                              ((\pkg app -> workspaceActivatePackage (appWorkspace app) pKey (Just (pkgManifest pkg)) Nothing) <$> packageD)
-                          , pkgVerb "Build" VBuild
-                          , pkgVerb "Run" VRun
-                          , pkgVerb "Test" VTest
-                          , pkgVerb "Benchmark" VBench
-                          , pkgVerb "Clean" VClean
-                          , (\cf -> ("Open Package File", (Just (STFile cf), PackageFileEvents (("" =:) (OpenFile False cf)))))
-                              . pkgManifest <$> packageD
-                          ]
-                          <> [ pkgClaude "New Claude Session" ClaudeNew STClaudeNew | claudeAvail ]
-                          <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue STClaudeContinue | claudeAvail ]) $ do
-                        elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-package.svg") $ return ()
-                        -- The package's cabal-file path (relative to the project)
-                        -- is a tooltip, not an inline label — it was crowding the
-                        -- row.
-                        relPathD <- holdUniqDyn $
-                            (\cf -> T.pack $ fromMaybe cf $ stripPrefix (pkRoot pKey) cf) <$> cabalFileD
-                        elDynAttr "div" ((\p -> "class" =: "package-id" <> "title" =: p) <$> relPathD) $ do
-                          dynText $ packageIdText <$> packageD
-                          dynText $ do
-                            isActive <- isActivePackageD
-                            activeComp <- activeComponentD
-                            hasLib <- hasLibD
-                            pkg <- packageD
-                            return $ if isActive
-                              then maybe (if hasLib then " (library)" else "")
-                                       (\comp -> " (" <> componentTarget pkg comp <> ")") activeComp
-                              else ""
-                        return never) $
-                      el "ul" $ do
-                        -- Top item: the package's git tree — only when the package
-                        -- is NOT the project root and is itself a git checkout.
-                        pkgDirNow <- sample (current pkgDirD)
-                        when (dropTrailingPathSeparator pkgDirNow /= dropTrailingPathSeparator (pkRoot pKey)) $ do
-                            (pkgBrD, pkgPrD) <- gitBranchPr pkgDirNow
-                            gitTreeNode pkgDirNow pkgBrD pkgPrD
-                        componentsE <- treeItem "components" False
-                          (treeSelect "workspace" (return never) $ do
-                              elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
-                              text "Components"
-                              return never) $
-                          el "ul" $
-                            fmap (fmapMaybe (listToMaybe . M.elems)) . listViewWithKey (M.fromList . zip [0::Int ..] . pkgComponents <$> packageD) $ \_ componentD -> do
-                              let isActiveComponentD = (&&) <$> isActivePackageD <*> ((==) <$> activeComponentD <*> (Just <$> componentD))
-                              elDynClass "li" (("component" <>) <$> (bool "" " active" <$> isActiveComponentD)) $ do
-                                let mkActD f = (\proj pkg comp ->
-                                        PackageCommand . CommandIDEAction "" "" $
-                                          f proj pkg comp)
-                                      <$> projectD <*> packageD <*> componentD
-                                (rowEl, rowE) <- treeSelect' "workspace" (menu
-                                  [ ("Activate",) . PackageCommand . CommandIDEAction "Set as Active Component" "" <$>
-                                      ((\pkg comp app -> workspaceActivatePackage (appWorkspace app) pKey (Just (pkgManifest pkg)) (Just comp))
-                                         <$> packageD <*> componentD)
-                                  ]) $ do
-                                  elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-component.svg") $ return ()
-                                  dynText $ componentTarget <$> packageD <*> componentD
-                                  -- A ▶ button on runnable components (exe/test/bench,
-                                  -- of a cabal project) runs the component in a
-                                  -- terminal (cabal run/test/bench); libraries have
-                                  -- none.  Opening the repl is the row's double-click.
-                                  if pkType pKey == "cabal"
-                                    then switchHold never =<< dyn (ffor ((,) <$> packageD <*> componentD) $ \(pkg, comp) ->
-                                      if cKind comp `elem` [KExe, KTest, KBench]
-                                        then do
-                                          runE <- execButton (runComponentTip pkg comp)
-                                          return $ tagPromptlyDyn (mkActD packageRunComponentTerm) runE
-                                        else return never)
-                                    else return never
-                                -- Double-click a component opens its ffcabal repl as
-                                -- a terminal tab (replacing the old inline repl button
-                                -- that used to clutter every row).
-                                let dblE = if pkType pKey == "cabal"
-                                      then tagPromptlyDyn (mkActD packageOpenRepl) (domEvent Dblclick rowEl)
-                                      else never
-                                return $ leftmost [rowE, dblE]
-                        filesE <- treeItem' pkgRevealE "package-files" False (treeSelect "workspace" (return never) $ do
-                          elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
-                          text "Files"
-                          return never) $
-                            el "ul" $ do
-                              sourceDirsD <- holdUniqDyn $ absolutSourceDirs <$> packageD
-                              (switchHold never =<<) . dyn $
-                                -- Show the package's own Claude node unless the
-                                -- package sits at the project root (the project row
-                                -- already surfaces that dir's Claude node).
-                                (\sd ig d -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD
-                                    (dropTrailingPathSeparator d /= dropTrailingPathSeparator (pkRoot pKey)) d)
-                                  <$> sourceDirsD <*> nestedPkgDirsD <*> pkgDirD
-                        return $ leftmost [componentsE, PackageFileEvents <$> filesE]
-                  prSourceDirsD <- holdUniqDyn $ mconcat . (fmap absolutSourceDirs . prPackages) <$> projectD
-                  -- The project's own ("Other Files") tree excludes the directory of
-                  -- every package under the project root; and it's left out entirely
-                  -- when a package sits at the project root (its files would just
-                  -- duplicate that package's tree).
-                  let projDir = dropTrailingPathSeparator (pkRoot pKey)
-                  pkgDirsD <- holdUniqDyn $ (\proj -> S.fromList
-                      [ d | p <- prPackages proj
-                          , let d = dropTrailingPathSeparator (pkgDir p)
-                          , (projDir <> "/") `isPrefixOf` d ])
-                    <$> projectD
-                  hasRootPackageD <- holdUniqDyn $
-                    any ((== projDir) . dropTrailingPathSeparator . pkgDir) . prPackages <$> projectD
-                  projectFilesE <- switchHold never =<< dyn (ffor hasRootPackageD $ \hasRoot ->
-                    if hasRoot then return never else do
-                      projRevealE <- revealUnderExcept (constDyn (pkRoot pKey)) pkgDirsD revealFileD
-                      treeItem' projRevealE "project-files" False (treeSelect "workspace" (return never) $ do
-                          elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-folder.svg") $ return ()
-                          -- A directory project (nix-flake / make / plain "Open
-                          -- Folder" dir) has no package "Files" nodes to distinguish
-                          -- from, so plain "Files" reads better than "Other Files".
-                          text $ if pkType pKey `elem` ["nix-flake", "make", "dir"]
-                            then "Files"
-                            else "Other Files"
-                          return never) $
-                            el "ul" $
-                              (switchHold never =<<) . dyn $
-                                -- The project row already surfaces the Claude node
-                                -- for the project dir, so suppress it on this
-                                -- "Other Files" tree.
-                                (\sd ig -> fileTree "workspace" sd ig showHiddenD showIgnoredD activeFileD revealFileD False (pkRoot pKey))
-                                  <$> prSourceDirsD <*> pkgDirsD)
-                  -- Any project with a flake.nix gets a (collapsed) Flake node;
-                  -- it self-hides when there's no flake and only evaluates once
-                  -- expanded, so there's no overhead otherwise.
-                  flakeNode (pkRoot pKey)
-                  -- Rust (Cargo.toml) / Python (pyproject.toml / setup.py) manifest
-                  -- introspection, self-hiding like the flake node.
-                  manifestNode (pkRoot pKey)
-                  return $ leftmost
-                    [ ProjectPackageEvents <$> packagesE
-                    , ProjectFileEvents <$> projectFilesE
-                    , worktreeProjectsE ]
         projE <- (switchHold never =<<) . dyn $ ffor rebuildD $ \_ ->
-            listViewWithKey (fst <$> groupedD) (projectNode False)
+            listViewWithKey (fst <$> groupedD) (projectNodeW env False)
         -- Last: every agent and the worktrees it registered.
-        agentWorktreesNode rootKeysD
+        agentWorktreesNode env
         return projE
+
 
 --------------------------------------------------------------------------------
 -- Agents and their worktrees ("IDE.Web.AgentWorktrees")
@@ -2111,23 +2254,13 @@ pollD a0 act = do
   performEvent_ $ (liftIO . void . forkIO $ act >>= fire) <$ leftmost [() <$ pb, () <$ tick]
   holdUniqDyn =<< holdDyn a0 e
 
--- | The workspace's open projects by (trailing-slash-normalised) root — what
--- a worktree row's menu needs to offer "Open as Project" or "Remove".
-openProjectRootsD :: forall t m . MonadWidget t m => m (Dynamic t (M.Map FilePath ProjectKey))
-openProjectRootsD = pollD M.empty $ withAppOr M.empty $ \app -> do
-  ws <- readCell (wsCell (appWorkspace app))
-  return $ M.fromList [ (dropTrailingPathSeparator (pkRoot k), k)
-                      | p <- wsProjects ws, let k = prKey p ]
-  where withAppOr d k = maybe (return d) k =<< getGlobalApp
-
--- | An agent's worktrees as tree rows ('worktreeRow', so each has the live
--- branch, counts, PR, badge, story and menu): the current ones, then the rest
+-- | An agent's worktrees as tree rows ('worktreeProjectNode': the live
+-- branch, counts, PR, badge, story and menu, and the whole project inside): the current ones, then the rest
 -- under a collapsed "Earlier (N)".  Keyed by path, so a poll that changes one
 -- leaves the others (and whichever is expanded) alone.
 agentWorktreeRows :: forall t m . MonadWidget t m
-                  => Bool -> Dynamic t (M.Map FilePath ProjectKey)
-                  -> Dynamic t [ClaudeStatusRow] -> Dynamic t [AgentWorktree] -> m ()
-agentWorktreeRows claudeAvail rootKeysD statusD wtsD = do
+                  => PNEnv t -> Dynamic t [AgentWorktree] -> m ()
+agentWorktreeRows env wtsD = do
   let keyed f = M.fromList . map (\w -> (awPath w, w)) . filter f <$> wtsD
   curD <- holdUniqDyn (keyed awCurrent)
   oldD <- holdUniqDyn (keyed (not . awCurrent))
@@ -2146,17 +2279,16 @@ agentWorktreeRows claudeAvail rootKeysD statusD wtsD = do
     row p wD = do
       w <- sample (current wD)
       let local = maybe p snd (parseRemotePath p)
-      worktreeRow claudeAvail (awMainRoot w) rootKeysD statusD
+      worktreeProjectNode env (awMainRoot w)
                   (GitWorktree (T.pack local) (awBranch w))
       return never
 
 -- | The Agents pane's panel for one agent (its top card's): its worktrees,
 -- as a tree.  Self-hides when it has none.
-agentWorktreesPanel :: forall t m . MonadWidget t m => Dynamic t (Maybe Text) -> m ()
-agentWorktreesPanel sidD = do
-  claudeAvail <- liftIO claudeAvailable
-  rootKeysD <- openProjectRootsD
-  statusD   <- claudeStatusRowsD
+agentWorktreesPanel :: forall t m . MonadWidget t m
+                    => Ctx t -> Dynamic t (Maybe Text) -> m ()
+agentWorktreesPanel ctx0 sidD = do
+  env <- mkPNEnv ctx0 (constDyn Nothing) (constDyn Nothing)
   void . dyn $ ffor sidD $ \case
     Nothing  -> return ()
     Just sid -> do
@@ -2164,16 +2296,14 @@ agentWorktreesPanel sidD = do
       void . dyn $ ffor (null <$> wtsD) $ \noWts -> unless noWts $
         divClass "agents-worktrees workspace-tree" $ do
           divClass "agents-worktrees-head" $ text "Worktrees"
-          el "ul" $ agentWorktreeRows claudeAvail rootKeysD statusD wtsD
+          el "ul" $ agentWorktreeRows env wtsD
 
 -- | "Agents (N)" at the bottom of the Workspace tree: one expandable row per
 -- agent that has worktrees now (or is live and has any), live ones first; each
 -- expands to 'agentWorktreeRows'.  Double-click (or the menu) brings the agent
 -- up: its pane if it is live, else it is resumed.  Self-hides when empty.
-agentWorktreesNode :: forall t m . MonadWidget t m
-                   => Dynamic t (M.Map FilePath ProjectKey) -> m ()
-agentWorktreesNode rootKeysD = do
-  claudeAvail <- liftIO claudeAvailable
+agentWorktreesNode :: forall t m . MonadWidget t m => PNEnv t -> m ()
+agentWorktreesNode env = do
   statusD <- claudeStatusRowsD
   groupsD <- pollD [] allAgentWorktrees
   let shownD = ffor groupsD $ \gs -> M.fromList
@@ -2190,11 +2320,11 @@ agentWorktreesNode rootKeysD = do
           return (never :: Event t ()))
       (el "ul" $ do
           void . listViewWithKey shownD $ \(_, _, sid) gD -> do
-            agentRow claudeAvail statusD sid gD
+            agentRow statusD sid gD
             return (never :: Event t ())
           return (never :: Event t ()))
   where
-    agentRow claudeAvail statusD sid gD = do
+    agentRow statusD sid gD = do
       wtsD <- holdUniqDyn (agWorktrees <$> gD)
       nameD <- holdUniqDyn ((\g -> if T.null (agName g) then Nothing else Just (agName g)) <$> gD)
       let badgeD = ffor statusD $ \rows ->
@@ -2226,7 +2356,7 @@ agentWorktreesNode rootKeysD = do
             performEvent_ $ liftIO . open <$> tagPromptlyDyn gD (domEvent Dblclick rowEl)
             performEvent_ $ liftIO <$> mE
             return (never :: Event t ()))
-        (el "ul" $ agentWorktreeRows claudeAvail rootKeysD statusD wtsD
+        (el "ul" $ agentWorktreeRows env wtsD
                    >> return (never :: Event t ()))
 
 -- | An agent's face (its animal), as in the Agents nodes' session rows; the

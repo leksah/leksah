@@ -45,8 +45,10 @@ module IDE.Workspace
   , workspaceFollowPath
   , workspaceSweepTemporary
   , workspacePinProject
+  , ensureTemporary
   ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Control.Lens (makeLenses, over, set, view)
@@ -256,6 +258,21 @@ addProject temp svc k = do
     when (not present && null (WF.wsProjects (view wsSpec ws))) $
         workspaceActivatePackage svc k Nothing Nothing
     unless present $ wsReqEnum svc k
+
+-- | Make sure @k@ is in the workspace — adding it as a TEMPORARY project
+-- when it isn't (kept while a pane uses it or it is active) — and wait (up
+-- to ~10s) for its enumeration to land, since what runs next (activating a
+-- package, a build) reads the enumerated project.  For a project the tree
+-- showed without it being in the workspace (a worktree's project node).
+ensureTemporary :: WorkspaceService -> ProjectKey -> IO ()
+ensureTemporary svc k = do
+    addProject True svc k
+    let wait :: Int -> IO ()
+        wait n = do
+            ws <- readCell (wsCell svc)
+            unless (M.member k (view wsProjectsMap ws) || n <= 0) $
+                threadDelay 100000 >> wait (n - 1)
+    wait 100
 
 -- | Make a temporary project a regular one (written to the file, and kept
 -- when no pane shows it any more).

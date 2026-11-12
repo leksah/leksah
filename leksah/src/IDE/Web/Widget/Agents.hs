@@ -90,6 +90,7 @@ import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.TextAssist (noTextAssist)
 import IDE.Web.Widget.Workspace (agentWorktreesPanel)
+import IDE.Web.Ctx (Ctx)
 
 -- | What the cards' buttons do, for a pane that shows notices with @toast@ and
 -- re-reads the agents with @refresh@.  Shared with the Team pane.
@@ -130,8 +131,8 @@ agentCardActions toast refresh = CardActions
 -- Polls 'agentForest' (cheap — it reads the status poll's cache), and renders
 -- it with a keyed list so a poll that changes one agent's state leaves every
 -- other card — and whichever the user opened — exactly as it was.
-agentsWidget :: forall t m . MonadWidget t m => Dynamic t [Text] -> m (Event t ())
-agentsWidget mruNamesD = do
+agentsWidget :: forall t m . MonadWidget t m => Ctx t -> Dynamic t [Text] -> m (Event t ())
+agentsWidget ctx mruNamesD = do
   (root, _) <- elClass' "div" "agents-pane leksah-nav" $ mdo
     pb   <- getPostBuild
     tick <- tickLossyFromPostBuildTime 2
@@ -322,7 +323,7 @@ agentsWidget mruNamesD = do
       -- card, so it lands directly after it.
       topSidD <- holdUniqDyn (fmap anSession <$> (topNodeOf . flatten <$> forestD <*> mruNamesD))
       elAttr "div" ("class" =: "agents-slot" <> "style" =: "order:0") $
-        agentWorktreesPanel topSidD
+        agentWorktreesPanel ctx topSidD
     return ()
   -- Arm the pane's JS (description links, / to search) on
   -- THIS pane's root element.  The handle, never document.querySelector: at

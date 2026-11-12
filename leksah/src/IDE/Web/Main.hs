@@ -9818,7 +9818,7 @@ main showMenubar macTitlebar wid ctx = mdo
           -- The agents in flip-MRU order (the flipper's: the active pane
           -- first) — the Agents pane's top card, and its tie-break within a
           -- state group.
-          AgentsKey      -> toDM AgentsTab <$> (agentsWidget =<< holdUniqDyn
+          AgentsKey      -> toDM AgentsTab <$> (agentsWidget ctx =<< holdUniqDyn
             ((\mru tree -> nubOrd
                 [ a | FlipPane s w p <- mru
                     , Just (_, wins) <- [M.lookup s tree]

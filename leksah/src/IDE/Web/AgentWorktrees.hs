@@ -28,6 +28,7 @@ module IDE.Web.AgentWorktrees
   , worktreesOfAgent
   , allAgentWorktrees
   , worktreesBySession
+  , currentClaimants
   ) where
 
 import Control.Exception (SomeException, catch)
@@ -42,6 +43,7 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down(..))
 import qualified Data.Set as S
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 
 import System.Directory (doesDirectoryExist)
@@ -102,6 +104,14 @@ allAgentWorktrees = fst <$> snapshot
 -- session row under an Agents node expands to.
 worktreesBySession :: IO (Map Text [AgentWorktree])
 worktreesBySession = snd <$> snapshot
+
+-- | The agents with a CURRENT claim ('awCurrent') on the worktree at @path@:
+-- (session, name — the short id when it has none), live ones first.
+currentClaimants :: FilePath -> IO [(Text, Text)]
+currentClaimants path = do
+  gs <- allAgentWorktrees
+  return [ (agSession g, if T.null (agName g) then T.take 8 (agSession g) else agName g)
+         | g <- gs, any (\w -> awPath w == path && awCurrent w) (agWorktrees g) ]
 
 {-# NOINLINE snapshotRef #-}
 snapshotRef :: IORef (Double, ([AgentWorktrees], Map Text [AgentWorktree]))
