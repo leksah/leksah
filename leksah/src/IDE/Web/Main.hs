@@ -7588,6 +7588,18 @@ main showMenubar macTitlebar wid ctx = mdo
         -- …and the same selection keeping the tmux WINDOW index the click named
         -- (a session row names none).  The tab to bring up is the leksah window
         -- OWNING that tmux window, not the session's first — see 'ownerTabKey'.
+        -- EXPLICIT un-hide: selecting a hidden window (or one of its panes) in
+        -- the tree brings it back — not left to the current-window inference
+        -- of 'unhideWinE', which a window that was already its session's
+        -- current one (so selecting it changes nothing in tmux) never trips.
+        treeWinSelE = leftmost
+          [ selectWinE
+          , (\(s, w, _) -> (s, w)) <$> selectPaneE
+          , (\(h, sid, _, w) -> (remoteKey h sid, w)) <$> selRemoteWinE
+          , (\(h, sid, _, w, _) -> (remoteKey h sid, w)) <$> selRemotePaneE ]
+        unhideSelE = attachWithMaybe
+          (\hidden sw -> if sw `S.member` hidden then Just sw else Nothing)
+          (current hiddenWinsD) treeWinSelE
         selectAnyTermWinE = leftmost
           [ (\s         -> (s, Nothing)) <$> selectTermE
           , (\(s, w)    -> (s, Just w))  <$> selectWinE
@@ -7881,7 +7893,11 @@ main showMenubar macTitlebar wid ctx = mdo
     -- A remote tree click goes through the request bridge, like cc-connect, so
     -- it reaches the window bound to that session or mints one
     -- ('openRemoteSession' above).
-    performEvent_ $ ffor remoteOpenKeyE $ liftIO . requestLocalTerm
+    -- (only when no window shows it yet — 'openInWide0' in openTabsE brings
+    -- an existing one up directly, without the request round trip)
+    performEvent_ $ ffor (attachWithMaybe
+            (\lws k -> if isNothing (termTabKey lws k) then Just k else Nothing)
+            (current leksahWindowsD') remoteOpenKeyE) $ liftIO . requestLocalTerm
     let treeSelectKeyE = leftmost [ selectAnyTermE, remoteOpenKeyE ]
     performEvent_ $ ffor treeSelectKeyE $ liftIO . focusTerminalPane
     -- Bells rung in a terminal's *viewed* (current) window: tmux's alert-bell
@@ -9411,6 +9427,12 @@ main showMenubar macTitlebar wid ctx = mdo
         liftIO $ fmap (\w -> (s, w)) <$> windowIndexOfPane p
     moveWinE <- performEvent $ ffor termMoveE $ \(s, p) -> liftIO $ fmap (\w -> (s, w)) <$> breakTmuxPaneId p
     let hideOrMoveWinE = fmapMaybe id (leftmost [hideWinE, moveWinE])
+    -- A window un-hidden from the tree is adopted back into a leksah window of
+    -- its own by the next reconcile (which the hidden change runs at once);
+    -- then bring THAT up — the select itself could only find the session's.
+    unhideOpenE <- delay 0.6 unhideSelE
+    performEvent_ $ ffor (attach ((,) <$> current leksahWindowsD' <*> current allTreeD) unhideOpenE) $
+        \((lws, tree), (s, w)) -> liftIO $ forM_ (paneOwnerLw lws tree s w) requestLocalTerm
     -- (a remote hide re-polls its host too: a Move made a new window there)
     performEvent_ $ ffor (ffilter (("ssh://" `T.isPrefixOf`) . fst) hideOrMoveWinE) $ \_ ->
         liftIO $ fireRemotePoke ()
@@ -9430,7 +9452,11 @@ main showMenubar macTitlebar wid ctx = mdo
     -- window just hidden (still tmux-current for a beat) from instantly returning.
     let unhideWinE = fmapMaybe id $ attachWith
           (\(hidden, sup, mact, lws) tree -> case mact >>= tabSessionOf lws of
-             Just s -> listToMaybe
+             -- (LOCAL sessions only: a remote one has none of the show paths
+             -- this infers from, and its hidden window stays tmux-current, so
+             -- merely visiting another of its windows would bring it back.
+             -- A remote window comes back when it is selected — 'unhideSelE'.)
+             Just s | not ("ssh://" `T.isPrefixOf` s) -> listToMaybe
                [ sw | (s', (_, wins)) <- M.toList tree, s' == s
                     , w <- wins, twActive w
                     , let sw = (s, twIndex w)
@@ -9548,6 +9574,7 @@ main showMenubar macTitlebar wid ctx = mdo
               lwsB newTermE
           , attachWith openInWide0 lwsB editTermSidE
           , attachWith openInWide0 lwsB termRequestE
+          , attachWith openInWide0 lwsB remoteOpenKeyE
           , (\k -> TerminalKey k =: ("wide0", Just ())) <$> remoteFailE
           , attachWith (\(lws, tree) (s, mw) -> openOwnerWide0 lws tree s mw)
               lwsTreeB selectAnyTermWinE
@@ -10421,6 +10448,7 @@ main showMenubar macTitlebar wid ctx = mdo
       -- focusing a pane in a hidden window (tree/claude/editor reopen) un-hides it.
       <> ((\sw -> [overUi (hiddenWindows %~ S.insert sw)]) <$> hideOrMoveWinE)
       <> ((\sw -> [overUi (hiddenWindows %~ S.delete sw)]) <$> unhideWinE)
+      <> ((\sw -> [overUi (hiddenWindows %~ S.delete sw)]) <$> unhideSelE)
       <> ((\ok -> [overUi (hiddenWindows %~ (\h -> foldr S.insert h ok))]) <$> hiddenConfirmE)
       -- Leksah windows: reconcile against the live pane tree (recomputed
       -- from the CURRENT ide inside the mutation, so nothing stale is
