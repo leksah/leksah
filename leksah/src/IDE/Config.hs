@@ -132,8 +132,10 @@ data TerminalC = TerminalC
     , tcTmuxPrefix  :: Bool  -- ^ intercept the tmux prefix key in-page
     } deriving (Eq, Show)
 
-newtype RemoteC = RemoteC
-    { rcHosts :: [Text]  -- ^ ssh hosts shown as top-level tree nodes
+data RemoteC = RemoteC
+    { rcHosts   :: [Text]  -- ^ ssh hosts shown as top-level tree nodes
+    , rcStartup :: [Text]  -- ^ hosts whose default session leksah opens at
+                           --   startup (when no window shows it yet)
     } deriving (Eq, Show)
 
 data LspC = LspC
@@ -210,7 +212,7 @@ defaultConfig = Config
         , tcControlMode = True
         , tcTmuxPrefix  = False
         }
-    , cfgRemote = RemoteC { rcHosts = [] }
+    , cfgRemote = RemoteC { rcHosts = [], rcStartup = [] }
     , cfgLsp = LspC
         { lcEnabled       = True
         , lcServerCommand = ""
@@ -285,7 +287,8 @@ instance ToJSON Config where
             , chg "tmuxPrefix"  tcTmuxPrefix  d s
             ]
         , sect "remote" $ let d = cfgRemote defaultConfig; s = cfgRemote c in
-            [ chg "hosts" rcHosts d s ]
+            [ chg "hosts"   rcHosts   d s
+            , chg "startup" rcStartup d s ]
         , sect "lsp" $ let d = cfgLsp defaultConfig; s = cfgLsp c in
             [ chg "enabled"       lcEnabled       d s
             , chg "serverCommand" lcServerCommand d s
@@ -358,7 +361,8 @@ instance FromJSON Config where
             <*> fld s "tmuxPrefix"  (tcTmuxPrefix  (cfgTerminal dc)))
             (cfgTerminal dc)
         cfgRemote' <- inSect o "remote" (\s -> RemoteC
-            <$> fld s "hosts" (rcHosts (cfgRemote dc)))
+            <$> fld s "hosts"   (rcHosts   (cfgRemote dc))
+            <*> fld s "startup" (rcStartup (cfgRemote dc)))
             (cfgRemote dc)
         cfgLsp' <- inSect o "lsp" (\s -> LspC
             <$> fld s "enabled"       (lcEnabled       (cfgLsp dc))

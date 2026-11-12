@@ -355,8 +355,9 @@ terminalsWidget
                                -- ^ each host's (reachable, sessions) — the
                                --   shared ssh poll in 'IDE.Web.Main' (one ssh
                                --   per host, feeding this tree AND the flipper)
+  -> Dynamic t [Text]          -- ^ hosts opened at startup ('rcStartup')
   -> m (Event t TerminalsEvents)
-terminalsWidget activeD attnD remoteHostsD hostTreesD = do
+terminalsWidget activeD attnD remoteHostsD hostTreesD startupD = do
   (termRoot, ev) <- elClass' "div" "terminals leksah-nav" $ do
     -- Read the whole session/window/pane tree (keyed by session id, each carrying
     -- its current name): on first build, on a "new session" click, and — instead
@@ -399,7 +400,7 @@ terminalsWidget activeD attnD remoteHostsD hostTreesD = do
     -- One node per remote host, sessions/windows/panes over ssh (select-only);
     -- the data comes from the shared per-host poll in 'IDE.Web.Main'.
     remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
-        (\host _ -> remoteHostNode activeD host
+        (\host _ -> remoteHostNode activeD (elem host <$> startupD) host
             (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
     -- Trailing "Add Server…" row: opens the Add Server modal (the same one as
     -- File ▸ Add Server…) via the request bridge; the added host lands in the
@@ -474,9 +475,10 @@ hostRow label newEv tip = do
 -- open/steer the host's control-mode tabs.
 remoteHostNode
   :: MonadWidget t m
-  => Dynamic t (Maybe Text) -> Text -> Dynamic t (Bool, Map Text (Text, [TmuxWindow]))
+  => Dynamic t (Maybe Text) -> Dynamic t Bool -> Text
+  -> Dynamic t (Bool, Map Text (Text, [TmuxWindow]))
   -> m (Event t NodeEvent)
-remoteHostNode activeD host treeD = do
+remoteHostNode activeD startupD host treeD = do
     reachD <- holdUniqDyn (fst <$> treeD)
     itemsD <- holdUniqDyn (snd <$> treeD)
     treeItem "terminals-host" True
@@ -489,7 +491,10 @@ remoteHostNode activeD host treeD = do
             newE <- actionBtn "+" ("New session on " <> host)
             menuE <- rowMenu lbl
               [ constDyn ("Open Server Connection", SelectRemoteHost host)
-              , constDyn ("New Session",            NewRemoteTerminal host) ]
+              , constDyn ("New Session",            NewRemoteTerminal host)
+                -- Open its default session as a leksah window at startup.
+              , (\on -> ((if on then "\10003 " else "") <> "Open at Startup"
+                        , ToggleRemoteStartup host)) <$> startupD ]
             pure $ leftmost [ Right (NewRemoteTerminal host) <$ newE
                             , Right (SelectRemoteHost host)  <$ domEvent Click lbl
                             , Right <$> menuE ])

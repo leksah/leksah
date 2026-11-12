@@ -154,7 +154,7 @@ import Reflex
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never, getPostBuild, select, fan, fanMap,
         fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate, zipDyn,
         sample, constDyn,
-        tagPromptlyDyn, attachPromptlyDynWithMaybe, debounce, delay, tickLossyFromPostBuildTime)
+        tagPromptlyDyn, attachPromptlyDynWithMaybe, debounce, delay, headE, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dyn, dyn_, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
         simpleList, text, blank, domEvent, EventName(..),
@@ -171,7 +171,7 @@ import IDE.App
 import IDE.Builder (buildActiveTarget)
 import IDE.Config
        (AiC(..), BuildC(..), Config(..), Editor(..), EditorC(..), FontC(..),
-        RemoteC(..), TerminalC(..), ThemeC(..), UiC(..), currentConfig)
+        RemoteC(..), TerminalC(..), ThemeC(..), UiC(..), currentConfig, saveConfig)
 #if defined(ghcjs_HOST_OS)
 import IDE.Config (configCell)
 #endif
@@ -233,7 +233,7 @@ import IDE.Web.RegionCapture
         resolveTmuxSessionId)
 import IDE.Web.AIContextRequest (AIAction(..))
 import IDE.Web.RemoteTermRequest
-       (dupTermRequests, nextTermRequest, requestLocalTerm)
+       (dupTermRequests, nextTermRequest, requestLocalTerm, requestRemoteTerm)
 import IDE.Web.SplitLayout
        (readLeksahWindows, saveSessionLayouts, reconcileWindows,
         reconcileRemoteHost, windowServer,
@@ -299,7 +299,7 @@ import IDE.Web.Events
         _ToolbarCommand, _MenubarCommand, _KeymapCommand, _PackageCommand,
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
         _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane,
-        _NewRemoteTerminal, _SelectRemoteHost, _SelectRemoteTerminal,
+        _NewRemoteTerminal, _SelectRemoteHost, _ToggleRemoteStartup, _SelectRemoteTerminal,
         _SelectRemoteTerminalWindow, _SelectRemoteTerminalPane,
         _CloseRemoteTerminal, _NewRemoteTerminalWindow, _KillRemoteTerminalWindow,
         _RenameRemoteTerminalSession, _RenameRemoteTerminalWindow,
@@ -7555,6 +7555,7 @@ main showMenubar macTitlebar wid ctx = mdo
         -- Remote host nodes: sessions/windows/panes on another machine's tmux,
         -- rendered in control-mode tabs keyed "ssh://host#session".
         newRemoteE     = fmapMaybe (^? _NewRemoteTerminal) terminalsListE
+        toggleStartupE = fmapMaybe (^? _ToggleRemoteStartup) terminalsListE
         selRemoteE     = fmapMaybe (^? _SelectRemoteTerminal) terminalsListE
         selRemoteWinE  = fmapMaybe (^? _SelectRemoteTerminalWindow) terminalsListE
         selRemotePaneE = fmapMaybe (^? _SelectRemoteTerminalPane) terminalsListE
@@ -7603,6 +7604,14 @@ main showMenubar macTitlebar wid ctx = mdo
         renRemoteSessE   = fmapMaybe (^? _RenameRemoteTerminalSession) terminalsListE
         renRemoteWinE    = fmapMaybe (^? _RenameRemoteTerminalWindow) terminalsListE
         remoteAct io     = liftIO . void . forkIO $ io >> fireRemotePoke ()
+    -- "Open at Startup" on a server's menu: toggle it in the remote settings
+    -- (persisted at once, like every settings change).
+    performEvent_ $ ffor toggleStartupE $ \h -> liftIO . void . forkIO . withApp $ \app -> do
+        cfg <- currentConfig (appConfig app)
+        let rc = cfgRemote cfg
+            st = rcStartup rc
+        saveConfig (appConfig app) cfg
+          { cfgRemote = rc { rcStartup = if h `elem` st then filter (/= h) st else st <> [h] } }
     performEvent_ $ ffor selRemoteNewWinE $ \(h, s)        -> remoteAct (newRemoteTmuxWindow h s)
     performEvent_ $ ffor killRemoteSessE  $ \(h, s, _)     -> remoteAct (killRemoteTmuxSession h s)
     performEvent_ $ ffor killRemoteWinE   $ \(h, s, w)     -> remoteAct (killRemoteTmuxWindow h s w)
@@ -9660,6 +9669,7 @@ main showMenubar macTitlebar wid ctx = mdo
           LogKey         -> toDM LogTab <$> logWidget ctx (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
           TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD hostTreesD
+                              ((rcStartup . cfgRemote) <$> prefsD)
           LeksahWinKey n -> toDM TerminalTab <$> do
               -- A leksah window: its native split tree of panes (whole tmux
               -- windows and/or native views).  Session-backed windows render
@@ -10041,6 +10051,16 @@ main showMenubar macTitlebar wid ctx = mdo
     -- (empty) state can't clobber the file before we've read it.  Debounced so a
     -- burst of restore/open events collapses into a single write.
     restoredFlagD <- holdDyn False (True <$ restoreE)
+    -- Servers marked "Open at Startup" (Terminals tree, a server's menu): its
+    -- default session opens as a leksah window once the saved session is back
+    -- — unless a window (or a nested child) on that server was restored.
+    -- Once, from the active OS window; a little after the restore so the
+    -- model has settled.
+    startupOpenE <- delay 2 =<< headE (gate (current isActiveD) restoreE)
+    performEvent_ $ ffor (tag ((,) <$> current prefsD <*> current leksahWindowsD') startupOpenE) $
+        \(p, lws) -> liftIO . forM_ (rcStartup (cfgRemote p)) $ \h ->
+          unless (any ((== SshServer h) . windowServer) (M.elems lws)) $
+            requestRemoteTerm h
     -- Only the ACTIVE window's network persists the session: its visibleTabsD is
     -- the one saved as the shared side/bottom selection, and the per-window wide0
     -- + visibility all come from the shared '_webWindows', so any single window

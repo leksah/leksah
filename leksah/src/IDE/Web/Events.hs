@@ -130,6 +130,7 @@ data TerminalsEvents
     -- keyed @ssh://host#session@)
   | NewRemoteTerminal Text                      -- ^ host
   | SelectRemoteHost Text                        -- ^ host: bring up its one per-server connection
+  | ToggleRemoteStartup Text                     -- ^ host: open its session at startup, or not
     -- Remote selections carry the session id AND its current name: an open
     -- tab may be keyed by either (cc-connect HOST#NAME vs the tree's ids),
     -- so the handler matches both before opening a new tab.
