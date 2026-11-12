@@ -7699,10 +7699,20 @@ main showMenubar macTitlebar wid ctx = mdo
                        ((,) <$> current recentTabs <*> current hostTreesD) selRemoteHostE
           , attachWith (\rt (h, sid, nm) -> resolveRemoteKey rt h sid nm)
                        (current recentTabs) selRemoteE
-          , attachWith (\rt (h, sid, nm, _) -> resolveRemoteKey rt h sid nm)
-                       (current recentTabs) selRemoteWinE
-          , attachWith (\rt (h, sid, nm, _, _) -> resolveRemoteKey rt h sid nm)
-                       (current recentTabs) selRemotePaneE ]
+          -- A WINDOW (or pane) select brings up the leksah window that shows
+          -- that window — a session can back several (one per tmux window,
+          -- or a restored hidden window adopted into its own) — falling back
+          -- to the session's.
+          , attachWith (\(rt, lws, tree) (h, sid, nm, w) ->
+                          let key = resolveRemoteKey rt h sid nm
+                          in fromMaybe key (paneOwnerLw lws tree key w))
+                       ((,,) <$> current recentTabs <*> current leksahWindowsD' <*> current allTreeD)
+                       selRemoteWinE
+          , attachWith (\(rt, lws, tree) (h, sid, nm, w, _) ->
+                          let key = resolveRemoteKey rt h sid nm
+                          in fromMaybe key (paneOwnerLw lws tree key w))
+                       ((,,) <$> current recentTabs <*> current leksahWindowsD' <*> current allTreeD)
+                       selRemotePaneE ]
         -- Selecting a terminal in the Terminals tree (session / window / pane,
         -- local or remote) is a precise, leksah-issued choice, so float that
         -- terminal to the flipper MRU front — the tree-select path otherwise
