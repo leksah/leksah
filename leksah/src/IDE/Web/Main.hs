@@ -9707,7 +9707,7 @@ main showMenubar macTitlebar wid ctx = mdo
           LogKey         -> toDM LogTab <$> logWidget ctx (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
           TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD hostTreesD
-                              ((rcStartup . cfgRemote) <$> prefsD)
+                              ((rcStartup . cfgRemote) <$> prefsD) hiddenWinsD
           LeksahWinKey n -> toDM TerminalTab <$> do
               -- A leksah window: its native split tree of panes (whole tmux
               -- windows and/or native views).  Session-backed windows render
@@ -10089,6 +10089,19 @@ main showMenubar macTitlebar wid ctx = mdo
     -- (empty) state can't clobber the file before we've read it.  Debounced so a
     -- burst of restore/open events collapses into a single write.
     restoredFlagD <- holdDyn False (True <$ restoreE)
+    -- Hidden windows from the session file ('wsHidden'): each one is applied
+    -- once the live tree shows its session with the SAME window at that index
+    -- (a session id and index can be reused after tmux restarts); a session
+    -- the tree shows without it drops the entry.  Until then it stays pending
+    -- — and saved — e.g. while its remote host is unreachable.
+    hiddenPendingD <- foldDyn ($) [] $ leftmost
+        [ const . fromMaybe [] . (>>= wsHidden) . fst <$> restoreE
+        , (\tree -> filter (\(s, _, _) -> not (s `M.member` tree))) <$> updated allTreeD ]
+    let hiddenConfirmE = attachWithMaybe (\pending tree ->
+            let ok = [ (s, i) | (s, i, w) <- pending, Just (_, wins) <- [M.lookup s tree]
+                              , any (\x -> twIndex x == i && (T.null w || twId x == w)) wins ]
+            in if null ok then Nothing else Just ok)
+          (current hiddenPendingD) (updated allTreeD)
     -- Servers marked "Open at Startup" (Terminals tree, a server's menu): its
     -- default session opens as a leksah window once the saved session is back
     -- — unless a window (or a nested child) on that server was restored.
@@ -10117,8 +10130,17 @@ main showMenubar macTitlebar wid ctx = mdo
     leksahWindowsD <- holdUniqDyn ((^. leksahWindows) <$> ide)
     paneAID <- holdUniqDyn ((^. paneAISession) <$> ide)
     tabFontD' <- holdUniqDyn ((^. tabFontSize) <$> ide)
+    -- The hidden windows with their window ids, for the session file (see
+    -- 'wsHidden').
+    -- Entries restored but not yet confirmed by the tree are kept as they were
+    -- (a write before the tree answers must not drop them).
+    hiddenSaveD <- holdUniqDyn $ (\hidden pending tree ->
+        [ (s, idx, maybe "" twId (M.lookup s tree >>= find ((== idx) . twIndex) . snd))
+        | (s, idx) <- S.toList hidden ]
+        ++ [ p | p@(s, idx, _) <- pending, not ((s, idx) `S.member` hidden) ])
+        <$> hiddenWinsD <*> hiddenPendingD <*> allTreeD
     sessionD <- holdUniqDyn $
-      (\wins vis recF lws mru paneAI tabFonts projRecents wsFile ->
+      (\wins vis recF lws mru paneAI tabFonts projRecents hiddenSave wsFile ->
           WebSession 6
             [ WebWindowSession (filter notPrefs (_wwWide0 ww)) (_wwActive ww)
                                (_wwTall ww) (_wwWide1 ww) (Just (_wwZoom ww))
@@ -10142,11 +10164,13 @@ main showMenubar macTitlebar wid ctx = mdo
             (Just (M.toAscList tabFonts))
             -- Add Project…'s MRU inputs.
             (Just projRecents)
+            -- Hidden tmux windows (confirmed against the tree on restore).
+            (Just hiddenSave)
             -- The open workspace, reopened at start-up.
             wsFile)
         <$> webWindowsD <*> visibleTabsD <*> recentFilesD <*> leksahWindowsD
         <*> flipMruD <*> paneAID <*> tabFontD' <*> projectRecentsD
-        <*> (view wsPath <$> cWs ctx)
+        <*> hiddenSaveD <*> (view wsPath <$> cWs ctx)
     let writeGateD = (&&) <$> restoredFlagD <*> isActiveD
         -- Gate on the gate's UPDATED value, not 'current': when a window closes,
         -- the survivor becomes the writer in the SAME update that drops the
@@ -10236,7 +10260,11 @@ main showMenubar macTitlebar wid ctx = mdo
     -- (below), immediately before its cell write, so a mint landing between
     -- the two is still protected.
     reconcileTreeE <- performEvent $
-        ffor (gate (current isActiveD) (ffilter (not . M.null) (updated paneTreeD))) $
+        ffor (gate (current isActiveD) (ffilter (not . M.null)
+               (leftmost [ updated paneTreeD
+                         -- a hide/un-hide changes the outcome without any
+                         -- change to the tree
+                         , tag (current paneTreeD) (updated hiddenWinsD) ]))) $
           \tree -> liftIO $ do
             fresh <- freshSessionsFor
             unless (S.null fresh) $ do
@@ -10383,6 +10411,7 @@ main showMenubar macTitlebar wid ctx = mdo
       -- focusing a pane in a hidden window (tree/claude/editor reopen) un-hides it.
       <> ((\sw -> [overUi (hiddenWindows %~ S.insert sw)]) <$> hideOrMoveWinE)
       <> ((\sw -> [overUi (hiddenWindows %~ S.delete sw)]) <$> unhideWinE)
+      <> ((\ok -> [overUi (hiddenWindows %~ (\h -> foldr S.insert h ok))]) <$> hiddenConfirmE)
       -- Leksah windows: reconcile against the live pane tree (recomputed
       -- from the CURRENT ide inside the mutation, so nothing stale is
       -- written; 'applyReconcile' also keeps the wide0 tab lists in step).

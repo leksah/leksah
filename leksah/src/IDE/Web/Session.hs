@@ -115,6 +115,13 @@ data WebSession = WebSession
       --   value also sits in a process-global 'IORef' there, which is what a
       --   dialog in a SECOND window reads: this field is only how it survives a
       --   restart.
+  , wsHidden :: Maybe [(Text, Int, Text)]
+      -- ^ the hidden tmux windows ('_hiddenWindows'): (session, window index,
+      --   window id).  The id is a check: a session id and index can be reused
+      --   after tmux restarts (a reboot), so an entry applies again only when
+      --   the live tree has the same window at that index ("" = id unknown when
+      --   saved, e.g. an unreachable host: index alone).  Optional, so older
+      --   files decode to none.
   , wsWorkspace :: Maybe FilePath
       -- ^ the @.leksah-workspace@ file that was open, reopened at start-up if
       --   it still exists.  Optional like the fields above: absent (older
@@ -236,7 +243,7 @@ instance FromJSON LeksahWindow where
 emptyWebSession :: WebSession
 emptyWebSession =
     WebSession webSessionVersion [] [] Nothing Nothing Nothing Nothing Nothing
-                Nothing Nothing
+                Nothing Nothing Nothing
 
 webSessionPath :: IO FilePath
 webSessionPath = sidecarPath "web-session.json"

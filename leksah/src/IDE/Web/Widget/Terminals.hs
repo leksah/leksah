@@ -49,7 +49,7 @@ import Data.String (fromString)
 import Data.Map (Map)
 import qualified Data.Map as M (fromList, elems, empty, lookup)
 import Data.Set (Set)
-import qualified Data.Set as S (member)
+import qualified Data.Set as S (fromList, member, toList)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -275,6 +275,10 @@ terminalsCss = do
     -- The current window / active pane, but ONLY inside the focused session
     -- (`> .terminals-active` = that session li's own label) — a background
     -- session's current window/pane stays grey.
+    -- A HIDDEN window (⌘W ▸ Hide): bright red wherever it is, so it can be
+    -- found to bring back.
+    ".terminals .terminals-label.terminals-hidden" ? ("color" -: "#ff4d4d")
+    ".terminals .terminals-label.terminals-hidden img.tree-icon" ? opacity 1
     ".terminals li:has(> .terminals-active) .terminals-current" ? color fgColor
     ".terminals li:has(> .terminals-active) .terminals-current img.tree-icon" ? opacity 1
     -- The blue FILL marks exactly ONE node: the DEEPEST node of that chain that
@@ -356,8 +360,13 @@ terminalsWidget
                                --   shared ssh poll in 'IDE.Web.Main' (one ssh
                                --   per host, feeding this tree AND the flipper)
   -> Dynamic t [Text]          -- ^ hosts opened at startup ('rcStartup')
+  -> Dynamic t (Set (Text, Int))
+                               -- ^ hidden tmux windows: (session, window index),
+                               --   a remote session as @ssh://host#$N@
   -> m (Event t TerminalsEvents)
-terminalsWidget activeD attnD remoteHostsD hostTreesD startupD = do
+terminalsWidget activeD attnD remoteHostsD hostTreesD startupD hiddenD = do
+  -- One session's hidden window indices.
+  let hiddenIn sess = (\h -> S.fromList [ i | (s', i) <- S.toList h, s' == sess ]) <$> hiddenD
   (termRoot, ev) <- elClass' "div" "terminals leksah-nav" $ do
     -- Read the whole session/window/pane tree (keyed by session id, each carrying
     -- its current name): on first build, on a "new session" click, and — instead
@@ -393,14 +402,14 @@ terminalsWidget activeD attnD remoteHostsD hostTreesD startupD = do
       localE <- el "ul" $ treeItem "terminals-host" True
           (hostRow "Local" NewTerminal "New local session")
           (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\n vD ->
-              sessionNode ((== Just n) <$> activeD) (S.member n <$> attnD) n vD))
+              sessionNode ((== Just n) <$> activeD) (S.member n <$> attnD) (hiddenIn n) n vD))
       let killActE = fmapMaybe (either Just (const Nothing)) localE
           newE     = fmapMaybe (\e -> case e of NewTerminal -> Just (); _ -> Nothing) bubbleLocalE
           bubbleLocalE = fmapMaybe (either (const Nothing) Just) localE
     -- One node per remote host, sessions/windows/panes over ssh (select-only);
     -- the data comes from the shared per-host poll in 'IDE.Web.Main'.
     remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
-        (\host _ -> remoteHostNode activeD (elem host <$> startupD) host
+        (\host _ -> remoteHostNode activeD (elem host <$> startupD) hiddenIn host
             (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
     -- Trailing "Add Server…" row: opens the Add Server modal (the same one as
     -- File ▸ Add Server…) via the request bridge; the added host lands in the
@@ -475,10 +484,10 @@ hostRow label newEv tip = do
 -- open/steer the host's control-mode tabs.
 remoteHostNode
   :: MonadWidget t m
-  => Dynamic t (Maybe Text) -> Dynamic t Bool -> Text
+  => Dynamic t (Maybe Text) -> Dynamic t Bool -> (Text -> Dynamic t (Set Int)) -> Text
   -> Dynamic t (Bool, Map Text (Text, [TmuxWindow]))
   -> m (Event t NodeEvent)
-remoteHostNode activeD startupD host treeD = do
+remoteHostNode activeD startupD hiddenIn host treeD = do
     reachD <- holdUniqDyn (fst <$> treeD)
     itemsD <- holdUniqDyn (snd <$> treeD)
     treeItem "terminals-host" True
@@ -499,12 +508,13 @@ remoteHostNode activeD startupD host treeD = do
                             , Right (SelectRemoteHost host)  <$ domEvent Click lbl
                             , Right <$> menuE ])
         (el "ul" $ fmapMaybe (listToMaybe . M.elems) <$> listViewWithKey itemsD (\sid vD ->
-            remoteSessionNode activeD host sid vD))
+            remoteSessionNode activeD (hiddenIn ("ssh://" <> host <> "#" <> sid)) host sid vD))
 
 remoteSessionNode
   :: MonadWidget t m
-  => Dynamic t (Maybe Text) -> Text -> Text -> Dynamic t (Text, [TmuxWindow]) -> m (Event t NodeEvent)
-remoteSessionNode activeD host sid vD =
+  => Dynamic t (Maybe Text) -> Dynamic t (Set Int) -> Text -> Text -> Dynamic t (Text, [TmuxWindow])
+  -> m (Event t NodeEvent)
+remoteSessionNode activeD hidD host sid vD =
   treeItem "terminals-session" True
     (do -- The focused remote session (its tab is keyed "ssh://host#target",
         -- where target is either the session id or its current name — see
@@ -537,20 +547,21 @@ remoteSessionNode activeD host sid vD =
           , Right (NewRemoteTerminalWindow host sid) <$ newWinE
           , (\(nm, _) -> Right (CloseRemoteTerminal host sid nm))
               <$> tagPromptlyDyn vD killE ])
-    (el "ul" $ remoteWindowsTree host sid (fst <$> vD) (snd <$> vD))
+    (el "ul" $ remoteWindowsTree host sid hidD (fst <$> vD) (snd <$> vD))
 
 remoteWindowsTree
   :: MonadWidget t m
-  => Text -> Text -> Dynamic t Text -> Dynamic t [TmuxWindow] -> m (Event t NodeEvent)
-remoteWindowsTree host sid nameD windowsD =
+  => Text -> Text -> Dynamic t (Set Int) -> Dynamic t Text -> Dynamic t [TmuxWindow]
+  -> m (Event t NodeEvent)
+remoteWindowsTree host sid hidD nameD windowsD =
   fmapMaybe (listToMaybe . M.elems) <$>
     listViewWithKey (M.fromList . map (\w -> (twIndex w, w)) <$> windowsD)
       (\widx wD ->
         treeItem "terminals-window" False
-          (do let attrs = ffor wD $ \w ->
-                    "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
+          (do let attrs = (\hid w -> windowAttrs hid w
                     -- Drop target for pane drag-and-drop within this host.
-                    <> "data-win-dst" =: (host <> "|" <> sid <> "|" <> T.pack (show widx))
+                    <> "data-win-dst" =: (host <> "|" <> sid <> "|" <> T.pack (show widx)))
+                    <$> hidD <*> wD
               (e, _) <- elDynAttr' "span" attrs $ do
                     termWinIcon wD
                     dynText (twLabel <$> wD)
@@ -602,13 +613,13 @@ remotePanesTree host sid nameD widx panesD =
 -- before killing, and the session's tmux windows as children.
 sessionNode
   :: MonadWidget t m
-  => Dynamic t Bool -> Dynamic t Bool -> Text
+  => Dynamic t Bool -> Dynamic t Bool -> Dynamic t (Set Int) -> Text
   -> Dynamic t (Text, [TmuxWindow])
   -> m (Event t NodeEvent)
-sessionNode activeD attnD n vD =
+sessionNode activeD attnD hidD n vD =
   treeItem "terminals-session" True
     (sessionRow activeD attnD n vD)
-    (el "ul" $ windowsTree n (snd <$> vD))
+    (el "ul" $ windowsTree n hidD (snd <$> vD))
 
 -- | A one-glyph badge for a window's tmux alert state, highest priority first:
 -- 🔔 bell (rang the bell — e.g. Claude Code wants input), ● activity (new
@@ -781,17 +792,17 @@ sessionRow activeD attnD n vD = do
 -- | The windows of a session (by session id), each expandable into its panes.
 windowsTree
   :: MonadWidget t m
-  => Text -> Dynamic t [TmuxWindow] -> m (Event t NodeEvent)
-windowsTree n windowsD =
+  => Text -> Dynamic t (Set Int) -> Dynamic t [TmuxWindow] -> m (Event t NodeEvent)
+windowsTree n hidD windowsD =
   fmapMaybe (listToMaybe . M.elems) <$>
     listViewWithKey (M.fromList . map (\w -> (twIndex w, w)) <$> windowsD)
       (\widx wD ->
         treeItem "terminals-window" False
-          (do let attrs = ffor wD $ \w ->
-                    "class" =: ("terminals-label leksah-nav-item" <> if twActive w then " terminals-current" else "")
+          (do let attrs = (\hid w -> windowAttrs hid w
                     -- Drop target for pane drag-and-drop: "host|session|widx"
                     -- (host empty = leksah's local tmux); see 'paneDragJs'.
-                    <> "data-win-dst" =: ("|" <> n <> "|" <> T.pack (show widx))
+                    <> "data-win-dst" =: ("|" <> n <> "|" <> T.pack (show widx)))
+                    <$> hidD <*> wD
               (e, _) <- elDynAttr' "span" attrs $ do
                     termWinIcon wD
                     dynText (twLabel <$> wD)
@@ -805,6 +816,17 @@ windowsTree n windowsD =
                                 , Left <$> renE
                                 , Left (killTmuxWindow n widx) <$ killE ])
           (el "ul" $ panesTree n widx (twPanes <$> wD)))
+
+-- | A window row's label attributes: current-window marking, and a HIDDEN
+-- window (⌘W ▸ Hide — still running in tmux, left out of every leksah
+-- window) in bright red, with a tooltip saying how to bring it back.
+windowAttrs :: Set Int -> TmuxWindow -> Map Text Text
+windowAttrs hid w =
+     "class" =: ("terminals-label leksah-nav-item"
+                 <> (if twActive w then " terminals-current" else "")
+                 <> (if hidden then " terminals-hidden" else ""))
+  <> (if hidden then "title" =: "Hidden window — select it to show it again" else mempty)
+  where hidden = twIndex w `S.member` hid
 
 -- | The panes of a window (leaves).
 panesTree
