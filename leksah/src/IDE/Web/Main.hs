@@ -501,13 +501,13 @@ tabSessionOf lws k = case k of
 -- its tab within a poll tick).  Also accepts a leksah-window id directly.
 termTabKey :: M.Map Text LeksahWindow -> Text -> Maybe TabKey
 termTabKey lws n
-  | n `M.member` lws            = Just (LeksahWinKey n)
+  | n `M.member` lws            = Just (LeksahWinKey (topLw lws n))
   -- A remote session (@ssh://host#$N@) is found like a local one: by the
   -- leksah window bound to it.  An unbound or non-canonical remote key
   -- (@ssh://host@, a session NAME) answers Nothing here; 'openRemoteSession'
   -- resolves it and mints the window.
   | otherwise = listToMaybe
-      [ LeksahWinKey i | (i, lw) <- M.toAscList lws, lwSession lw == Just n ]
+      [ LeksahWinKey (topLw lws i) | (i, lw) <- M.toAscList lws, lwSession lw == Just n ]
 
 -- | Session-name base for a directory: its basename ("shell" when empty).
 sessionBase :: FilePath -> Text
@@ -1502,9 +1502,37 @@ paneOwnerLw lws tree s widx = do
     (_, wins) <- M.lookup s tree
     -- (the tree reports raw ids; a remote session's are qualified in the model)
     wid' <- qualifyTmuxId (serverOfTabKey s) . twId <$> find ((== widx) . twIndex) wins
-    listToMaybe [ i | (i, lw) <- M.toAscList lws
-                    , lwSession lw == Just s
-                    , wid' `elem` lwWindowIds lw ]
+    -- (a nested child's pane belongs to the window showing the child: the
+    -- one with the tab, the button, the flipper identity)
+    topLw lws <$> listToMaybe [ i | (i, lw) <- M.toAscList lws
+                                  , lwSession lw == Just s
+                                  , wid' `elem` lwWindowIds lw ]
+
+-- | A tab key with a nested child window's resolved to its top-level window.
+topKey :: WebUi -> TabKey -> TabKey
+topKey i (LeksahWinKey n) = LeksahWinKey (topLw (i ^. leksahWindows) n)
+topKey _ k                = k
+
+-- | The window showing CHILD window @c@ in a 'PaneNested' leaf, and that leaf.
+nestParent :: Map Text LeksahWindow -> Text -> Maybe (Text, LeafId)
+nestParent lws c = listToMaybe
+  [ (i, l) | (i, lw) <- M.toAscList lws
+           , (l, PaneContent (PaneNested c') _) <- M.toAscList (lwPanes lw), c' == c ]
+
+-- | The TOP-LEVEL window window @n@ is shown in — itself, or the window
+-- holding it in a nested leaf (recursively).  Only top-level windows have
+-- tabs, buttons and flipper identities.
+topLw :: Map Text LeksahWindow -> Text -> Text
+topLw lws = go (4 :: Int)
+  where go 0 n = n
+        go d n = maybe n (go (d - 1) . fst) (nestParent lws n)
+
+-- | Focusing leaf @l@ of window @i@: that, plus — in every window enclosing
+-- @i@ through nested leaves — the nested leaf that shows it.
+focusChain :: Map Text LeksahWindow -> Text -> LeafId -> [(Text, LeafId)]
+focusChain lws = go (4 :: Int)
+  where go 0 i l = [(i, l)]
+        go d i l = (i, l) : maybe [] (uncurry (go (d - 1))) (nestParent lws i)
 
 -- | The (leksah window, leaf) holding a 'FlipPane' target's tmux window: the
 -- flip's window INDEX resolved to a window id in the tree, then to the leaf
@@ -7430,7 +7458,8 @@ main showMenubar macTitlebar wid ctx = mdo
         -- reconciler focus the PREVIOUSLY focused leaf first — whose async
         -- focusin then raced (and sometimes overwrote) the late model
         -- write, leaving the flipper "landed" on the old pane.
-        liftIO $ forM_ (flipPaneLeaf lws tree s w) $ \(lwi, l) -> setFocusedLeaf lwi l
+        liftIO $ forM_ (flipPaneLeaf lws tree s w) $ \(lwi, l) ->
+            mapM_ (uncurry setFocusedLeaf) (focusChain lws lwi l)
         liftIO $ case remoteTabHostTarget s of
           -- remote pane: select over ssh (off the reflex thread); the tab's
           -- control client hears %session-window-changed and re-renders
@@ -7449,7 +7478,8 @@ main showMenubar macTitlebar wid ctx = mdo
         liftIO $ case fi of
           FlipPane s w p -> do
             -- Same up-front model commit as the local flip above.
-            forM_ (flipPaneLeaf lws tree s w) $ \(lwi, l) -> setFocusedLeaf lwi l
+            forM_ (flipPaneLeaf lws tree s w) $ \(lwi, l) ->
+                mapM_ (uncurry setFocusedLeaf) (focusChain lws lwi l)
             case remoteTabHostTarget s of
               Just (host, target) -> void . forkIO $ selectRemoteTmuxPane host target w p >> fireRemotePoke ()
               Nothing             -> selectTmuxPane s w p
@@ -10364,8 +10394,10 @@ main showMenubar macTitlebar wid ctx = mdo
       -- moves it into THIS window (front, active), closing removes it, and
       -- focusing/clicking one floats it to the MRU front.  Every window's reflex
       -- network then re-renders its own wide0 row from that shared state.
-      <> ((\m -> [overUi (webWindows %~ \wins ->
-                    foldl' (\ws k -> moveTabTo wid k ws) wins (M.keys m))]) <$> openTabsE)
+      -- (A nested CHILD window never gets a tab: whatever asked for one —
+      -- a flip, a request, a reconnect — gets the window showing it.)
+      <> ((\m -> [overUi (\i -> i & webWindows %~ \wins ->
+                    foldl' (\ws k -> moveTabTo wid (topKey i k) ws) wins (M.keys m))]) <$> openTabsE)
       <> ((\ks -> [overUi (webWindows %~ closeWide0 wid ks)]) <$> closeTabsE)
       -- A closed tab of a window on a REMOTE session takes the window with it:
       -- nothing else would (the local reconcile never touches it, and its
@@ -10418,7 +10450,7 @@ main showMenubar macTitlebar wid ctx = mdo
               let lws = i ^. leksahWindows
                   mk = case fi of
                     FlipTab k       -> Just k
-                    FlipView n _    -> Just (LeksahWinKey n)
+                    FlipView n _    -> Just (LeksahWinKey (topLw lws n))
                     FlipPane s wi _ ->
                       maybe (termTabKey lws s) (Just . LeksahWinKey)
                             (paneOwnerLw lws tree s wi)
