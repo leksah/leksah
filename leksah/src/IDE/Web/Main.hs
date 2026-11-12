@@ -31,7 +31,7 @@ import Control.Concurrent
         newEmptyMVar, forkIO, killThread, myThreadId,
         rtsSupportsBoundThreads, getNumCapabilities, setNumCapabilities)
 import GHC.Conc (getNumProcessors)
-import Control.Concurrent.MVar (MVar, withMVar)
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Concurrent.STM (atomically, readTChan, readTVarIO)
 import GHC.Conc.Sync (labelThread)
@@ -235,6 +235,7 @@ import IDE.Web.RemoteTermRequest
        (dupTermRequests, nextTermRequest, requestLocalTerm)
 import IDE.Web.SplitLayout
        (readLeksahWindows, saveSessionLayouts, reconcileWindows,
+        reconcileRemoteHost, windowServer,
         encodeLayoutOption, splitLeaf, closeLeaf, treeLeafIds,
         viewLeafAllowed, singlePaneWindow, lwIdText, lwIdNum, lwWindowIds,
         ConvertedPath(..), spliceConverted, setPaneFont,
@@ -276,8 +277,9 @@ import IDE.Web.TerminalInput
        (setActiveTerminal, setActiveConvertible, setActiveViewSplit,
         setActiveSplitWindow,
         selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
-        getActiveTerminal)
+        getActiveTerminal, stopCCFor)
 import IDE.Web.SnapRequest (SnapReq(..))
+import IDE.Web.TmuxServer (TmuxServer(..), serverOfTabKey, rawTmuxId)
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest
@@ -354,7 +356,7 @@ import IDE.Web.Widget.Terminal
         killRemoteTmuxSession, killRemoteTmuxWindow, killRemoteTmuxPane,
         newRemoteTmuxWindow, zoomRemoteTmuxPane, breakRemoteTmuxPane,
         renameRemoteTmuxSession, renameRemoteTmuxWindow,
-        listRemoteTerminalTree, remoteTabHostTarget,
+        listRemoteTerminalTree, remoteTabHostTarget, resolveRemoteSession,
         reapControlClients, TmuxWindow(..), TmuxPane(..), isClaudePane)
 import IDE.Web.Widget.Terminals
        (terminalsCss, terminalsWidget, sessionAlert, windowIconSrc,
@@ -494,7 +496,10 @@ tabSessionOf lws k = case k of
 termTabKey :: M.Map Text LeksahWindow -> Text -> Maybe TabKey
 termTabKey lws n
   | n `M.member` lws            = Just (LeksahWinKey n)
-  | "ssh://" `T.isPrefixOf` n   = Just (TerminalKey n)
+  -- A remote session (@ssh://host#$N@) is found like a local one: by the
+  -- leksah window bound to it.  An unbound or non-canonical remote key
+  -- (@ssh://host@, a session NAME) answers Nothing here; 'openRemoteSession'
+  -- resolves it and mints the window.
   | otherwise = listToMaybe
       [ LeksahWinKey i | (i, lw) <- M.toAscList lws, lwSession lw == Just n ]
 
@@ -556,6 +561,11 @@ mintLeksahWindowIn target msess pc = getGlobalApp >>= \case
 -- the new window, and the never-empty-window rule closed it a moment after it
 -- appeared.  Polls finish out of order, so seeing the session in one tree
 -- doesn't prove later trees are newer; the protection is a fixed grace period.
+-- | Serialises 'openRemoteSession''s resolve-then-mint.
+{-# NOINLINE remoteOpenLock #-}
+remoteOpenLock :: MVar ()
+remoteOpenLock = unsafePerformIO (newMVar ())
+
 {-# NOINLINE freshSessionsRef #-}
 freshSessionsRef :: IORef (M.Map Text UTCTime)
 freshSessionsRef = unsafePerformIO (newIORef M.empty)
@@ -6417,13 +6427,16 @@ main showMenubar macTitlebar wid ctx = mdo
                         let wins = maybe [] snd
                               (lwSession lw >>= \s -> M.lookup s tree)
                         in maybe w windowTabLabel
-                             (find ((== w) . twId) wins)
+                             (find ((== rawTmuxId w) . twId) wins)
                   | l <- treeLeafIds (lwTree lw)
                   , Just pc <- [M.lookup l (lwPanes lw)] ]
               labelD = (\i names tree -> case M.lookup n (i ^. leksahWindows) of
                         Just lw -> case lwSession lw of
                           Just s ->
-                            let base = M.findWithDefault s s names
+                            -- (a remote session's label — "host · name" —
+                            -- comes from its host's tree, not the local names)
+                            let base = M.findWithDefault
+                                         (maybe s fst (M.lookup s tree)) s names
                                 siblings = length
                                   [ () | (_, lw') <- M.toAscList (i ^. leksahWindows)
                                        , lwSession lw' == Just s ]
@@ -6653,6 +6666,33 @@ main showMenubar macTitlebar wid ctx = mdo
     -- (Same move the cross-window flip makes for the window it selects into.)
     performEvent_ $ ffor (gate (not <$> current windowKeyD) termRequestE) $ \_ ->
         liftIO (requestRaiseWindow widN)
+    -- A remote session asked for (cc-connect, a Terminals-tree click, …) that
+    -- no leksah window shows yet: resolve the key over ssh to the session's
+    -- canonical @ssh://host#$N@ and its current window, then bring up the
+    -- leksah window already bound to it or mint one (serialised, so two quick
+    -- requests can't mint twice).  An unreachable host falls back to the
+    -- legacy remote tab, whose connection-error page says why and offers Retry.
+    (remoteFailE, fireRemoteFail) <- newTriggerEvent
+    performEvent_ $ ffor (attachWithMaybe
+            (\lws k -> if "ssh://" `T.isPrefixOf` k && isNothing (termTabKey lws k)
+                         then Just k else Nothing)
+            (current leksahWindowsD') termRequestE) $ \key ->
+        liftIO . void . forkIO . withMVar remoteOpenLock $ \_ ->
+          resolveRemoteSession key >>= \case
+            Nothing -> fireRemoteFail key
+            Just (canon, win) -> do
+              existing <- getGlobalApp >>= \case
+                Nothing  -> return []
+                Just app -> do
+                  lws <- view leksahWindows <$> readCell (appUi app)
+                  return [ i | (i, lw) <- M.toAscList lws, lwSession lw == Just canon ]
+              case existing of
+                (i : _) -> requestLocalTerm i
+                [] -> do
+                  mlwi <- mintLeksahWindowIn Nothing (Just canon)
+                            (PaneContent (PaneTmux win) Nothing)
+                  fireRemotePoke ()   -- the host's tree must learn the session
+                  mapM_ requestLocalTerm mlwi
     -- Fresh tmux windows from the session-per-open paths (openTerminalInDir /
     -- runClaudeCmd): mint the leksah window and open its tab at once.
     (newLwReqE, fireNewLwReq) <- newTriggerEvent
@@ -6713,11 +6753,13 @@ main showMenubar macTitlebar wid ctx = mdo
     -- The queue scheduler (one background loop per process; idempotent).
     liftIO armQueueScheduler
     -- Hosts shown as top-level Terminals-tree nodes: the preference list plus
-    -- any host that has an open ssh:// tab.
-    remoteHostsD <- holdUniqDyn $ (\p rt -> nub $ rcHosts (cfgRemote p) ++
+    -- any host that has an open ssh:// tab or a leksah window on one of its
+    -- sessions (whose tree the remote reconcile needs).
+    remoteHostsD <- holdUniqDyn $ (\p rt lws -> nub $ rcHosts (cfgRemote p) ++
           [ T.takeWhile (/= '#') rest
-          | (_, TerminalKey n) <- rt, Just rest <- [T.stripPrefix "ssh://" n] ])
-        <$> prefsD <*> recentTabs
+          | (_, TerminalKey n) <- rt, Just rest <- [T.stripPrefix "ssh://" n] ] ++
+          [ h | lw <- M.elems lws, SshServer h <- [windowServer lw] ])
+        <$> prefsD <*> recentTabs <*> leksahWindowsD'
     -- Native File▸Open / `leksah-cmd editor open` honour the external-editor pref too:
     -- when set, they open in the external editor (line 1) rather than CodeMirror.
     let extActiveMainB = current ((not . T.null . externalEditorCmd) <$> prefsD)
@@ -6850,8 +6892,10 @@ main showMenubar macTitlebar wid ctx = mdo
     -- per-tab trees (derived below).  Previously each surface ran its own
     -- ssh — per host AND per open tab.
     remoteTabsD <- holdUniqDyn $
-        (\rt -> nub [ n | (_, TerminalKey n) <- rt, "ssh://" `T.isPrefixOf` n ])
-          <$> recentTabs
+        (\rt lws -> nub $ [ n | (_, TerminalKey n) <- rt, "ssh://" `T.isPrefixOf` n ]
+                       ++ [ s | lw <- M.elems lws, Just s <- [lwSession lw]
+                              , "ssh://" `T.isPrefixOf` s ])
+          <$> recentTabs <*> leksahWindowsD'
     (hostTreesE, fireHostTrees) <- newTriggerEvent
     -- No periodic remote polling (a high-latency ssh link must not tick): the
     -- host trees load once on post-build and re-load only when the host set
@@ -7691,6 +7735,10 @@ main showMenubar macTitlebar wid ctx = mdo
     -- receives the request the moment it registers (see
     -- 'IDE.Web.TerminalInput.focusTerminalPane'), and the remote widget's own
     -- 'forcedFocusE' retry then waits for the panes to actually appear.
+    -- A remote tree click goes through the request bridge, like cc-connect, so
+    -- it reaches the window bound to that session or mints one
+    -- ('openRemoteSession' above).
+    performEvent_ $ ffor remoteOpenKeyE $ liftIO . requestLocalTerm
     let treeSelectKeyE = leftmost [ selectAnyTermE, remoteOpenKeyE ]
     performEvent_ $ ffor treeSelectKeyE $ liftIO . focusTerminalPane
     -- Bells rung in a terminal's *viewed* (current) window: tmux's alert-bell
@@ -8242,10 +8290,21 @@ main showMenubar macTitlebar wid ctx = mdo
         termCloseReqE = fmapMaybe id $ attachWith
           (\i k -> case k of
               TerminalKey n -> Just n
-              LeksahWinKey n | Nothing <- leafOfTerm i n ->
+              LeksahWinKey n | Nothing <- leafOfTerm i n
+                             , not (isRemoteLw i n) ->
                   M.lookup n (i ^. leksahWindows) >>= lwSession
               _ -> Nothing)
           (current ide) closeTargetE
+        -- A window on a REMOTE session has no close menu (its entries run
+        -- local tmux): ⌘W detaches it — the tab and the window go, and the
+        -- remote session keeps running, as closing a remote tab always did.
+        remoteLwCloseE = attachWithMaybe
+          (\i k -> case k of
+              LeksahWinKey n | Nothing <- leafOfTerm i n, isRemoteLw i n -> Just [k]
+              _ -> Nothing)
+          (current ide) closeTargetE
+        isRemoteLw i n = maybe False ((/= LocalServer) . windowServer)
+                           (M.lookup n (i ^. leksahWindows))
         nonTermCloseE = fmapMaybe
           (\case TerminalKey _ -> Nothing; LeksahWinKey _ -> Nothing
                  k -> Just k) closeTargetE
@@ -8263,7 +8322,7 @@ main showMenubar macTitlebar wid ctx = mdo
         -- session here.  ("Hide Window" does NOT detach — it hides the pane's tmux
         -- window via 'hiddenWindows'; see the close-menu wiring below.)
         detachCloseE = leftmost [ tabCloseBtnE, (:[]) <$> directCloseE
-                                , termFallbackDetachE ]
+                                , termFallbackDetachE, remoteLwCloseE ]
     -- Close the view leaf: clean leaves at once; a dirty editor leaf the
     -- moment its save SETTLES (savedFileE, editor-acked) — sequenced, not
     -- a guessed delay.
@@ -9234,7 +9293,7 @@ main showMenubar macTitlebar wid ctx = mdo
               lwsB newTermE
           , attachWith openInWide0 lwsB editTermSidE
           , attachWith openInWide0 lwsB termRequestE
-          , attachWith openInWide0 lwsB remoteOpenKeyE
+          , (\k -> TerminalKey k =: ("wide0", Just ())) <$> remoteFailE
           , attachWith (\(lws, tree) (s, mw) -> openOwnerWide0 lws tree s mw)
               lwsTreeB selectAnyTermWinE
           , attachWith (\(lws, tree) (s, w, _) -> openOwnerWide0 lws tree s (Just w))
@@ -9812,9 +9871,11 @@ main showMenubar macTitlebar wid ctx = mdo
             (Just recF)
             -- v6: SESSIONLESS leksah windows (pure native views) persist
             -- here; session-backed ones live on their tmux session as
-            -- @leksah_layout v2.
+            -- @leksah_layout v2 — LOCAL sessions only.  A window on a REMOTE
+            -- session (@ssh://host#$N@) is kept here too, so restoring it needs
+            -- no ssh round trip at startup (its host may well be unreachable).
             (Just [ (i, lw) | (i, lw) <- M.toAscList lws
-                  , isNothing (lwSession lw) ])
+                  , maybe True ((/= LocalServer) . serverOfTabKey) (lwSession lw) ])
             (Just mru)
             -- Explicit per-pane AI-session bindings; the derived ones are
             -- recomputed from the live sessions on demand, so only these need
@@ -9893,6 +9954,17 @@ main showMenubar macTitlebar wid ctx = mdo
               (lws', next') = reconcileWindows liveBySession hiddenIds mempty fresh
                                 (i ^. nextLeksahWin) (i ^. leksahWindows)
           in syncLwTabs (i & leksahWindows .~ lws' & nextLeksahWin .~ next')
+        applyRemoteReconcile fresh trees i0 =
+          let step i (host, (reachable, tree))
+                | not reachable = i
+                | otherwise =
+                    let raw = M.fromList [ (sid, map twId wins)
+                                         | (sid, (_, wins)) <- M.toList tree ]
+                        (lws', next') = reconcileRemoteHost host raw fresh
+                                          (i ^. nextLeksahWin) (i ^. leksahWindows)
+                    in i & leksahWindows .~ lws' & nextLeksahWin .~ next'
+              i1 = foldl' step i0 (M.toList trees)
+          in if i1 ^. leksahWindows == i0 ^. leksahWindows then i0 else syncLwTabs i1
         -- (syncLwTabs — the tab-list/window-map consistency pass — is a
         -- top-level function now: the ⌘-drag cross-window move composes it
         -- after 'moveLeafAcross' too.)
@@ -10054,6 +10126,12 @@ main showMenubar macTitlebar wid ctx = mdo
       <> ((\tree -> [\app -> freshSessionsFor >>= \fresh ->
                          overUi (applyReconcile fresh tree) app])
             <$> needsReconcileGatedE)
+      -- The remote hosts' trees reconcile the leksah windows on their sessions
+      -- (see 'reconcileRemoteHost'); an unreachable host's windows are left
+      -- as they are, so they survive the host being offline.
+      <> ((\trees -> [\app -> freshSessionsFor >>= \fresh ->
+                         overUi (applyRemoteReconcile fresh trees) app])
+            <$> gate (current isActiveD) (updated hostTreesD))
       -- ⌥-open / ⌘D new content into an existing leksah window's split
       -- (see leafOpenE).
       <> ((\(lwi, pc, vert) ->
@@ -10071,6 +10149,18 @@ main showMenubar macTitlebar wid ctx = mdo
       <> ((\m -> [overUi (webWindows %~ \wins ->
                     foldl' (\ws k -> moveTabTo wid k ws) wins (M.keys m))]) <$> openTabsE)
       <> ((\ks -> [overUi (webWindows %~ closeWide0 wid ks)]) <$> closeTabsE)
+      -- A closed tab of a window on a REMOTE session takes the window with it:
+      -- nothing else would (the local reconcile never touches it, and its
+      -- session lives on), and 'syncLwTabs' would put the tab straight back.
+      -- Its control client is stopped too (a closed tab has no destructor to
+      -- detach it, and the remote session outlives it).
+      <> ((\ks -> [\app -> do
+              lws <- view leksahWindows <$> readCell (appUi app)
+              let gone = [ n | LeksahWinKey n <- ks, Just lw <- [M.lookup n lws]
+                             , windowServer lw /= LocalServer ]
+              mapM_ stopCCFor gone
+              overUi (leksahWindows %~ \m -> foldr M.delete m gone) app])
+            <$> closeTabsE)
       -- Closing a tab also drops it from the shared flip MRU, so the flipper
       -- forgets it at once (the display filter would hide it anyway, but a
       -- stale entry would otherwise resurface a reopened tab mid-list).

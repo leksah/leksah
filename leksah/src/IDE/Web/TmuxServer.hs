@@ -21,6 +21,7 @@ module IDE.Web.TmuxServer
   ( TmuxServer(..)
   , serverOfTabKey
   , serverLabel
+  , rawTmuxId
   , tmuxRunOn
   , tmuxCmdOn
   , tmuxOkOn
@@ -32,6 +33,7 @@ module IDE.Web.TmuxServer
 import Control.Exception (SomeException, catch)
 import Data.Aeson
        (FromJSON(..), ToJSON(..), Value(..), object, withObject, (.:), (.=))
+import Data.List (isPrefixOf)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -64,6 +66,13 @@ serverOfTabKey k = case T.stripPrefix "ssh://" k of
   Just rest -> SshServer (T.takeWhile (/= '#') rest)
   Nothing   -> LocalServer
 
+-- | A tmux id as its own server knows it: a server-qualified remote id
+-- (@ssh://host#\@3@) loses its @ssh://host#@ prefix; a local id is unchanged.
+rawTmuxId :: Text -> Text
+rawTmuxId x
+  | "ssh://" `T.isPrefixOf` x, (_, rest) <- T.breakOn "#" x, not (T.null rest) = T.drop 1 rest
+  | otherwise = x
+
 -- | How the Terminals tree names it.
 serverLabel :: TmuxServer -> Text
 serverLabel LocalServer   = "Local"
@@ -80,6 +89,10 @@ serverLabel (SshServer h) = h
 tmuxRunOn :: TmuxServer -> [String] -> String -> IO (Maybe (ExitCode, String, String))
 tmuxRunOn srv args input = (`catch` \(_ :: SomeException) -> return Nothing) $
   case srv of
+    -- A server-qualified id (@ssh://host#\@3@) names an object on ANOTHER
+    -- server; handed to the local one as a target it would at best fail and at
+    -- worst resolve to some local object.  Refuse it outright.
+    LocalServer | foreignTarget args -> return Nothing
     LocalServer -> findExecutable "tmux" >>= maybe (return Nothing) (\tmux ->
         Just <$> readProcessWithExitCode tmux
                    (["-L", tmuxServerSocket] <> args) input)
@@ -90,6 +103,13 @@ tmuxRunOn srv args input = (`catch` \(_ :: SomeException) -> return Nothing) $
     shellQuote s = "'" <> concatMap esc s <> "'"
     esc '\'' = "'\\''"
     esc c    = [c]
+
+-- | Does a target-ish flag (@-t@, @-s@) carry a server-qualified id?
+foreignTarget :: [String] -> Bool
+foreignTarget (f : v : rest)
+  | f `elem` ["-t", "-s"], "ssh://" `isPrefixOf` v = True
+  | otherwise = foreignTarget (v : rest)
+foreignTarget _ = False
 
 -- | Run a command for its effect, ignoring the outcome.
 tmuxCmdOn :: TmuxServer -> [String] -> IO ()

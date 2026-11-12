@@ -27,6 +27,7 @@ module IDE.Web.TerminalInput
   , unregisterTerminalCC
   , registerCCStop
   , unregisterCCStop
+  , stopCCFor
   , registerTerminalSplits
   , unregisterTerminalSplits
   , registerTerminalFocus
@@ -267,6 +268,14 @@ unregisterCCStop n myId = do
                     Just (i, s) | i == myId -> (M.delete n m, Just s)
                     _                       -> (m, Nothing)
     forM_ mine runStop
+
+-- | Stop whatever control client is registered for @n@ (a leksah window id)
+-- and forget it: the window it served has gone for good — e.g. a window on a
+-- REMOTE session, closed — and nothing else would ever detach it.
+stopCCFor :: Text -> IO ()
+stopCCFor n = do
+    mine <- atomicModifyIORef' ccStopRegistry $ \m -> (M.delete n m, M.lookup n m)
+    forM_ mine (runStop . snd)
 
 runStop :: IO () -> IO ()
 runStop s = void . forkIO $ s `catch` \(_ :: SomeException) -> return ()

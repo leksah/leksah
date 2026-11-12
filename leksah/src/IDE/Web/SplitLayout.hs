@@ -36,6 +36,8 @@ module IDE.Web.SplitLayout
     -- * Validation / defaulting
   , singlePaneWindow
   , reconcileWindows
+  , reconcileRemoteHost
+  , windowServer
   , viewLeafAllowed
     -- * Tree queries
   , treeLeafIds
@@ -83,12 +85,12 @@ import qualified Data.ByteString.Lazy as LBS (toStrict)
 import Data.List (foldl', sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
-       (adjust, delete, empty, fromList, insert, keysSet, lookup, member,
-        singleton, toAscList)
+       (adjust, delete, elems, empty, fromList, insert, keysSet, lookup, member,
+        partition, singleton, toAscList, toList, union)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
-       (difference, fromList, insert, member, union, unions)
+       (difference, empty, fromList, insert, member, union, unions)
 import Data.Text (Text)
 import qualified Data.Text as T
        (isPrefixOf, length, null, pack, splitOn, stripPrefix, unpack)
@@ -99,7 +101,7 @@ import Text.Read (readMaybe)
 import IDE.Web.Model
        (LeafId(..), LeksahWindow(..), PaneContent(..), PaneKind(..),
         SplitOrientation(..), SplitTree(..), TabKey(..))
-import IDE.Web.TmuxServer (TmuxServer(..), tmuxCmdOn, tmuxStdoutOn)
+import IDE.Web.TmuxServer (TmuxServer(..), serverOfTabKey, tmuxCmdOn, tmuxStdoutOn)
 import IDE.Web.Session (viewLeafAllowed)   -- + orphan JSON instances
 
 -- | Version of the @\@leksah_layout@ JSON.  v1 (the retired per-session
@@ -740,9 +742,46 @@ reconcileWindows
   -> Int                    -- ^ next leksah window id ('nextLeksahWin')
   -> Map Text LeksahWindow
   -> (Map Text LeksahWindow, Int)
-reconcileWindows liveBySession hidden converting fresh next0 lws0 =
-    (M.fromList (kept <> strayWindows), next1)
+reconcileWindows =
+    -- Windows on ANOTHER tmux server (a remote session, @ssh://host#$N@) are
+    -- not this pass's business: the live map is the local server's, and tmux
+    -- window ids are only unique within one server.  They pass through
+    -- untouched ('reconcileRemoteHost' reconciles them against their host).
+    reconcileWindowsOn ((== LocalServer) . windowServer) (const True)
+
+-- | The server a leksah window's session lives on (a sessionless window
+-- counts as local).
+windowServer :: LeksahWindow -> TmuxServer
+windowServer = maybe LocalServer serverOfTabKey . lwSession
+
+-- | 'reconcileWindows' for the windows on remote @host@, against that host's
+-- live tree (session id -> its window ids, both RAW as tmux reports them; they
+-- are server-qualified here, matching the model), with the same grace for
+-- freshly minted sessions (qualified keys) as the local pass.  Unlike the local pass it
+-- adopts strays only into sessions some leksah window already shows: a remote
+-- host's other sessions are listed in the Terminals tree, not opened.
+reconcileRemoteHost
+  :: Text -> Map Text [Text] -> Set Text -> Int -> Map Text LeksahWindow
+  -> (Map Text LeksahWindow, Int)
+reconcileRemoteHost host rawLive fresh =
+  \next0 lws ->
+    let mine lw = windowServer lw == SshServer host
+        shown = S.fromList [ s | lw <- M.elems lws, mine lw, Just s <- [lwSession lw] ]
+    in reconcileWindowsOn mine (`S.member` shown) live S.empty S.empty fresh next0 lws
   where
+    q x = "ssh://" <> host <> "#" <> x
+    live = M.fromList [ (q s, map q ws) | (s, ws) <- M.toList rawLive ]
+
+-- | The reconcile, over the windows @mine@ selects (the rest pass through
+-- untouched), adopting stray windows only of the sessions @adoptable@ allows.
+reconcileWindowsOn
+  :: (LeksahWindow -> Bool) -> (Text -> Bool)
+  -> Map Text [Text] -> Set Text -> Set Text -> Set Text -> Int
+  -> Map Text LeksahWindow -> (Map Text LeksahWindow, Int)
+reconcileWindowsOn mine adoptable liveBySession hidden converting fresh next0 lwsAll =
+    (M.fromList (kept <> strayWindows) `M.union` others, next1)
+  where
+    (lws0, others) = M.partition mine lwsAll
     liveSet = S.unions [ S.fromList ws | (_, ws) <- M.toAscList liveBySession ]
 
     -- Pass 1 over windows in id order: prune dead/foreign/duplicate tmux
@@ -809,6 +848,7 @@ reconcileWindows liveBySession hidden converting fresh next0 lws0 =
     (next1, strayWindowsRev) = foldl' adopt (next0, [])
       [ (s, w)
       | (s, ws) <- M.toAscList liveBySession
+      , adoptable s
       , not (s `S.member` converting)
       , w <- ws
       , not (w `S.member` owned), not (w `S.member` hidden) ]

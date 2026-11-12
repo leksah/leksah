@@ -30,6 +30,7 @@ module IDE.Web.Widget.Terminal
   , listRemoteTerminalTree
   , remoteTabTree
   , remoteTabHostTarget
+  , resolveRemoteSession
   , createRemoteSession
   , selectRemoteTmuxWindow
   , selectRemoteTmuxPane
@@ -167,7 +168,7 @@ import IDE.Web.ReplTmux
         freshSessionName, tmuxOut, tmuxStdout,
         getLoginShell, interactiveShellArgs, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
-import IDE.Web.TmuxServer (TmuxServer(..), tmuxRunOn)
+import IDE.Web.TmuxServer (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -1448,6 +1449,29 @@ remoteTabHostTarget n = do
     let (host, hash) = T.breakOn "#" rest
         target0 = T.drop 1 hash
     return (host, if T.null target0 then "leksah" else target0)
+
+-- | Resolve an @ssh://host[#target]@ request to the remote session's
+-- canonical key @ssh://host#$N@ and its current window, server-qualified
+-- (@ssh://host#\@M@) like every remote id in the leksah-window model.  A bare
+-- @ssh://host@ means the host's default @leksah@ session, created if it does
+-- not exist yet (what the control-mode attach used to do with
+-- @new-session -A@).  'Nothing' when the host can't be reached or has no such
+-- session.
+resolveRemoteSession :: Text -> IO (Maybe (Text, Text))
+resolveRemoteSession key = case remoteTabHostTarget key of
+  Nothing -> return Nothing
+  Just (host, target) -> do
+    let srv = SshServer host
+        q x = "ssh://" <> host <> "#" <> x
+        bare = T.null (T.drop 1 (snd (T.breakOn "#" key)))
+    when bare $ do
+      has <- tmuxOkOn srv ["has-session", "-t", "=" <> T.unpack target] ""
+      unless has $ tmuxCmdOn srv ["new-session", "-d", "-s", T.unpack target]
+    r <- tmuxOutOn srv [ "display-message", "-p", "-t", T.unpack target
+                       , "#{session_id}\t#{window_id}" ]
+    return $ case T.splitOn "\t" <$> r of
+      Just [sid, wid] | not (T.null sid), not (T.null wid) -> Just (q sid, q wid)
+      _ -> Nothing
 
 -- | The display label and windows of the remote session behind an
 -- @ssh://host#target@ tab key — the remote analogue of one

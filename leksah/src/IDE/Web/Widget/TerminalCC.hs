@@ -240,6 +240,17 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
     armedD <- foldDyn ($) False $ leftmost [ const True <$ retryE, const False <$ layoutE ]
     let reconnectedE = gate (current armedD) layoutE
     let isRemote = "ssh://" `T.isPrefixOf` sessionId
+        -- A REMOTE leksah window's model ids are server-qualified
+        -- (@ssh://host#\@3@, like its session key @ssh://host#$0@), so no
+        -- local-tmux helper elsewhere can ever mistake one for a local window.
+        -- This widget talks to tmux with RAW ids: 'unqual' on the way out of
+        -- the model, 'qual' on the way in.  No-ops locally (and for a legacy
+        -- remote TerminalKey tab, whose sessionId has no @#@).
+        idPrefix = case T.breakOn "#" sessionId of
+            (pre, rest) | isRemote, not (T.null rest) -> Just (pre <> "#")
+            _                                         -> Nothing
+        qual w = maybe w (<> w) idPrefix
+        unqual w = maybe w (\p -> fromMaybe w (T.stripPrefix p w)) idPrefix
         -- The error view shown in place of the panes when a (remote) connection
         -- drops: the reason, plus Retry (re-run the connection) and Close (drop
         -- the tab).  Fills the tab; no absolute positioning needed since it
@@ -886,7 +897,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                       -- pane into activePaneRef, whose focus fallback then
                       -- grabbed the FIRST textarea — the mis-focus that seeds
                       -- the focus↔select-pane oscillation.
-                      Just lw -> forM_ (paneForWindow w lw) $ \l ->
+                      Just lw -> forM_ (paneForWindow (qual w) lw) $ \l ->
                           liftIO . void . forkIO $ setFocusedLeaf lwId l
                       -- Remote tabs (no model): classic follow-the-current-
                       -- window behaviour.
@@ -936,7 +947,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- re-hosts, the remote current-window switch).  Remote tabs have
             -- no map entry and display tmux's current window — gate to that.
             let ownedWinsOf s mlw = case mlw of
-                    Just lw -> S.fromList (lwWindowIds lw)
+                    Just lw -> S.fromList (map unqual (lwWindowIds lw))
                     Nothing -> maybe S.empty S.singleton (csCurrent s)
             foreignPanesD <- holdUniqDyn $
                 (\s mlw -> S.fromList
@@ -1044,7 +1055,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                     -- channel (off the frame thread); the focus itself runs
                     -- back on the reflex thread below.
                     PaneTmux w -> liftIO . void . forkIO $ do
-                        r <- ccCommand cc ("display-message -p -t " <> w
+                        r <- ccCommand cc ("display-message -p -t " <> unqual w
                                            <> " -F '#{pane_id}'")
                         case r of
                           Right (ln : _) | p <- T.strip ln, not (T.null p) ->
@@ -1107,9 +1118,14 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- Split-tree geometry for the ⌘-drag pane-move preview.  Straight
             -- from the shared map (NOT lwD): a remote tab's synthesized
             -- window must publish null, not a fake single-pane universe.
+            -- A REMOTE leksah window publishes null too, for now: the
+            -- general ⌘-drag commit runs local-tmux helpers, and a remote
+            -- window's panes can only move on their own server — its
+            -- in-window rearranging is the 'rtmux' drag registered above.
             geomD <- holdUniqDyn $
-                (\i -> (\lw -> (lwTree lw, lwZoomed lw))
-                         <$> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
+                (\i -> if isRemote then Nothing else
+                         (\lw -> (lwTree lw, lwZoomed lw))
+                           <$> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
             pbGeom <- getPostBuild
             performEvent_ $
                 ffor (leftmost [updated geomD, tag (current geomD) pbGeom]) $
@@ -1184,7 +1200,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                 (>>= (M.lookup lid . lwPanes)) <$> lwD
                             -- The pane's tmux window (Nothing for a view pane).
                             tmuxD <- holdUniqDyn $
-                                (\case Just (PaneContent (PaneTmux w) _) -> Just w
+                                (\case Just (PaneContent (PaneTmux w) _) -> Just (unqual w)
                                        _                                 -> Nothing)
                                   <$> paneD
                             -- A VIEW pane (an editor / git log living directly
@@ -1582,6 +1598,14 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
           -- TerminalTitle above and reach the tree on its next poll)
           EvWindowAdd _        -> Just TerminalTreeChanged
           EvWindowClose _      -> Just TerminalTreeChanged
+          -- A window KILLED in this session arrives as %unlinked-window-close
+          -- (it is already gone from the session when tmux reports it).
+          -- Locally the server-wide monitor catches that; a remote host has no
+          -- monitor, and its windows' leksah windows need the host tree to
+          -- learn of it.  (Remote only: on the local server these fire for
+          -- every session's windows.)
+          EvUnlinkedWindowClose _ | isRemote -> Just TerminalTreeChanged
+          EvUnlinkedWindowAdd _   | isRemote -> Just TerminalTreeChanged
           _                    -> Nothing) evE
       -- Close button in the remote error view: drop the tab.
       , TerminalExited <$ closeErrE
