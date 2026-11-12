@@ -126,6 +126,7 @@ import IDE.Web.Model
         LeksahWindow(..), PaneContent(..), PaneKind(..), LeafId(..))
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.WindowBridge (setFocusedLeaf)
+import IDE.Web.NewLwRequest (reportWindowGone)
 import IDE.Web.Dom
        (nextFrame, observeResize, holdsFocus, activeTagName, focusElement,
         focusFirst, toggleClassWhere)
@@ -430,6 +431,18 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- the control client's current window/pane IS the displayed one.
             liftIO $ registerTerminalCC sessionId (ccSend cc)
                        >>= writeIORef ccRegIdRef
+            -- A window closing in this session (killed ones arrive as
+            -- %unlinked-window-close): once tmux confirms it is really gone —
+            -- a window MOVED to another session is reported closed too — the
+            -- IDE drops its leaf at once ('reportWindowGone').
+            performEvent_ $ ffor (fmapMaybe (\case EvWindowClose w         -> Just w
+                                                   EvUnlinkedWindowClose w -> Just w
+                                                   _                       -> Nothing) evE) $ \w ->
+                liftIO . void . forkIO $ do
+                    r <- ccCommand cc ("display-message -p -t " <> w <> " '#{window_id}'")
+                    case r of
+                      Right (l : _) | T.strip l == w -> return ()
+                      _ -> reportWindowGone (qual w)
             -- ⌘-drag inside a REMOTE tab.  The gesture (leafDragJs) is built
             -- on leksah windows, which all live on the local tmux server, so a
             -- remote tab publishes no split geometry and never took part.  What

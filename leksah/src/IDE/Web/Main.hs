@@ -270,7 +270,8 @@ import IDE.Web.ClaudeStatus
 import IDE.Web.AgentInfo (agentTitles, syncAgentLiveness)
 #endif
 import IDE.Web.NewLwRequest
-       (beginConversion, endConversion, conversionActive, consolidateLock)
+       (beginConversion, endConversion, conversionActive, consolidateLock,
+        setWindowGoneHandler)
 import IDE.Web.TmuxLayout
        (TmuxCell(..), parseWindowLayout, printWindowLayout, cellPanes,
         rerootCell, combineCells)
@@ -6783,6 +6784,21 @@ main showMenubar macTitlebar wid ctx = mdo
     -- leksah window already bound to it or mint one (serialised, so two quick
     -- requests can't mint twice).  An unreachable host falls back to the
     -- legacy remote tab, whose connection-error page says why and offers Retry.
+    -- A tmux window a control client saw close (and confirmed gone): drop
+    -- its leaf now — the reconcile would, but only after the next tree poll,
+    -- which for a remote host is a fresh ssh connection (seconds).  Not while
+    -- leksah's own tmux surgery is in flight (a consolidation closes windows
+    -- on purpose and edits the model itself).
+    pbGone <- getPostBuild
+    performEvent_ $ ffor pbGone $ \_ -> liftIO . setWindowGoneHandler $ \w -> do
+        busy <- conversionActive
+        unless busy . withApp $ \app -> modifyCell (appUi app) $ \i ->
+          case windowOwner w (i ^. leksahWindows) of
+            Nothing -> i
+            Just (lwi, l) -> syncLwTabs $ i & leksahWindows %~ \lws ->
+              case M.lookup lwi lws >>= withoutLeaf l of
+                Just lw' -> M.insert lwi lw' lws
+                Nothing  -> M.delete lwi lws
     (remoteFailE, fireRemoteFail) <- newTriggerEvent
     performEvent_ $ ffor (attachWithMaybe
             (\lws k -> if "ssh://" `T.isPrefixOf` k && isNothing (termTabKey lws k)

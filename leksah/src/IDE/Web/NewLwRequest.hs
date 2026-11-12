@@ -16,6 +16,8 @@ module IDE.Web.NewLwRequest
   , beginConversion
   , endConversion
   , conversionActive
+  , setWindowGoneHandler
+  , reportWindowGone
   , requestFontConvert
   , nextFontConvert
   , requestConsolidate
@@ -52,6 +54,21 @@ nextNewLwRequest = readChan newLwChan
 
 -- A minimal-path conversion is mid-flight: its break-pane children must not
 -- be adopted as strays by the reconcile, which is gated on this count.
+-- | A tmux window a control client saw CLOSE (and confirmed gone): the IDE
+-- drops its leaf from the model at once ('IDE.Web.Main' installs the
+-- handler), instead of waiting for the next tree poll — which for a remote
+-- host is a fresh ssh connection, seconds away.  The id is in model form
+-- (server-qualified when remote).
+{-# NOINLINE windowGoneRef #-}
+windowGoneRef :: IORef (Text -> IO ())
+windowGoneRef = unsafePerformIO (newIORef (\_ -> return ()))
+
+setWindowGoneHandler :: (Text -> IO ()) -> IO ()
+setWindowGoneHandler h = atomicModifyIORef' windowGoneRef (const (h, ()))
+
+reportWindowGone :: Text -> IO ()
+reportWindowGone w = readIORef windowGoneRef >>= ($ w)
+
 {-# NOINLINE conversionsRef #-}
 conversionsRef :: IORef Int
 conversionsRef = unsafePerformIO (newIORef 0)
