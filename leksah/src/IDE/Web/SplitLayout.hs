@@ -807,6 +807,10 @@ reconcileWindowsOn mine adoptable liveBySession hidden converting fresh next0 lw
                   Just (PaneContent (PaneTmux w) (clamp f))
             Just (PaneContent (PaneView t) f)
               | viewLeafAllowed t -> Just (PaneContent (PaneView t) (clamp f))
+            -- A nested child window lives while the child does (it goes when
+            -- ITS pane dies, in its own server's pass).
+            Just (PaneContent (PaneNested c) f)
+              | c `M.member` lwsAll, c /= i -> Just (PaneContent (PaneNested c) (clamp f))
             _ -> Nothing
           panes1 = M.fromList
             [ (l, pc) | l <- treeLeafIds (lwTree lw), Just pc <- [keepPane l] ]

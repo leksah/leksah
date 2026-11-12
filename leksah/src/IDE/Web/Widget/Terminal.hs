@@ -494,6 +494,14 @@ terminalCss = do
         "overflow" -: "hidden"
         "background" -: "var(--leksah-bg, rgb(30,30,30))"
         "z-index" -: "5"
+    -- A NESTED child window (a pane on another tmux session or server): its
+    -- own control-client widget fills the leaf, over the empty chrome.
+    ".terminal-cc-nested-leaf" ? do
+        "position" -: "absolute"
+        "inset" -: "0"
+        "overflow" -: "hidden"
+        "background" -: "var(--leksah-bg, rgb(30,30,30))"
+        "z-index" -: "5"
     -- The ⌘W terminal pane close menu (Kill / Hide / Move / Cancel).  It renders
     -- INSIDE its target pane; this overlay covers the pane and CSS-centres the menu
     -- box (grid place-items) — no JS geometry.  All interaction is reflex.

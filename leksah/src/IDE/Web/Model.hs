@@ -216,6 +216,14 @@ data PaneKind
                                  --   tmux server's lifetime, unlike indexes)
   | PaneView TabKey              -- ^ 'EditorKey' / 'GitLogKey' / 'BrowserKey'
                                  --   only (enforced by the layout codec)
+  | PaneNested Text              -- ^ a CHILD leksah window (its id), shown
+                                 --   here and nowhere else (it gets no tab):
+                                 --   how a pane on ANOTHER tmux server or
+                                 --   session lives in this window.  The child
+                                 --   is an ordinary leksah window on its own
+                                 --   session, reconciled by its own server's
+                                 --   pass and rendered by its own control
+                                 --   client inside this leaf.
   deriving (Eq, Show, Generic)
 
 -- | A pane's content plus its font size.  @Nothing@ = follow the global

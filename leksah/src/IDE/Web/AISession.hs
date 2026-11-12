@@ -99,7 +99,10 @@ activeAIPaneRef ui tree = do
   ww  <- M.lookup wid (ui ^. webWindows)
   k   <- _wwActive ww
   case k of
-    LeksahWinKey n -> do
+    LeksahWinKey n0 -> focusedIn (4 :: Int) n0
+    _ -> Just (PRTab k)
+  where
+    focusedIn depth n = do
       lw           <- M.lookup n (ui ^. leksahWindows)
       lid@(LeafId l) <- lwFocused lw
       pc           <- M.lookup lid (lwPanes lw)
@@ -108,7 +111,9 @@ activeAIPaneRef ui tree = do
         -- A leksah pane holds a whole tmux WINDOW; the pane that actually has
         -- the keyboard is tmux's active pane within it.
         PaneTmux w -> PRTmux <$> activeTmuxPaneIn w tree
-    _ -> Just (PRTab k)
+        -- A nested child window: the keyboard is in ITS focused leaf.
+        PaneNested c | depth > 0 -> focusedIn (depth - 1) c
+        PaneNested _ -> Nothing
 
 -- | The active (or first) tmux pane of tmux window @wid@ (@\@7@).
 activeTmuxPaneIn :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe Text
@@ -129,6 +134,7 @@ paneDir tree ui = \case
     case pcKind pc of
       PaneView k -> tabDir k
       PaneTmux _ -> Nothing
+      PaneNested _ -> Nothing
   PRTmux pane -> paneCurrentPath pane
   where
     tabDir = \case

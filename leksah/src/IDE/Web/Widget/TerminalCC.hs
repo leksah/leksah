@@ -1041,6 +1041,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                 let want = forced || had || tagName == "BODY" || (pend && desired)
                 focusLog $ "[" <> T.unpack sessionId <> "] reconcileFocus kind="
                     <> (case kind of PaneView{} -> "view"
+                                     PaneNested c -> "nested " <> T.unpack c
                                      PaneTmux w -> "tmux " <> T.unpack w)
                     <> " had=" <> show had <> " activeEl=" <> T.unpack tagName
                     <> " pend=" <> show pend
@@ -1049,6 +1050,12 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                   liftIO $ writeIORef pendingFocusRef False
                   case kind of
                     PaneView _ -> do
+                        liftIO $ writeIORef pendingMountRef Nothing
+                        liftIO $ fireViewFocus lid
+                    -- A nested child window: its own widget (inside this
+                    -- leaf) takes the pulse as its "selected" event and
+                    -- focuses ITS focused leaf.
+                    PaneNested _ -> do
                         liftIO $ writeIORef pendingMountRef Nothing
                         liftIO $ fireViewFocus lid
                     -- Resolve the tmux window's ACTIVE pane on the control
@@ -1370,6 +1377,32 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                             ^. js2 ("leksahSetLeafFont" :: Text)
                                                 (_element_raw vEl)
                                                 (maybe (0 :: Int) id mf)
+                              -- A NESTED child window (a pane on another tmux
+                              -- session or server): its own widget — with its
+                              -- own control client, on the child's session —
+                              -- fills this leaf.  It takes this leaf's focus
+                              -- pulse as its "selected" event; its bells ring
+                              -- this tab.
+                              nestedD <- holdUniqDyn $
+                                  (\case Just (PaneContent (PaneNested c) _) -> Just c
+                                         _                                   -> Nothing)
+                                    <$> paneD
+                              childD <- holdUniqDyn $
+                                  (\i mc -> mc >>= \c ->
+                                      (,) c <$> (M.lookup c (i ^. leksahWindows) >>= lwSession))
+                                    <$> cUi ctx <*> nestedD
+                              dyn_ $ ffor childD $ \case
+                                  Nothing -> return ()
+                                  Just (c, s) ->
+                                    elAttr "div" ("class" =: "terminal-cc-nested-leaf") $ do
+                                      evs <- terminalCCWidget ctx c s
+                                               (void (ffilter (== lid) viewFocusE))
+                                               leafViewW closeMenuD renderCloseMenu
+                                      let isBell e = case e of
+                                            TerminalBell -> True
+                                            _            -> False
+                                      performEvent_ $ ffor (ffilter isBell evs) $
+                                          \_ -> liftIO (triggerBell ())
                             -- Focus entering this leaf makes it the layout's
                             -- focused leaf — the target of ⌘S/⌥⌘=/⌥⌘−/splits.
                             -- A mouse-DOWN counts too, because a click does not

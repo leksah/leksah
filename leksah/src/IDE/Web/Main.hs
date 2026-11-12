@@ -87,6 +87,7 @@ import System.Directory
 import System.Process (readProcessWithExitCode)
 import Data.Aeson (Value, decodeStrict', encode, withObject, (.:))
 import qualified Data.Aeson as A
+import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Aeson.Types as AT (Parser, parseMaybe)
 import Data.List
        (nub, sort, isPrefixOf, isInfixOf, isSuffixOf, find, elemIndex,
@@ -593,7 +594,11 @@ freshSessionsFor = do
 syncLwTabs :: WebUi -> WebUi
 syncLwTabs i =
   let lws = i ^. leksahWindows
-      liveTab k = case k of LeksahWinKey n -> n `M.member` lws
+      -- A CHILD window (shown inside another window's 'PaneNested' leaf) has
+      -- no tab of its own; an orphaned child (its parent leaf gone) is an
+      -- ordinary window again and gets one.
+      nested = S.fromList [ c | lw <- M.elems lws, PaneContent (PaneNested c) _ <- M.elems (lwPanes lw) ]
+      liveTab k = case k of LeksahWinKey n -> n `M.member` lws && not (n `S.member` nested)
                             _              -> True
       pruneWin ww =
         let w0 = filter liveTab (_wwWide0 ww)
@@ -626,7 +631,7 @@ syncLwTabs i =
           }) osW ws
       final = foldl' place pruned
         [ (n, lw) | (n, lw) <- M.toAscList lws
-        , not (n `S.member` placed) ]
+        , not (n `S.member` placed), not (n `S.member` nested) ]
   in i & webWindows .~ final
 
 -- | The ⌘-drag pane move's payload (leafDragJs delivers it as one JSON blob
@@ -737,6 +742,36 @@ moveLeafAcross srcLwId srcLeaf dstLwId spec i = fromMaybe i $ do
     return $ i & leksahWindows .~ lws'
                & flipMru %~ map moveFlip
   where lws = i ^. leksahWindows
+
+-- | Wrap tmux leaf @l@ of window @lwi@ into a fresh CHILD window on the same
+-- session, leaving a 'PaneNested' leaf (same id, same font) in its place —
+-- the content of that leaf can then move anywhere, even to a window on
+-- another tmux server.  'False' (nothing changed) unless @l@ is a tmux leaf.
+nestLeaf :: Text -> LeafId -> WebUi -> (WebUi, Bool)
+nestLeaf lwi l i = case M.lookup lwi (i ^. leksahWindows) of
+  Just lw | Just pc@(PaneContent (PaneTmux _) f) <- M.lookup l (lwPanes lw) ->
+    let n = i ^. nextLeksahWin
+        c = lwIdText n
+        lw' = lw { lwPanes = M.insert l (PaneContent (PaneNested c) f) (lwPanes lw) }
+    in ( i & nextLeksahWin .~ (n + 1)
+           & leksahWindows %~ (M.insert lwi lw' . M.insert c (singlePaneWindow (lwSession lw) pc))
+       , True )
+  _ -> (i, False)
+
+-- | A fresh child window for tmux window @w@ (on @lwi@'s session), shown by a
+-- new 'PaneNested' leaf split off leaf @l@ of @lwi@; returns that leaf.
+nestNewWindow :: Text -> LeafId -> Text -> WebUi -> (WebUi, Maybe LeafId)
+nestNewWindow lwi l w i = case M.lookup lwi (i ^. leksahWindows) of
+  Just lw | l `M.member` lwPanes lw ->
+    let n = i ^. nextLeksahWin
+        c = lwIdText n
+        f = M.lookup l (lwPanes lw) >>= pcFontSize
+        (newL, lw') = splitLeaf l SplitH True (PaneContent (PaneNested c) f) lw
+        child = singlePaneWindow (lwSession lw) (PaneContent (PaneTmux w) f)
+    in ( i & nextLeksahWin .~ (n + 1)
+           & leksahWindows %~ (M.insert lwi lw' . M.insert c child)
+       , Just newL )
+  _ -> (i, Nothing)
 
 -- | One leksah window without leaf @l@: focus falls to the leaf absorbing its
 -- space, and 'Nothing' means that was the last pane, so the whole leksah window
@@ -2197,15 +2232,22 @@ panePathOfKey ui tree k = case focusedView of
 -- focused).  'Nothing' when a view is focused, or for any other tab.
 focusedTmuxPane :: WebUi -> Map Text (Text, [TmuxWindow]) -> TabKey -> Maybe TmuxPane
 focusedTmuxPane ui tree k = case k of
-    LeksahWinKey n -> do
-      lw <- M.lookup n (ui ^. leksahWindows)
-      wins <- snd <$> (lwSession lw >>= (`M.lookup` tree))
-      w <- case lwFocused lw >>= (`M.lookup` lwPanes lw) of
-        Just (PaneContent (PaneTmux wid) _) -> find ((== wid) . twId) wins
-        Just (PaneContent (PaneView _) _)   -> Nothing
-        Nothing -> listToMaybe (filter twActive wins ++ wins)
-      listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+    LeksahWinKey n0 -> go (4 :: Int) n0
     _ -> Nothing
+  where
+    go depth n = do
+      lw <- M.lookup n (ui ^. leksahWindows)
+      case lwFocused lw >>= (`M.lookup` lwPanes lw) of
+        -- A nested child window: the focus is in ITS focused leaf.
+        Just (PaneContent (PaneNested c) _) | depth > 0 -> go (depth - 1) c
+        Just (PaneContent (PaneNested _) _) -> Nothing
+        mpc -> do
+          wins <- snd <$> (lwSession lw >>= (`M.lookup` tree))
+          w <- case mpc of
+            Just (PaneContent (PaneTmux wid) _) -> find ((== rawTmuxId wid) . twId) wins
+            Just (PaneContent _ _)              -> Nothing
+            Nothing -> listToMaybe (filter twActive wins ++ wins)
+          listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
 
 -- | Every path some open pane shows (see 'panePathOfKey'): what keeps a
 -- temporary project in the workspace.  'Nothing' until the tmux tree has
@@ -6433,6 +6475,7 @@ main showMenubar macTitlebar wid ctx = mdo
                       PaneView (EditorKey f)   -> T.pack (takeFileName f)
                       PaneView (GitLogKey _ b) -> b
                       PaneView k               -> tabLabelText k M.empty
+                      PaneNested _             -> "nested"
                       PaneTmux w ->
                         let wins = maybe [] snd
                               (lwSession lw >>= \s -> M.lookup s tree)
@@ -7901,6 +7944,9 @@ main showMenubar macTitlebar wid ctx = mdo
             pc <- M.lookup l (lwPanes lw)
             case pcKind pc of
               PaneTmux w  -> Just (Right w)
+              -- ⌘D in a nested child pane: not yet (its split must run on
+              -- the CHILD's own connection, which may be another server).
+              PaneNested _ -> Nothing
               PaneView vk -> do
                 dir <- case vk of
                   EditorKey f   -> Just (takeDirectory f)
@@ -9016,8 +9062,34 @@ main showMenubar macTitlebar wid ctx = mdo
                                 , isJust (lwSession dlw) ->
                                     windowServer dlw /= srvS
               _ -> False
+            -- Re-deliver this drop with a different source (the nested leaf
+            -- 'nestThen' just made): the dst half is the JS's own, unchanged.
+            refire slw (LeafId l) = case decodeStrict' (encodeUtf8 json) of
+              Just (A.Object o) -> fireLeafDrop . decodeUtf8 . BS.toStrict . encode . A.Object $
+                KM.insert "src" (A.object ["lw" A..= slw, "leaf" A..= l]) o
+              _ -> return ()
+            -- A tmux pane can't cross servers, but a NESTED child window can:
+            -- wrap the source into one (its pane stays on its own server, in
+            -- its own session) and drop THAT, which is a pure model move.
+            nestThen src = case src of
+              LDPane slw l -> do
+                done <- stateCell (appUi app) $ \i -> nestLeaf slw (LeafId l) i
+                if done then refire slw (LeafId l) else activateSrc src
+              LDTmuxPane slw l p -> case lwSession =<< M.lookup slw lwsQ of
+                Nothing -> activateSrc src
+                Just sess -> do
+                  -- one pane of a multi-pane window: give it its own tmux
+                  -- window first (on its own server), then nest that
+                  beginConversion
+                  mW <- breakTmuxPaneTo p sess
+                  r <- case mW of
+                    Nothing -> return Nothing
+                    Just w' -> stateCell (appUi app) $ \i -> nestNewWindow slw (LeafId l) w' i
+                  endConversion
+                  maybe (activateSrc src) (refire slw) r
+              LDTab _ -> activateSrc src
         forM_ ((\(a, b) -> (qualSrc a, qualDst b)) <$> parsed) $ \(src, dst) ->
-         if crossServer (srcTmuxServer src) dst then activateSrc src else case dst of
+         if crossServer (srcTmuxServer src) dst then nestThen src else case dst of
           -- The window the pointer was over commits a foreign release itself
           -- (see @leksahDragPreview@); reaching here means nothing was under it.
           LDDstForeign -> activateSrc src
@@ -10199,7 +10271,10 @@ main showMenubar macTitlebar wid ctx = mdo
               let gone = [ n | LeksahWinKey n <- ks, Just lw <- [M.lookup n lws]
                              , windowServer lw /= LocalServer ]
               mapM_ stopCCFor gone
-              overUi (leksahWindows %~ \m -> foldr M.delete m gone) app])
+              -- (syncLwTabs: a child window the closed one was showing in a
+              -- nested leaf is an ordinary window again, and gets its tab.)
+              unless (null gone) $
+                overUi (syncLwTabs . (leksahWindows %~ \m -> foldr M.delete m gone)) app])
             <$> closeTabsE)
       -- Closing a tab also drops it from the shared flip MRU, so the flipper
       -- forgets it at once (the display filter would hide it anyway, but a

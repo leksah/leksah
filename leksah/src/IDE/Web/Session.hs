@@ -188,6 +188,8 @@ instance ToJSON PaneContent where
       [ "kind" .= ("tmux" :: Text), "window" .= w, "font" .= f ]
     PaneView t -> object
       [ "kind" .= ("view" :: Text), "tab" .= t, "font" .= f ]
+    PaneNested c -> object
+      [ "kind" .= ("nested" :: Text), "child" .= c, "font" .= f ]
 
 instance FromJSON PaneContent where
   parseJSON = withObject "PaneContent" $ \o -> do
@@ -200,6 +202,7 @@ instance FromJSON PaneContent where
         unless (viewLeafAllowed t) $
           fail "view pane must be an editor, git log or browser"
         return (PaneView t)
+      "nested" -> PaneNested <$> o .: "child"
       _ -> fail ("unknown pane kind " <> T.unpack kind)
     return (PaneContent k font)
 
