@@ -9,6 +9,7 @@
 module IDE.Web.Widget.Workspace (
     workspaceCss
   , workspaceWidget
+  , agentWorktreesPanel
 ) where
 
 import Control.Concurrent (forkIO)
@@ -24,7 +25,7 @@ import Data.Ord (comparing)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import qualified Data.Map as M
        (Map, elems, empty, filterWithKey, findWithDefault, fromList,
-        fromListWith, insert, keys, lookup, singleton, toList, null, union)
+        fromListWith, insert, keys, lookup, singleton, toList, null, union, size)
 import Data.Maybe (listToMaybe, fromMaybe, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S (fromList, member)
@@ -34,10 +35,11 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (pack, unpack, strip, null, take, takeWhile, lines, words, isPrefixOf,
         drop, length, breakOn, splitOn, stripSuffix, stripPrefix, dropWhile,
-        intercalate, replace, isSuffixOf, dropEnd, dropAround)
+        intercalate, replace, isSuffixOf, dropEnd, dropAround, toLower)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import Text.Read (readMaybe)
+import Data.Time.Clock (NominalDiffTime)
 import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds, POSIXTime)
 
 import qualified Data.ByteString as BS
@@ -86,7 +88,7 @@ import Reflex.Dom.Core
 import IDE.Web.Theme
        (selectionColor, hoverColor, dimColor, dimOpacity, fgColor,
         btnTopColor, btnBottomColor, btnHoverTopColor, btnHoverBottomColor)
-import IDE.App (App(..), appNote, withApp)
+import IDE.App (App(..), appNote, getGlobalApp, withApp)
 import IDE.Builder (runVerb)
 import IDE.Config (Config(..), UiC(..))
 import IDE.Reactive (readCell)
@@ -119,6 +121,8 @@ import IDE.Web.Claude
         claudeSessionsFor, claudeTranscriptPath, showLiveSession)
 import IDE.Web.AgentInfo (agentDirOf, agentTitles)
 import IDE.Web.AgentNames (agentNames)
+import IDE.Web.AgentWorktrees
+       (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, worktreesOfAgent)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.WorktreeRegistry
@@ -2059,5 +2063,152 @@ workspaceWidget ctx activeFileD revealFileD = do
                     [ ProjectPackageEvents <$> packagesE
                     , ProjectFileEvents <$> projectFilesE
                     , worktreeProjectsE ]
-        (switchHold never =<<) . dyn $ ffor rebuildD $ \_ ->
+        projE <- (switchHold never =<<) . dyn $ ffor rebuildD $ \_ ->
             listViewWithKey (fst <$> groupedD) (projectNode False)
+        -- Last: every agent and the worktrees it registered.
+        agentWorktreesNode rootKeysD
+        return projE
+
+--------------------------------------------------------------------------------
+-- Agents and their worktrees ("IDE.Web.AgentWorktrees")
+
+-- | Re-read on this period (seconds): the registry read is an MVar peek, plus
+-- a stat per registered path.
+agentWorktreesPeriod :: NominalDiffTime
+agentWorktreesPeriod = 5
+
+-- | The Claude status rows, polled (an IORef read of the status poll's cache).
+claudeStatusRowsD :: forall t m . MonadWidget t m => m (Dynamic t [ClaudeStatusRow])
+claudeStatusRowsD = do
+  pb <- getPostBuild
+  tick <- tickLossyFromPostBuildTime 3
+  (stE, fireSt) <- newTriggerEvent
+  performEvent_ $ liftIO (claudeStatusNow >>= fireSt) <$ leftmost [() <$ pb, () <$ tick]
+  holdUniqDyn =<< holdDyn [] (csRows <$> stE)
+
+-- | Poll an IO action off the frame thread.
+pollD :: forall t m a . (MonadWidget t m, Eq a) => a -> IO a -> m (Dynamic t a)
+pollD a0 act = do
+  pb <- getPostBuild
+  tick <- tickLossyFromPostBuildTime agentWorktreesPeriod
+  (e, fire) <- newTriggerEvent
+  performEvent_ $ (liftIO . void . forkIO $ act >>= fire) <$ leftmost [() <$ pb, () <$ tick]
+  holdUniqDyn =<< holdDyn a0 e
+
+-- | The workspace's open projects by (trailing-slash-normalised) root — what
+-- a worktree row's menu needs to offer "Open as Project" or "Remove".
+openProjectRootsD :: forall t m . MonadWidget t m => m (Dynamic t (M.Map FilePath ProjectKey))
+openProjectRootsD = pollD M.empty $ withAppOr M.empty $ \app -> do
+  ws <- readCell (wsCell (appWorkspace app))
+  return $ M.fromList [ (dropTrailingPathSeparator (pkRoot k), k)
+                      | p <- wsProjects ws, let k = prKey p ]
+  where withAppOr d k = maybe (return d) k =<< getGlobalApp
+
+-- | An agent's worktrees as tree rows ('worktreeRow', so each has the live
+-- branch, counts, PR, badge, story and menu): the current ones, then the rest
+-- under a collapsed "Earlier (N)".  Keyed by path, so a poll that changes one
+-- leaves the others (and whichever is expanded) alone.
+agentWorktreeRows :: forall t m . MonadWidget t m
+                  => Bool -> Dynamic t (M.Map FilePath ProjectKey)
+                  -> Dynamic t [ClaudeStatusRow] -> Dynamic t [AgentWorktree] -> m ()
+agentWorktreeRows claudeAvail rootKeysD statusD wtsD = do
+  let keyed f = M.fromList . map (\w -> (awPath w, w)) . filter f <$> wtsD
+  curD <- holdUniqDyn (keyed awCurrent)
+  oldD <- holdUniqDyn (keyed (not . awCurrent))
+  void $ listViewWithKey curD row
+  hasOldD <- holdUniqDyn (not . M.null <$> oldD)
+  void . dyn $ ffor hasOldD $ \hasOld -> when hasOld . void $
+    treeItem "agent-worktrees-earlier" False
+      (treeSelect "workspace" (return never) $ do
+          elAttr "span" ("title" =: "Worktrees it reviewed or gave up, and older \
+                                    \ones from before it exited") $
+            dynText (ffor oldD $ \m -> "Earlier (" <> T.pack (show (length m)) <> ")")
+          return (never :: Event t ()))
+      (el "ul" $ listViewWithKey oldD row >> return (never :: Event t ()))
+  where
+    row :: FilePath -> Dynamic t AgentWorktree -> m (Event t ())
+    row p wD = do
+      w <- sample (current wD)
+      let local = maybe p snd (parseRemotePath p)
+      worktreeRow claudeAvail (awMainRoot w) rootKeysD statusD
+                  (GitWorktree (T.pack local) (awBranch w))
+      return never
+
+-- | The Agents pane's panel for one agent (its top card's): its worktrees,
+-- as a tree.  Self-hides when it has none.
+agentWorktreesPanel :: forall t m . MonadWidget t m => Dynamic t (Maybe Text) -> m ()
+agentWorktreesPanel sidD = do
+  claudeAvail <- liftIO claudeAvailable
+  rootKeysD <- openProjectRootsD
+  statusD   <- claudeStatusRowsD
+  void . dyn $ ffor sidD $ \case
+    Nothing  -> return ()
+    Just sid -> do
+      wtsD <- pollD [] (worktreesOfAgent sid)
+      void . dyn $ ffor (null <$> wtsD) $ \noWts -> unless noWts $
+        divClass "agents-worktrees workspace-tree" $ do
+          divClass "agents-worktrees-head" $ text "Worktrees"
+          el "ul" $ agentWorktreeRows claudeAvail rootKeysD statusD wtsD
+
+-- | "Agents (N)" at the bottom of the Workspace tree: one expandable row per
+-- agent that has worktrees now (or is live and has any), live ones first; each
+-- expands to 'agentWorktreeRows'.  Double-click (or the menu) brings the agent
+-- up: its pane if it is live, else it is resumed.  Self-hides when empty.
+agentWorktreesNode :: forall t m . MonadWidget t m
+                   => Dynamic t (M.Map FilePath ProjectKey) -> m ()
+agentWorktreesNode rootKeysD = do
+  claudeAvail <- liftIO claudeAvailable
+  statusD <- claudeStatusRowsD
+  groupsD <- pollD [] allAgentWorktrees
+  let shownD = ffor groupsD $ \gs -> M.fromList
+        [ ((not (agLive g), T.toLower (agName g), agSession g), g)
+        | g <- gs, agLive g || any awCurrent (agWorktrees g) ]
+  emptyD <- holdUniqDyn (M.null <$> shownD)
+  void . dyn $ ffor emptyD $ \empty -> unless empty . void $
+    treeItem "agent-worktrees" False
+      (treeSelect "workspace" (return never) $ do
+          elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") (return ())
+          elAttr "span" ("title" =: "The worktrees each agent made or works in \
+                                    \(from leksah's worktree registry)") $
+            dynText (ffor shownD $ \m -> "Agents (" <> T.pack (show (M.size m)) <> ")")
+          return (never :: Event t ()))
+      (el "ul" $ do
+          void . listViewWithKey shownD $ \(_, _, sid) gD -> do
+            agentRow claudeAvail statusD sid gD
+            return (never :: Event t ())
+          return (never :: Event t ()))
+  where
+    agentRow claudeAvail statusD sid gD = do
+      wtsD <- holdUniqDyn (agWorktrees <$> gD)
+      let badgeD = ffor statusD $ \rows ->
+            case [ r | r <- rows, csrSession r == sid ] of
+              (r : _) | csrState r == "waiting"
+                -> Just ("▲", "#f85149", "waiting for approval")
+              (r : _) | csrState r `elem` ["busy", "shell"]
+                -> Just ("●", "#d29922", "working")
+              (_ : _) -> Just ("●", "#3fb950", "running")
+              []      -> Nothing
+          labelD = ffor gD $ \g ->
+            (if T.null (agName g) then T.take 8 sid else agName g)
+              <> "  (" <> T.pack (show (length (filter awCurrent (agWorktrees g)))) <> ")"
+          open g = void . forkIO $ withApp $ \app -> do
+            shown <- showLiveSession sid
+            unless shown $ do
+              let ws = agWorktrees g
+              dirs <- forM ws $ \w -> resolveSessionDir (awMainRoot w) (awPath w) sid
+              case [ d | Just d <- dirs ] of
+                (d : _) -> runClaudeCmd (ClaudeResume d sid)
+                []      -> appNote app ("no transcript found for session " <> T.take 8 sid)
+      void $ treeItem "agent-worktrees-agent" False
+        (do (rowEl, mE) <- treeSelect' "workspace"
+                (menuSplit [ ffor gD $ \g -> ("Show Agent", (Nothing, open g)) ]) $ do
+                elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg")
+                  (return ())
+                dynText labelD
+                statusBadge badgeD
+                return (never :: Event t (IO ()))
+            performEvent_ $ liftIO . open <$> tagPromptlyDyn gD (domEvent Dblclick rowEl)
+            performEvent_ $ liftIO <$> mE
+            return (never :: Event t ()))
+        (el "ul" $ agentWorktreeRows claudeAvail rootKeysD statusD wtsD
+                   >> return (never :: Event t ()))

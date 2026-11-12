@@ -89,6 +89,7 @@ import IDE.Web.Command (Command(CommandShowTeam))
 import IDE.Web.KeymapRequest (requestKeymapCommand)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.TextAssist (noTextAssist)
+import IDE.Web.Widget.Workspace (agentWorktreesPanel)
 
 -- | What the cards' buttons do, for a pane that shows notices with @toast@ and
 -- re-reads the agents with @refresh@.  Shared with the Team pane.
@@ -311,10 +312,17 @@ agentsWidget mruNamesD = do
         "Start one with ＋ above, or from a Claude session with \
         \`leksah-cmd agent fork 'do this'`."
     let shownD = shape <$> forestD <*> stateD <*> searchD <*> flatD <*> mruNamesD
-    divClass "agents-list" . void . listViewWithKey shownD $ \_ cD -> do
-      elDynAttr "div" (slotAttrs <$> cD) $
-        agentCard acts (slotTop <$> cD) False (slotNode <$> cD)
-      return (never :: Event t ())
+    divClass "agents-list" $ do
+      void . listViewWithKey shownD $ \_ cD -> do
+        elDynAttr "div" (slotAttrs <$> cD) $
+          agentCard acts (slotTop <$> cD) False (slotNode <$> cD)
+        return (never :: Event t ())
+      -- The top agent's worktrees, as a tree, right under its card: the
+      -- same flex order as the top card (0), and later in the DOM than every
+      -- card, so it lands directly after it.
+      topSidD <- holdUniqDyn (fmap anSession <$> (topNodeOf . flatten <$> forestD <*> mruNamesD))
+      elAttr "div" ("class" =: "agents-slot" <> "style" =: "order:0") $
+        agentWorktreesPanel topSidD
     return ()
   -- Arm the pane's JS (description links, / to search) on
   -- THIS pane's root element.  The handle, never document.querySelector: at
@@ -354,10 +362,7 @@ agentsWidget mruNamesD = do
         order n  = ( rankOf (anState n)
                    , M.findWithDefault maxBound (anName n) mruIx
                    , T.toLower (anName n), T.toLower (anTitle n) )
-        topNode  = listToMaybe
-          [ n | nm <- mru
-              , Just n <- [ find (\x -> anName x == nm && anLive x) everyone
-                              `orElse` find ((== nm) . anName) everyone ] ]
+        topNode  = topNodeOf everyone mru
         topSid   = anSession <$> topNode
         manager  = find anManager everyone
         pinnedNodes = [ n | Just n <- [topNode] ]
@@ -393,7 +398,6 @@ agentsWidget mruNamesD = do
           , fromMaybe "" (anBranch n), maybe "" (\(k, _) -> "#" <> T.pack (show k)) (anPr n)
           , T.pack (anDir n), fromMaybe "" (anActivity n)
           , fromMaybe "" (anRole n), fromMaybe "" (anDone n), T.unwords (anWorktrees n) ]
-        orElse a b = maybe b Just a
 
     -- The chips' groups: "working" takes the shell and starting states too.
     inState st n = case st of
@@ -403,6 +407,14 @@ agentsWidget mruNamesD = do
     stripTags t = case T.breakOn "<" t of
       (a, rest) | T.null rest -> a
                 | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
+
+-- | The agent you are working with: the first in flip-MRU order, preferring
+-- a live agent of that name.
+topNodeOf :: [AgentNode] -> [Text] -> Maybe AgentNode
+topNodeOf everyone mru = listToMaybe
+  [ n | nm <- mru
+      , Just n <- [ maybe (find ((== nm) . anName) everyone) Just
+                      (find (\x -> anName x == nm && anLive x) everyone) ] ]
 
 -- | Where one card goes: its position (a CSS @order@ — the keyed list renders
 -- in key order, and re-keying by position would rebuild, and collapse, every
@@ -491,6 +503,15 @@ agentsCss :: Css
 agentsCss = do
     -- The cards themselves (shared with the Team pane).
     agentCardCss
+    -- The top agent's worktree tree, under its card.
+    ".agents-worktrees" ? do
+        "padding" -: "2px 4px 6px 4px"
+        fontSize (px 12)
+    ".agents-worktrees-head" ? do
+        color dimColor
+        fontSize (px 11)
+        "margin-bottom" -: "2px"
+    ".agents-worktrees > ul" ? ("margin-left" -: "4px")
     -- Head and cards: only the cards scroll.
     ".agents-pane" ? do
         height (pct 100)

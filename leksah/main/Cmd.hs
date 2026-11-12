@@ -1147,8 +1147,11 @@ hooksWriteScript = do
   return path
 
 -- | The hook body: parse the PostToolUse JSON on stdin (python3 — no jq
--- dependency), recognise @git worktree add@ (register the new path as
--- @created@) and @git switch@\/@checkout@ (record the branch move,
+-- dependency), recognise @git worktree add@ (also with @git -C dir@; the new
+-- path registers as @created@), @git worktree remove@ (@abandoned@), Claude
+-- Code's own @EnterWorktree@ (@created@, or @working@ when it entered an
+-- existing one) and @ExitWorktree@ with remove (@abandoned@), and
+-- @git switch@\/@checkout@ (record the branch move,
 -- @--branch-only@ so an agent's claim note is never clobbered), and hand it
 -- to @leksah-cmd agent register@ with the hook payload's session id.  Silent,
 -- and every path exits 0 — it must never slow or block a session.
@@ -1170,8 +1173,11 @@ hookScript exe = unlines
   , "import json,os,re,subprocess,sys"
   , "try: d=json.loads(os.environ.get(\"PAYLOAD\") or \"{}\")"
   , "except Exception: sys.exit(0)"
-  , "if d.get(\"tool_name\")!=\"Bash\": sys.exit(0)"
-  , "cmd=(d.get(\"tool_input\") or {}).get(\"command\",\"\") or \"\""
+  , "tn=d.get(\"tool_name\") or \"\""
+  , "ti=d.get(\"tool_input\") or {}"
+  , "tr=d.get(\"tool_response\")"
+  , "if not isinstance(tr,dict): tr={}"
+  , "cmd=ti.get(\"command\",\"\") or \"\" if isinstance(ti,dict) else \"\""
   , "cwd=d.get(\"cwd\") or \"\""
   , "sid=d.get(\"session_id\") or \"\""
   , "lk=sys.argv[1]"
@@ -1180,22 +1186,41 @@ hookScript exe = unlines
   , "    if sid: a+=[\"--session\",sid]"
   , "    try: subprocess.run(a,timeout=8,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)"
   , "    except Exception: pass"
-  , "def absd(p):"
-  , "    return p if os.path.isabs(p) else os.path.normpath(os.path.join(cwd,p))"
+  , "def absd(p,base=None):"
+  , "    return p if os.path.isabs(p) else os.path.normpath(os.path.join(base or cwd,p))"
+  , "if tn==\"EnterWorktree\":"
+  , "    p=tr.get(\"worktreePath\") or ti.get(\"path\")"
+  , "    if p:"
+  , "        reg([\"--worktree\",absd(p),\"--role\",\"working\" if ti.get(\"path\") else \"created\",\"--note\",\"EnterWorktree (hook)\"])"
+  , "    sys.exit(0)"
+  , "if tn==\"ExitWorktree\":"
+  , "    p=tr.get(\"worktreePath\")"
+  , "    if p and (ti.get(\"action\")==\"remove\" or tr.get(\"action\")==\"remove\" or not os.path.isdir(p)):"
+  , "        reg([\"--worktree\",absd(p),\"--role\",\"abandoned\",\"--note\",\"removed by ExitWorktree (hook)\"])"
+  , "    sys.exit(0)"
+  , "if tn!=\"Bash\": sys.exit(0)"
   , "toks=[t.strip(\"'\\\"\") for t in re.findall(r\"[^\\s;&|]+\",cmd)]"
-  , "def wt_add_path():"
-  , "    for i in range(1,len(toks)-1):"
-  , "        if toks[i]==\"worktree\" and toks[i+1]==\"add\" and toks[i-1].endswith(\"git\"):"
-  , "            j=i+2"
-  , "            while j<len(toks):"
-  , "                t=toks[j]"
-  , "                if t in (\"-b\",\"-B\"): j+=2"
-  , "                elif t.startswith(\"-\"): j+=1"
-  , "                else: return t"
+  , "def git_wt(sub):"
+  , "    for i in range(len(toks)-1):"
+  , "        if toks[i]!=\"worktree\" or toks[i+1]!=sub: continue"
+  , "        j=i-1; base=cwd"
+  , "        while j>=0 and not toks[j].endswith(\"git\"):"
+  , "            if j>=1 and toks[j-1]==\"-C\": base=absd(toks[j])"
+  , "            j-=1"
+  , "        if j<0 or i-j>8: continue"
+  , "        k=i+2"
+  , "        while k<len(toks):"
+  , "            t=toks[k]"
+  , "            if t in (\"-b\",\"-B\",\"--reason\"): k+=2"
+  , "            elif t.startswith(\"-\"): k+=1"
+  , "            else: return absd(t,base)"
   , "    return None"
-  , "p=wt_add_path()"
+  , "p=git_wt(\"add\")"
+  , "q=git_wt(\"remove\")"
   , "if p:"
-  , "    reg([\"--worktree\",absd(p),\"--role\",\"created\",\"--note\",\"git worktree add (hook)\"])"
+  , "    reg([\"--worktree\",p,\"--role\",\"created\",\"--note\",\"git worktree add (hook)\"])"
+  , "elif q:"
+  , "    reg([\"--worktree\",q,\"--role\",\"abandoned\",\"--note\",\"git worktree remove (hook)\"])"
   , "elif re.search(r\"git\\s+(switch|checkout)\\s\",cmd) and cwd:"
   , "    reg([\"--worktree\",cwd,\"--branch-only\"])"
   , "sys.exit(0)"
@@ -1244,7 +1269,7 @@ hooksInstall args = do
     hookCmd :: Text
     hookCmd = "[ -x \"$HOME/.leksah/worktree-hook.sh\" ] && \"$HOME/.leksah/worktree-hook.sh\" || true"
     hookEntry = object
-      [ "matcher" .= ("Bash" :: Text)
+      [ "matcher" .= ("Bash|EnterWorktree|ExitWorktree" :: Text)
       , "hooks" .= [ object [ "type" .= ("command" :: Text)
                             , "command" .= hookCmd
                             , "timeout" .= (10 :: Int) ] ] ]

@@ -41,6 +41,7 @@ module IDE.Web.WorktreeRegistry
     -- * Reading
   , worktreesForRoot
   , worktreeInfo
+  , allWorktrees
   , claimsBySession
   , owningSession
   ) where
@@ -252,12 +253,21 @@ registerWorktree
   -> Text            -- ^ via: @leksah@ | @agent@ | @hook@ | @scan@
   -> IO Text
 registerWorktree path0 mbranch msession mrole note via = do
-  let path = dropTrailingPathSeparator path0
+  known <- worktreeInfo path
   worktreeMainRoot path >>= \case
+    -- A worktree that is gone (the hook's `git worktree remove` path runs
+    -- after the removal) can still be marked abandoned, if it was known.
+    Nothing | mrole == Just RoleAbandoned, Just w <- known ->
+      register (wiMainRoot w) (fromMaybe "" (mbranch `orElse'` (beBranch <$> listToMaybe (wiBranches w))))
     Nothing -> return $ "not a linked git worktree: " <> T.pack path
                <> " (nothing registered)"
     Just mainRoot -> do
       branch <- maybe (fromMaybe "" <$> currentBranch path) (return . T.strip) mbranch
+      register mainRoot branch
+ where
+  path = dropTrailingPathSeparator path0
+  orElse' a b = maybe b Just a
+  register mainRoot branch = do
       now    <- realToFrac <$> getPOSIXTime
       let role  = fromMaybe RoleWorking mrole
           claim = SessionClaim msession role note
@@ -316,6 +326,10 @@ worktreesForRoot root0 = do
 -- | One worktree's record, if any.
 worktreeInfo :: FilePath -> IO (Maybe WorktreeInfo)
 worktreeInfo path = M.lookup (dropTrailingPathSeparator path) <$> peekRegistry
+
+-- | Every registered worktree (gone or not).
+allWorktrees :: IO [WorktreeInfo]
+allWorktrees = M.elems <$> peekRegistry
 
 -- | Every claim a session holds, newest first — the Agents pane's view.
 claimsBySession :: Text -> IO [(WorktreeInfo, SessionClaim)]

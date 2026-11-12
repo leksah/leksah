@@ -852,8 +852,9 @@ claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
       return (" --mcp-config " <> T.pack path)
 
 -- | The @--settings@ flag wiring a leksah-launched session to the worktree
--- PostToolUse hook: every @git worktree add@ \/ @git switch@ a session runs in
--- Bash lands in the worktree registry, no cooperation needed.  The hook script
+-- PostToolUse hook: every @git worktree add@\/@remove@ \/ @git switch@ a session
+-- runs in Bash, and every worktree it enters or removes with Claude Code's own
+-- worktree tools, lands in the worktree registry, no cooperation needed.  The hook script
 -- itself is written by @leksah-cmd hooks write-script@ (the script text lives
 -- with the CLI, which also installs it into user\/project settings on demand —
 -- @leksah-cmd hooks install@); this just refreshes it and points a small
@@ -898,7 +899,7 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
             [ "hooks" .= object
                 ([ "PostToolUse" .=
                     [ object
-                        [ "matcher" .= ("Bash" :: Text)
+                        [ "matcher" .= ("Bash|EnterWorktree|ExitWorktree" :: Text)
                         , "hooks" .=
                             [ object [ "type"    .= ("command" :: Text)
                                      , "command" .= script
