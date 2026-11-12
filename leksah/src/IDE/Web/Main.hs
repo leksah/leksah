@@ -4757,7 +4757,11 @@ leafDragJs = T.unlines
   , "    if (!best){ srcBox(); st.lastDst = {kind:'none'}; return; }"
   , "    shadowTo(cr.left+best.k.rect[0], cr.top+best.k.rect[1], best.k.rect[2], best.k.rect[3]);"
   , "    st.lastDst = {kind:'rpane', pane:best.pane, v:best.k.v, after:best.k.after}; }"
+  -- A tmux pane over a window on ANOTHER tmux server will land NESTED (its
+  -- own client, its pane staying on its machine): the shadow says so.
+  , "  function setNest(on){ if (st && st.shadow) st.shadow.classList.toggle('leksah-drag-nest', !!on); }"
   , "  function track(e){"
+  , "    setNest(false);"
   , "    if (st.srcKind==='rtmux') return trackRemote(e);"
   -- What is under the POINTER, not what the event calls its target.  An editor
   -- runs its own pointer monitor for drag-select and takes pointer capture with
@@ -4818,6 +4822,7 @@ leafDragJs = T.unlines
   , "          return; }"
   , "        if (pick && !pick.excluded){"
   , "          shadowTo(cr.left+pick.rect[0], cr.top+pick.rect[1], pick.rect[2], pick.rect[3]);"
+  , "          setNest(st.srcIsTmux && geom.srv != null && st.srcSrv != null && geom.srv !== st.srcSrv);"
   , "          st.lastDst = {kind:'pane', lw:lw, px:px, py:py, cw:cr.width, ch:cr.height};"
   -- A tmux pane won: the pointer alone can't express it, so the pick rides
   -- along (Haskell VALIDATES it and falls back to the pointer recompute).
@@ -4982,10 +4987,15 @@ leafDragJs = T.unlines
   , "          src = {kind:'tab', tab:k, el:tb}; }"
   , "    }"
   , "    if (!src) return;"
+  , "    var g0 = src.lw && (window.__leksahLwGeom||{})[src.lw];"
+  , "    src.srv = g0 ? g0.srv : null;"
+  , "    src.isTmux = src.kind==='tmux' || src.kind==='rtmux'"
+  , "                 || (src.kind==='pane' && g0 && (g0.tmux||[]).indexOf(src.leaf) >= 0);"
   -- No preventDefault here: below the threshold this must stay an ordinary
   -- ⌘-click for whatever the pane content does with it.
   , "    st = { srcKind:src.kind, srcLw:src.lw, srcLeaf:src.leaf, srcTab:src.tab,"
   , "           srcPane:src.pane, srcEl:src.el, sx:e.clientX, sy:e.clientY,"
+  , "           srcSrv:src.srv, srcIsTmux:src.isTmux,"
   , "           engaged:false, peekEl:null, peekTimer:null, lastDst:{kind:'none'} };"
   , "    document.addEventListener('mousemove', mv, true);"
   , "    document.addEventListener('pointermove', pm, true);"
@@ -7616,10 +7626,12 @@ main showMenubar macTitlebar wid ctx = mdo
           , () <$ selRemoteHostE, () <$ newRemoteE ]
     performEvent_ $ ffor collapseAutoHideE $ \_ ->
         liftJSM . void $ jsg ("window" :: Text) ^. js0 ("leksahCollapseAutoHide" :: Text)
+    -- (then re-poll the host: the tree — and with it a hidden window's
+    -- un-hide, which keys on the session's current window — must see it)
     performEvent_ $ ffor selRemoteWinE  $ \(h, s, _, w) ->
-        liftIO . void . forkIO $ selectRemoteTmuxWindow h s w
+        liftIO . void . forkIO $ selectRemoteTmuxWindow h s w >> fireRemotePoke ()
     performEvent_ $ ffor selRemotePaneE $ \(h, s, _, w, p) ->
-        liftIO . void . forkIO $ selectRemoteTmuxPane h s w p
+        liftIO . void . forkIO $ selectRemoteTmuxPane h s w p >> fireRemotePoke ()
     -- Remote management actions bubbled from the Terminals tree (the analogues
     -- of the local session/window/pane controls): run the tmux command over ssh
     -- off the reflex thread, then poke the shared host poll so the row updates at
@@ -8424,8 +8436,7 @@ main showMenubar macTitlebar wid ctx = mdo
         termCloseReqE = fmapMaybe id $ attachWith
           (\i k -> case k of
               TerminalKey n -> Just (n, Nothing)
-              LeksahWinKey n | Nothing <- leafOfTerm i n
-                             , not (isRemoteLw i n) -> do
+              LeksahWinKey n | Nothing <- leafOfTerm i n -> do
                   lw <- M.lookup (focusedLwOf (i ^. leksahWindows) n) (i ^. leksahWindows)
                   sess <- lwSession lw
                   let mw = case lwFocused lw >>= (`M.lookup` lwPanes lw) of
@@ -8434,16 +8445,6 @@ main showMenubar macTitlebar wid ctx = mdo
                   return (sess, mw)
               _ -> Nothing)
           (current ide) closeTargetE
-        -- A window on a REMOTE session has no close menu (its entries run
-        -- local tmux): ⌘W detaches it — the tab and the window go, and the
-        -- remote session keeps running, as closing a remote tab always did.
-        remoteLwCloseE = attachWithMaybe
-          (\i k -> case k of
-              LeksahWinKey n | Nothing <- leafOfTerm i n, isRemoteLw i n -> Just [k]
-              _ -> Nothing)
-          (current ide) closeTargetE
-        isRemoteLw i n = maybe False ((/= LocalServer) . windowServer)
-                           (M.lookup n (i ^. leksahWindows))
         nonTermCloseE = fmapMaybe
           (\case TerminalKey _ -> Nothing; LeksahWinKey _ -> Nothing
                  k -> Just k) closeTargetE
@@ -8461,7 +8462,7 @@ main showMenubar macTitlebar wid ctx = mdo
         -- session here.  ("Hide Window" does NOT detach — it hides the pane's tmux
         -- window via 'hiddenWindows'; see the close-menu wiring below.)
         detachCloseE = leftmost [ tabCloseBtnE, (:[]) <$> directCloseE
-                                , termFallbackDetachE, remoteLwCloseE ]
+                                , termFallbackDetachE ]
     -- Close the view leaf: clean leaves at once; a dirty editor leaf the
     -- moment its save SETTLES (savedFileE, editor-acked) — sequenced, not
     -- a guessed delay.
@@ -9332,14 +9333,16 @@ main showMenubar macTitlebar wid ctx = mdo
     -- commit, Esc / "Cancel Close" cancel.
     (closeChoiceE, fireCloseChoice) <- newTriggerEvent
     closeMenuTargetD <- holdDyn Nothing $ leftmost [ Just <$> termMenuOpenE, Nothing <$ closeChoiceE ]
+
     let closeMenuD  = ffor closeMenuTargetD (fmap (\(_, p, c) -> (p, c > 1)))
         menuChoiceE = attachWithMaybe (\mt ch -> (\(s, p, _) -> (ch, s, p)) <$> mt)
                           (current closeMenuTargetD) closeChoiceE
         renderCloseMenu paneId multi = do
           -- A REMOTE pane (a nested one: its id is server-qualified) can only
           -- be killed — hiding relies on the local reconcile's hidden list.
-          let opts | "ssh://" `T.isPrefixOf` paneId = [ (TCKill, "Kill Pane"), (TCCancel, "Cancel Close") ]
-                   | multi     = [ (TCHide,   "Hide Window")
+          -- (the same for a remote pane: its hide goes in the same hidden
+          -- list, honoured by its host's reconcile)
+          let opts | multi     = [ (TCHide,   "Hide Window")
                                  , (TCKill,   "Kill Pane")
                                  , (TCMove,   "Move Pane to Hidden Window")
                                  , (TCCancel, "Cancel Close") ]
@@ -9385,6 +9388,7 @@ main showMenubar macTitlebar wid ctx = mdo
               liftIO (fireCloseChoice ch)
     let termKillE = fmapMaybe (\(ch,_,p) -> if ch == TCKill then Just p       else Nothing) menuChoiceE
         termHideE = fmapMaybe (\(ch,s,p) -> if ch == TCHide then Just (s, p)  else Nothing) menuChoiceE
+
         termMoveE = fmapMaybe (\(ch,s,p) -> if ch == TCMove then Just (s, p)  else Nothing) menuChoiceE
     -- Kill: just kill the pane (it vanishes from the live tree → flipper/tabs).
     -- (A remote pane's host tree is re-polled at once, so its windows follow.)
@@ -9393,9 +9397,13 @@ main showMenubar macTitlebar wid ctx = mdo
         when ("ssh://" `T.isPrefixOf` p) $ fireRemotePoke ()
     -- Hide: hide the focused pane's window.  Move: break the pane into a new
     -- window and hide THAT.  Both resolve to (session, windowIndex) → 'hiddenWindows'.
-    hideWinE <- performEvent $ ffor termHideE $ \(s, p) -> liftIO $ fmap (\w -> (s, w)) <$> windowIndexOfPane p
+    hideWinE <- performEvent $ ffor termHideE $ \(s, p) ->
+        liftIO $ fmap (\w -> (s, w)) <$> windowIndexOfPane p
     moveWinE <- performEvent $ ffor termMoveE $ \(s, p) -> liftIO $ fmap (\w -> (s, w)) <$> breakTmuxPaneId p
     let hideOrMoveWinE = fmapMaybe id (leftmost [hideWinE, moveWinE])
+    -- (a remote hide re-polls its host too: a Move made a new window there)
+    performEvent_ $ ffor (ffilter (("ssh://" `T.isPrefixOf`) . fst) hideOrMoveWinE) $ \_ ->
+        liftIO $ fireRemotePoke ()
     -- Un-hide: whenever a pane is focused (Terminals tree select, a Claude session
     -- reopened, an editor pane reopened — all focus the pane), drop its window from
     -- 'hiddenWindows'.  Suppress the just-hidden window for ~1s so the focus that
@@ -10208,7 +10216,14 @@ main showMenubar macTitlebar wid ctx = mdo
                 | otherwise =
                     let raw = M.fromList [ (sid, map twId wins)
                                          | (sid, (_, wins)) <- M.toList tree ]
-                        (lws', next') = reconcileRemoteHost host raw fresh
+                        q = qualifyTmuxId (SshServer host)
+                        -- "Hide Window" on a remote pane: (its qualified
+                        -- session, window index), as for a local one
+                        hiddenIds = S.fromList
+                          [ q (twId w)
+                          | (sid, (_, wins)) <- M.toList tree, w <- wins
+                          , (q sid, twIndex w) `S.member` (i ^. hiddenWindows) ]
+                        (lws', next') = reconcileRemoteHost host raw hiddenIds fresh
                                           (i ^. nextLeksahWin) (i ^. leksahWindows)
                     in i & leksahWindows .~ lws' & nextLeksahWin .~ next'
               i1 = foldl' step i0 (M.toList trees)
@@ -10379,7 +10394,11 @@ main showMenubar macTitlebar wid ctx = mdo
       -- as they are, so they survive the host being offline.
       <> ((\trees -> [\app -> freshSessionsFor >>= \fresh ->
                          overUi (applyRemoteReconcile fresh trees) app])
-            <$> gate (current isActiveD) (updated hostTreesD))
+            <$> gate (current isActiveD)
+                  (leftmost [ updated hostTreesD
+                            -- a hide/un-hide changes the outcome without
+                            -- any change to the trees
+                            , tag (current hostTreesD) (updated hiddenWinsD) ]))
       -- ⌥-open / ⌘D new content into an existing leksah window's split
       -- (see leafOpenE).
       <> ((\(lwi, pc, vert) ->

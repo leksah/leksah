@@ -15,6 +15,7 @@
 module IDE.Web.Widget.LwView
   ( sessionlessLwWidget
   , publishLwGeom
+  , lwGeom
   , modifyLeksahWindow
   ) where
 
@@ -38,6 +39,7 @@ import Language.Javascript.JSaddle
        (JSM, eval, fun, js2, jsg, jss, liftJSM, valToNumber)
 
 import IDE.App (appUi, withApp)
+import IDE.Web.TmuxServer (TmuxServer(..), serverOfTabKey)
 import IDE.DebugLog (focusLog)
 import IDE.Reactive (modifyCell)
 import IDE.Web.Ctx (Ctx(..))
@@ -86,8 +88,7 @@ sessionlessLwWidget ctx lwId selectedE leafViewW = do
         liftIO . void $ registerTerminalFocus lwId (fireFocusReq ())
     -- Split-tree geometry for the ⌘-drag pane-move preview (see the
     -- session-backed sibling in TerminalCC).
-    geomD <- holdUniqDyn $
-        (fmap (\lw -> (lwTree lw, lwZoomed lw))) <$> lwD
+    geomD <- holdUniqDyn $ fmap lwGeom <$> lwD
     pbGeom <- getPostBuild
     performEvent_ $
         ffor (leftmost [updated geomD, tag (current geomD) pbGeom]) $
@@ -241,15 +242,22 @@ sessionlessLwWidget ctx lwId selectedE leafViewW = do
 -- exactly: every subtree's fraction rect, or — zoomed — just the zoomed leaf
 -- covering the whole container.  @Nothing@ (window gone / remote tab)
 -- publishes @null@ so the drag shows its no-op state there.
-publishLwGeom :: Text -> Maybe (SplitTree, Maybe LeafId) -> JSM ()
+publishLwGeom :: Text -> Maybe LwGeom -> JSM ()
 publishLwGeom i mb = void . eval $
     "(window.__leksahLwGeom = window.__leksahLwGeom || {})['" <> i <> "'] = "
     <> payload <> ";"
   where
     payload = case mb of
       Nothing -> "null"
-      Just (tree, zoomed) ->
-        "{subs:[" <> T.intercalate "," (map sub (universe tree zoomed)) <> "]}"
+      Just (tree, zoomed, msrv, tmuxLeaves) ->
+        "{subs:[" <> T.intercalate "," (map sub (universe tree zoomed)) <> "]"
+        -- The window's tmux server ("local" or the ssh host; null for a
+        -- sessionless window, which takes anything) and which leaves are tmux
+        -- panes: a tmux pane dropped on another server's window gets NESTED,
+        -- and the preview says so.
+        <> ",srv:" <> maybe "null" jsStr msrv
+        <> ",tmux:[" <> T.intercalate "," (map (T.pack . show) tmuxLeaves) <> "]}"
+    jsStr t = "'" <> T.concatMap (\c -> if c == '\'' || c == '\\' then T.pack ['\\', c] else T.singleton c) t <> "'"
     universe tree zoomed = case zoomed of
       Just z | z `elem` treeLeafIds tree -> [ ([], Just z, (0, 0, 1, 1)) ]
       _ -> subtreeRects tree
@@ -259,6 +267,17 @@ publishLwGeom i mb = void . eval $
       <> ",x:" <> num x <> ",y:" <> num y
       <> ",w:" <> num w <> ",h:" <> num h <> "}"
     num = T.pack . show
+
+-- | What 'publishLwGeom' publishes about one leksah window.
+type LwGeom = (SplitTree, Maybe LeafId, Maybe Text, [Int])
+
+lwGeom :: LeksahWindow -> LwGeom
+lwGeom lw =
+  ( lwTree lw, lwZoomed lw
+  , (\s -> case serverOfTabKey s of
+            LocalServer -> "local"
+            SshServer h -> h) <$> lwSession lw
+  , [ n | (LeafId n, PaneContent (PaneTmux _) _) <- M.toList (lwPanes lw) ] )
 
 -- | Mutate a leksah window's shared layout through the global app (the
 -- widget has no reflex path back to Main's mutation stream).  No-op before

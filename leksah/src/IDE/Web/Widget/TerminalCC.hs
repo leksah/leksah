@@ -134,7 +134,7 @@ import IDE.Web.ReplTmux (tmuxSocket)
 import IDE.Web.SplitLayout
        (leafRects, LeafRect(..), treeDividers, NativeDivider(..), resizeNode,
         singlePaneWindow, lwWindowIds, paneForWindow)
-import IDE.Web.Widget.LwView (publishLwGeom, modifyLeksahWindow)
+import IDE.Web.Widget.LwView (publishLwGeom, lwGeom, modifyLeksahWindow)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.TerminalInput
        (registerTerminalCC, unregisterTerminalCC, registerCCStop,
@@ -1130,8 +1130,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- (A REMOTE leksah window publishes its geometry like any other:
             -- the drag commit's tmux helpers run on the server its ids name.)
             geomD <- holdUniqDyn $
-                (\i -> (\lw -> (lwTree lw, lwZoomed lw))
-                         <$> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
+                (\i -> lwGeom <$> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
             pbGeom <- getPostBuild
             performEvent_ $
                 ffor (leftmost [updated geomD, tag (current geomD) pbGeom]) $

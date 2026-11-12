@@ -410,6 +410,20 @@ terminalCss = do
         "pointer-events" -: "none"
         "z-index" -: "26"
         "transition" -: "top .12s ease-out, left .12s ease-out, width .12s ease-out, height .12s ease-out"
+    -- …over a window on another tmux server: the pane will land NESTED
+    -- (dashed, and labelled).
+    ".leksah-drag-shadow.leksah-drag-nest" ? do
+        "border" -: "2px dashed var(--leksah-pane-ring-active)"
+    ".leksah-drag-shadow.leksah-drag-nest::after" ? do
+        "content" -: "'nested · other server'"
+        "position" -: "absolute"
+        "top" -: "6px"
+        "left" -: "8px"
+        "padding" -: "1px 6px"
+        "font-size" -: "11px"
+        "border-radius" -: "3px"
+        "color" -: "var(--leksah-fg-muted)"
+        "background" -: "var(--leksah-surface)"
     -- While dragging: the real ring would fight the preview — hide it; the
     -- whole page shows a grabbing cursor and never starts a text selection.
     ".leksah.leksah-pane-dragging .leksah-pane-glow, .leksah.leksah-pane-dragging .leksah-pane-left-line" ?
@@ -1696,18 +1710,18 @@ killTmuxPaneId pid = tmuxOnIds [pid] () $ \srv raw ->
 -- the NEW window's index (so the ⌘W close menu's "Move Pane to Hidden Window"
 -- can add it to 'hiddenWindows'); 'Nothing' on any error / no tmux.
 breakTmuxPaneId :: Text -> IO (Maybe Int)
-breakTmuxPaneId pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-            out <- tmuxStdout
-                ["break-pane", "-d", "-P", "-F", "#{window_index}", "-s", T.unpack pid]
+breakTmuxPaneId pid = tmuxOnIds [pid] Nothing $ \srv raw -> do
+            out <- tmuxStdoutOn srv
+                ["break-pane", "-d", "-P", "-F", "#{window_index}", "-s", raw pid]
             return $ readMaybe . T.unpack
                 =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | The window index of pane @pid@ (e.g. @%5@) — used by the ⌘W close menu's
 -- "Hide Window" to add that window to 'hiddenWindows'.  'Nothing' on error.
 windowIndexOfPane :: Text -> IO (Maybe Int)
-windowIndexOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-            out <- tmuxStdout
-                ["display-message", "-p", "-t", T.unpack pid, "#{window_index}"]
+windowIndexOfPane pid = tmuxOnIds [pid] Nothing $ \srv raw -> do
+            out <- tmuxStdoutOn srv
+                ["display-message", "-p", "-t", raw pid, "#{window_index}"]
             return $ readMaybe . T.unpack
                 =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 

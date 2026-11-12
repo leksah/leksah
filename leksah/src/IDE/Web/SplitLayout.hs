@@ -761,13 +761,13 @@ windowServer = maybe LocalServer serverOfTabKey . lwSession
 -- adopts strays only into sessions some leksah window already shows: a remote
 -- host's other sessions are listed in the Terminals tree, not opened.
 reconcileRemoteHost
-  :: Text -> Map Text [Text] -> Set Text -> Int -> Map Text LeksahWindow
+  :: Text -> Map Text [Text] -> Set Text -> Set Text -> Int -> Map Text LeksahWindow
   -> (Map Text LeksahWindow, Int)
-reconcileRemoteHost host rawLive fresh =
+reconcileRemoteHost host rawLive hidden fresh =
   \next0 lws ->
     let mine lw = windowServer lw == SshServer host
         shown = S.fromList [ s | lw <- M.elems lws, mine lw, Just s <- [lwSession lw] ]
-    in reconcileWindowsOn mine (`S.member` shown) live S.empty S.empty fresh next0 lws
+    in reconcileWindowsOn mine (`S.member` shown) live hidden S.empty fresh next0 lws
   where
     q x = "ssh://" <> host <> "#" <> x
     live = M.fromList [ (q s, map q ws) | (s, ws) <- M.toList rawLive ]
