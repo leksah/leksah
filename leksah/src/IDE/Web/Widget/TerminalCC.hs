@@ -1118,14 +1118,11 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- Split-tree geometry for the ⌘-drag pane-move preview.  Straight
             -- from the shared map (NOT lwD): a remote tab's synthesized
             -- window must publish null, not a fake single-pane universe.
-            -- A REMOTE leksah window publishes null too, for now: the
-            -- general ⌘-drag commit runs local-tmux helpers, and a remote
-            -- window's panes can only move on their own server — its
-            -- in-window rearranging is the 'rtmux' drag registered above.
+            -- (A REMOTE leksah window publishes its geometry like any other:
+            -- the drag commit's tmux helpers run on the server its ids name.)
             geomD <- holdUniqDyn $
-                (\i -> if isRemote then Nothing else
-                         (\lw -> (lwTree lw, lwZoomed lw))
-                           <$> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
+                (\i -> (\lw -> (lwTree lw, lwZoomed lw))
+                         <$> M.lookup lwId (i ^. leksahWindows)) <$> cUi ctx
             pbGeom <- getPostBuild
             performEvent_ $
                 ffor (leftmost [updated geomD, tag (current geomD) pbGeom]) $

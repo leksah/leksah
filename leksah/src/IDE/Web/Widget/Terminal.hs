@@ -168,7 +168,9 @@ import IDE.Web.ReplTmux
         freshSessionName, tmuxOut, tmuxStdout,
         getLoginShell, interactiveShellArgs, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
-import IDE.Web.TmuxServer (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn)
+import IDE.Web.TmuxServer
+       (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn, tmuxStdoutOn,
+        tmuxOnIds, qualifyTmuxId)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -1677,7 +1679,8 @@ killTmuxPaneId :: Text -> IO ()
 -- than the next tree poll putting it straight back.  Canned sessions ignore it.
 killTmuxPaneId = demoKillSession
 #else
-killTmuxPaneId pid = tmuxCmd ["kill-pane", "-t", T.unpack pid]
+killTmuxPaneId pid = tmuxOnIds [pid] () $ \srv raw ->
+    tmuxCmdOn srv ["kill-pane", "-t", raw pid]
 #endif
 
 -- | Break pane @pid@ (e.g. @%5@) out into its own new window but do NOT switch
@@ -1725,30 +1728,30 @@ moveTmuxPane srcPaneId dstS dstW =
 -- reconciler's 'keepPane' requires every pane's window to live in its leksah
 -- window's own session.
 moveTmuxWindow :: Text -> Text -> IO ()
-moveTmuxWindow w dstS =
-    tmuxCmd ["move-window", "-d", "-s", T.unpack w,
-             "-t", T.unpack dstS <> ":"]
+moveTmuxWindow w dstS = tmuxOnIds [w, dstS] () $ \srv raw ->
+    tmuxCmdOn srv ["move-window", "-d", "-s", raw w, "-t", raw dstS <> ":"]
 
 -- | Select window @w@ (@\@N@ — server-global) in whatever session holds it,
 -- making it the session's current window.  The ⌘-drag pane move runs this
 -- after landing a tmux pane so the CC widget's focus-follow settles on the
 -- moved pane rather than snapping back to the destination's current window.
 selectTmuxWindowId :: Text -> IO ()
-selectTmuxWindowId w = tmuxCmd ["select-window", "-t", T.unpack w]
+selectTmuxWindowId w = tmuxOnIds [w] () $ \srv raw ->
+    tmuxCmdOn srv ["select-window", "-t", raw w]
 
 -- | Make pane @p@ (@%N@ — server-global) the active pane of its window AND
 -- that window its session's current window (a pane id resolves both).
 selectTmuxPaneId :: Text -> IO ()
-selectTmuxPaneId p = do
-    tmuxCmd ["select-window", "-t", T.unpack p]
-    tmuxCmd ["select-pane", "-t", T.unpack p]
+selectTmuxPaneId p = tmuxOnIds [p] () $ \srv raw -> do
+    tmuxCmdOn srv ["select-window", "-t", raw p]
+    tmuxCmdOn srv ["select-pane", "-t", raw p]
 
 -- | The pane ids of window @w@ (@\@N@ — server-global), in tmux order.
 panesOfWindow :: Text -> IO [Text]
-panesOfWindow w = (`catch` \(_ :: SomeException) -> return []) $ do
-            out <- tmuxStdout
-                ["list-panes", "-t", T.unpack w, "-F", "#{pane_id}"]
-            return $ filter (not . T.null) (map T.strip (T.lines out))
+panesOfWindow w = tmuxOnIds [w] [] $ \srv raw -> do
+            out <- tmuxStdoutOn srv ["list-panes", "-t", raw w, "-F", "#{pane_id}"]
+            return $ map (qualifyTmuxId srv) $
+                filter (not . T.null) (map T.strip (T.lines out))
 
 -- | Join pane @p@ into @dst@'s window as a split on the given side (@horiz@ =
 -- side-by-side, @before@ = left/top), detached.  @full@ (@-f@) makes the split
@@ -1756,10 +1759,10 @@ panesOfWindow w = (`catch` \(_ :: SomeException) -> return []) $ do
 -- other pane keeps its size — the difference between the ⌘-drag pane move
 -- landing on a leaf's outer edge and landing on ONE tmux pane inside it.
 joinTmuxPane :: Text -> Text -> Bool -> Bool -> Bool -> IO ()
-joinTmuxPane p dst horiz before full =
-    tmuxCmd (["move-pane", "-d"] <> ["-f" | full]
-             <> ["-h" | horiz] <> ["-b" | before]
-             <> ["-s", T.unpack p, "-t", T.unpack dst])
+joinTmuxPane p dst horiz before full = tmuxOnIds [p, dst] () $ \srv raw ->
+    tmuxCmdOn srv (["move-pane", "-d"] <> ["-f" | full]
+                   <> ["-h" | horiz] <> ["-b" | before]
+                   <> ["-s", raw p, "-t", raw dst])
 
 -- | 'joinTmuxPane' full-size: a dragged tmux pane landing on a leaf whose
 -- window shares its font joins that window as a real tmux split, across the
@@ -1770,29 +1773,28 @@ joinTmuxPaneFull p dst horiz before = joinTmuxPane p dst horiz before True
 -- | The current layout string of window @w@ (@\@N@), checksum-prefixed
 -- (tmux's @#{window_layout}@ — what 'IDE.Web.TmuxCC.parseLayout' reads).
 windowLayoutString :: Text -> IO (Maybe Text)
-windowLayoutString w = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-            out <- tmuxStdout
-                ["display-message", "-p", "-t", T.unpack w,
-                 "-F", "#{window_layout}"]
+windowLayoutString w = tmuxOnIds [w] Nothing $ \srv raw -> do
+            out <- tmuxStdoutOn srv
+                ["display-message", "-p", "-t", raw w, "-F", "#{window_layout}"]
             return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | Move pane @p@ into @dst@'s window (plain split beside @dst@, detached);
 -- callers re-lay the window out afterwards ('selectWindowLayout').
 movePaneToPane :: Text -> Text -> IO ()
-movePaneToPane p dst =
-    tmuxCmd ["move-pane", "-d", "-s", T.unpack p, "-t", T.unpack dst]
+movePaneToPane p dst = tmuxOnIds [p, dst] () $ \srv raw ->
+    tmuxCmdOn srv ["move-pane", "-d", "-s", raw p, "-t", raw dst]
 
 -- | Apply a full (checksum-prefixed) layout string to window @w@.
 selectWindowLayout :: Text -> Text -> IO ()
-selectWindowLayout w lay =
-    tmuxCmd ["select-layout", "-t", T.unpack w, T.unpack lay]
+selectWindowLayout w lay = tmuxOnIds [w] () $ \srv raw ->
+    tmuxCmdOn srv ["select-layout", "-t", raw w, T.unpack lay]
 
 -- | Swap two panes (@%N@ — server-global): their positions AND their spots
 -- in the window's pane order, which is what a custom @select-layout@
 -- assigns cells by.
 swapTmuxPanes :: Text -> Text -> IO ()
-swapTmuxPanes a b =
-    tmuxCmd ["swap-pane", "-d", "-s", T.unpack a, "-t", T.unpack b]
+swapTmuxPanes a b = tmuxOnIds [a, b] () $ \srv raw ->
+    tmuxCmdOn srv ["swap-pane", "-d", "-s", raw a, "-t", raw b]
 
 -- | Break pane @p@ out into a fresh window at the end of session @dstS@
 -- (cross-session works — pane ids are server-global), detached; returns the
@@ -1800,11 +1802,12 @@ swapTmuxPanes a b =
 -- tmux pane must become its own leksah pane (node/root target, view-leaf
 -- target, or font mismatch).
 breakTmuxPaneTo :: Text -> Text -> IO (Maybe Text)
-breakTmuxPaneTo p dstS = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-            out <- tmuxStdout
+breakTmuxPaneTo p dstS = tmuxOnIds [p, dstS] Nothing $ \srv raw -> do
+            out <- tmuxStdoutOn srv
                 ["break-pane", "-d", "-P", "-F", "#{window_id}",
-                 "-s", T.unpack p, "-t", T.unpack dstS <> ":"]
-            return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
+                 "-s", raw p, "-t", raw dstS <> ":"]
+            return $ qualifyTmuxId srv <$>
+                listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | Rename session @s@ (a session id) to @name@.
 renameTmuxSession :: Text -> Text -> IO ()
@@ -1818,11 +1821,11 @@ renameTmuxWindow s w name =
 -- | The id (e.g. @%3@) of the active pane of session @n@ (a tmux session id),
 -- used to pick which pane to make transparent (see "IDE.Web.Main").
 activePaneId :: Text -> IO (Maybe Text)
-activePaneId n = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-            out <- tmuxStdout
-                ["display-message", "-p", "-t", T.unpack n, "-F", "#{pane_id}"]
+activePaneId n = tmuxOnIds [n] Nothing $ \srv raw -> do
+            out <- tmuxStdoutOn srv
+                ["display-message", "-p", "-t", raw n, "-F", "#{pane_id}"]
             return $ case filter (not . T.null) (map T.strip (T.lines out)) of
-                (p:_) -> Just p
+                (p:_) -> Just (qualifyTmuxId srv p)
                 _     -> Nothing
 
 -- | The cell rectangle @(left, top, width, height)@ of pane @pid@ in session @n@

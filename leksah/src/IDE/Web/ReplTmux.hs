@@ -77,7 +77,8 @@ import IDE.Utils.RemoteExec (runSsh)
 import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.TmuxServer
-       (TmuxServer(..), tmuxCmdOn, tmuxOkOn, tmuxOutOn, tmuxStdoutOn)
+       (TmuxServer(..), tmuxCmdOn, tmuxOkOn, tmuxOutOn, tmuxStdoutOn,
+        tmuxOnIds, qualifyTmuxId)
 import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
 import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
@@ -151,14 +152,16 @@ tmuxOut = tmuxOutOn LocalServer
 
 -- | How many tmux panes window @\@N@ holds (0 on failure).
 paneCountOfWindow :: Text -> IO Int
-paneCountOfWindow w = do
-    out <- tmuxStdout ["list-panes", "-t", T.unpack w, "-F", "#{pane_id}"]
+paneCountOfWindow w = tmuxOnIds [w] 0 $ \srv raw -> do
+    out <- tmuxStdoutOn srv ["list-panes", "-t", raw w, "-F", "#{pane_id}"]
     return (length (filter (not . T.null) (map T.strip (T.lines out))))
 
 -- | The active pane of a specific tmux WINDOW (@\@N@) — the split target
 -- when a leksah window's focused pane is that tmux window.
 activePaneIdOfWindow :: Text -> IO (Maybe Text)
-activePaneIdOfWindow w = tmuxOut ["display-message", "-p", "-t", T.unpack w, "#{pane_id}"]
+activePaneIdOfWindow w = tmuxOnIds [w] Nothing $ \srv raw ->
+    fmap (qualifyTmuxId srv) <$>
+      tmuxOutOn srv ["display-message", "-p", "-t", raw w, "#{pane_id}"]
 
 activePaneIdOfSession :: Text -> IO (Maybe Text)
 activePaneIdOfSession sess = do

@@ -97,7 +97,7 @@ import Data.List (sortOn)              -- 'demoSplitCandidates' only
 -- nubOrd, not nub: the workspace file enumeration is big enough for O(n^2)
 -- to be a boot-time hang (see 'enumerateWorkspaceFiles').
 import Data.List.Extra (nubOrd)
-import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isJust, isNothing, mapMaybe)
 import System.Exit (ExitCode(..))
 import System.FilePath
        (takeFileName, takeExtension, takeDirectory, (</>),
@@ -279,7 +279,8 @@ import IDE.Web.TerminalInput
         selectSplitActiveTerminal, focusTerminalPane, dispatchTmuxPrefix,
         getActiveTerminal, stopCCFor)
 import IDE.Web.SnapRequest (SnapReq(..))
-import IDE.Web.TmuxServer (TmuxServer(..), serverOfTabKey, rawTmuxId)
+import IDE.Web.TmuxServer
+       (TmuxServer(..), serverOfTabKey, rawTmuxId, qualifyTmuxId, tmuxOutOn, tmuxCmdOn)
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest
@@ -376,8 +377,7 @@ import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
 -- convert and ⌥-open want, since both act on where the keyboard is.
 convertWindowMinimal :: Text -> Text -> IO Bool
 convertWindowMinimal lwi w =
-    tmuxOut ["display-message", "-p", "-t", T.unpack w, "#{pane_id}"]
-      >>= maybe (return False) (convertWindowPane lwi w)
+    activePaneIdOfWindow w >>= maybe (return False) (convertWindowPane lwi w)
 
 -- | Minimal-ancestor-path conversion: isolate pane @p@ of tmux window @w@
 -- by re-hosting every sibling subtree on the root→pane path into its own
@@ -403,13 +403,13 @@ convertWindowPane lwi w actP = do
   where
     doIt = do
       mtree <- (>>= parseWindowLayout)
-                 <$> tmuxOut ["display-message", "-p", "-t", T.unpack w
-                             , "#{window_layout}"]
-      msid  <- tmuxOut ["display-message", "-p", "-t", T.unpack w
-                       , "#{session_id}"]
+                 <$> tmuxOutOn srv ["display-message", "-p", "-t", rawW
+                                   , "#{window_layout}"]
+      msid  <- tmuxOutOn srv ["display-message", "-p", "-t", rawW
+                             , "#{session_id}"]
       case (,) <$> mtree <*> msid of
         Just (tree, sid) | length (cellPanes tree) > 1
-                         , Just pre <- prePath actP tree -> do
+                         , Just pre <- prePath (rawTmuxId actP) tree -> do
             mcp <- realize sid pre
             case mcp of
               Nothing -> return False
@@ -425,6 +425,10 @@ convertWindowPane lwi w actP = do
                       []      -> i)
                 return True
         _ -> return False
+    -- On the window's own server, with RAW ids there (the layout string's
+    -- pane ids are raw too); new window ids are qualified for the model.
+    srv  = serverOfTabKey w
+    rawW = T.unpack (rawTmuxId w)
     prePath p c = case c of
       TCPane { tcId = q }      -> if q == p then Just PreLeaf else Nothing
       TCRow  { tcKids = ks }   -> node SplitH tcW ks
@@ -456,19 +460,20 @@ convertWindowPane lwi w actP = do
                 -- swap slots.
                 let joinAfter prev [] = prev `seq` return ()
                     joinAfter prev (q : qs) = do
-                        tmuxCmd ["join-pane", "-d", "-s", T.unpack q
-                                , "-t", T.unpack prev]
+                        tmuxCmdOn srv ["join-pane", "-d", "-s", T.unpack q
+                                      , "-t", T.unpack prev]
                         joinAfter q qs
                 joinAfter p rest
-                tmuxCmd ["select-layout", "-t", T.unpack wn
-                        , T.unpack (printWindowLayout (rerootCell cell))]
+                tmuxCmdOn srv ["select-layout", "-t", T.unpack (rawTmuxId wn)
+                              , T.unpack (printWindowLayout (rerootCell cell))]
                 return (Just wn)
     -- The destination session must be EXPLICIT: an untargeted break-pane
     -- lands the new window in the client's current session, not the source
     -- pane's.
-    breakPaneTo sid p = tmuxOut ["break-pane", "-d", "-s", T.unpack p
-                                , "-t", T.unpack sid <> ":"
-                                , "-P", "-F", "#{window_id}"]
+    breakPaneTo sid p = fmap (qualifyTmuxId srv) <$>
+        tmuxOutOn srv ["break-pane", "-d", "-s", T.unpack p
+                      , "-t", T.unpack sid <> ":"
+                      , "-P", "-F", "#{window_id}"]
 
 -- | The root→pane path before its sibling subtrees are re-hosted (the
 -- 'Left's still carry the tmux cells to move).
@@ -798,7 +803,11 @@ consolidateLw lwId = withMVar consolidateLock $ \_ ->
                         | otherwise   = (cur, want) : sortSwaps
                             (map (\p -> if p == want then cur else p) acts)
                             wants
-                  forM_ (sortSwaps actual (cellPanes combined))
+                  -- (the layout string's pane ids are RAW; 'panesOfWindow'
+                  -- answers in the model's server-qualified form)
+                  forM_ (sortSwaps actual
+                           (map (qualifyTmuxId (serverOfTabKey survivorWin))
+                                (cellPanes combined)))
                         (uncurry swapTmuxPanes)
                   selectWindowLayout survivorWin (printWindowLayout combined)
                   -- Land tmux focus BEFORE the model edit: the focus
@@ -1436,7 +1445,8 @@ wlog (WindowId n) msg = liftIO $ do
 paneOwnerLw :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> Text -> Int -> Maybe Text
 paneOwnerLw lws tree s widx = do
     (_, wins) <- M.lookup s tree
-    wid' <- twId <$> find ((== widx) . twIndex) wins
+    -- (the tree reports raw ids; a remote session's are qualified in the model)
+    wid' <- qualifyTmuxId (serverOfTabKey s) . twId <$> find ((== widx) . twIndex) wins
     listToMaybe [ i | (i, lw) <- M.toAscList lws
                     , lwSession lw == Just s
                     , wid' `elem` lwWindowIds lw ]
@@ -1447,7 +1457,7 @@ paneOwnerLw lws tree s widx = do
 flipPaneLeaf :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> Text -> Int -> Maybe (Text, LeafId)
 flipPaneLeaf lws tree s widx = do
     (_, wins) <- M.lookup s tree
-    wid' <- twId <$> find ((== widx) . twIndex) wins
+    wid' <- qualifyTmuxId (serverOfTabKey s) . twId <$> find ((== widx) . twIndex) wins
     windowOwner wid' lws
 
 -- | The lw's focused tmux window (or its first one, when the focused leaf is
@@ -1459,7 +1469,7 @@ lwFocusedWindow tree lw = do
     (_, wins) <- M.lookup s tree
     let wids = [ w | l <- maybe [] (:[]) (lwFocused lw) ++ treeLeafIds (lwTree lw)
                    , Just (PaneContent (PaneTmux w) _) <- [M.lookup l (lwPanes lw)] ]
-    listToMaybe [ win | w <- wids, win <- wins, twId win == w ]
+    listToMaybe [ win | w <- wids, win <- wins, twId win == rawTmuxId w ]
 
 -- | Which OS window a flip item currently lives in (the window whose wide0 owns
 -- its tab key), if any.  A pane belongs to the window showing its OWNING leksah
@@ -8977,7 +8987,37 @@ main showMenubar macTitlebar wid ctx = mdo
                     (pth:_) -> dropInto src dlwId
                                  (DropSpec pth (ttOrient tt) (ttAfter tt))
                     []      -> activateSrc src
-        forM_ parsed $ \(src, dst) -> case dst of
+        -- The JS reports tmux pane ids RAW (as its DOM knows them); in the
+        -- model a remote window's ids are server-qualified, so qualify each by
+        -- the server of the leksah window it was reported for.
+        lwsQ <- view leksahWindows <$> readCell (appUi app)
+        let serverOfLw i = windowServer <$> M.lookup i lwsQ
+            qualIn i p = maybe p (`qualifyTmuxId` p) (serverOfLw i)
+            qualSrc = \case
+              LDTmuxPane i l p -> LDTmuxPane i l (qualIn i p)
+              x                -> x
+            qualDst = \case
+              LDDstPane i ptr box mtt ->
+                LDDstPane i ptr box ((\tt -> tt { ttPane = qualIn i (ttPane tt) }) <$> mtt)
+              x -> x
+            -- A tmux pane can't move between machines: tmux content dropped
+            -- on a window whose session is on ANOTHER server goes nowhere.
+            -- (A sessionless window takes anything — it adopts the session.)
+            srcTmuxServer = \case
+              LDTmuxPane i _ _ -> serverOfLw i
+              LDPane i l -> case M.lookup i lwsQ of
+                Just lw | Just (PaneContent PaneTmux{} _) <- M.lookup (LeafId l) (lwPanes lw)
+                        -> Just (windowServer lw)
+                _ -> Nothing
+              LDTab _ -> Nothing
+            crossServer sv d = case d of
+              LDDstPane i _ _ _ | Just srvS <- sv
+                                , Just dlw <- M.lookup i lwsQ
+                                , isJust (lwSession dlw) ->
+                                    windowServer dlw /= srvS
+              _ -> False
+        forM_ ((\(a, b) -> (qualSrc a, qualDst b)) <$> parsed) $ \(src, dst) ->
+         if crossServer (srcTmuxServer src) dst then activateSrc src else case dst of
           -- The window the pointer was over commits a foreign release itself
           -- (see @leksahDragPreview@); reaching here means nothing was under it.
           LDDstForeign -> activateSrc src

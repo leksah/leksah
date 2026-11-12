@@ -22,6 +22,8 @@ module IDE.Web.TmuxServer
   , serverOfTabKey
   , serverLabel
   , rawTmuxId
+  , qualifyTmuxId
+  , tmuxOnIds
   , tmuxRunOn
   , tmuxCmdOn
   , tmuxOkOn
@@ -72,6 +74,24 @@ rawTmuxId :: Text -> Text
 rawTmuxId x
   | "ssh://" `T.isPrefixOf` x, (_, rest) <- T.breakOn "#" x, not (T.null rest) = T.drop 1 rest
   | otherwise = x
+
+-- | A raw id from server @srv@, written as the model keeps it: unchanged for
+-- the local server, @ssh://host#\<id\>@ for a remote one.
+qualifyTmuxId :: TmuxServer -> Text -> Text
+qualifyTmuxId LocalServer   x = x
+qualifyTmuxId (SshServer h) x = "ssh://" <> h <> "#" <> x
+
+-- | Act on tmux objects named by (possibly server-qualified) ids: run @k@ on
+-- the ONE server they all live on, handing it @raw@ to turn each id back into
+-- the form that server knows.  Ids on different servers can't meet in one
+-- tmux command (a pane can't move between machines), so that answers @dflt@.
+tmuxOnIds :: [Text] -> a -> (TmuxServer -> (Text -> String) -> IO a) -> IO a
+tmuxOnIds ids dflt k = case ids of
+  []      -> k LocalServer raw
+  (i : rest)
+    | all ((== serverOfTabKey i) . serverOfTabKey) rest -> k (serverOfTabKey i) raw
+    | otherwise -> return dflt
+  where raw = T.unpack . rawTmuxId
 
 -- | How the Terminals tree names it.
 serverLabel :: TmuxServer -> Text

@@ -71,6 +71,7 @@ import System.Posix.Pty (Pty, writePty)
 
 import IDE.Web.Model (TabKey)
 import IDE.Web.ConvertRequest (requestConvert)
+import IDE.Web.TmuxServer (rawTmuxId, tmuxOnIds, tmuxOutOn)
 import IDE.Web.ReplTmux (buildSplitWindowCommand, activePaneIdOfWindow)
 
 {-# NOINLINE ptyRegistry #-}
@@ -404,7 +405,21 @@ splitActiveTerminal horizontal chord = do
    Nothing -> case mActive of
     Just sid | Just (_, run) <- M.lookup sid reg -> do
       cmd <- if "ssh://" `T.isPrefixOf` sid
-               then return ("split-window " <> if horizontal then "-h" else "-v")
+               then do
+                 -- Remote: the same focused-pane target (its id comes back
+                 -- server-qualified; the command runs on this tab's own
+                 -- connection, so it goes out raw), in that pane's directory.
+                 -- (tmux does not expand a -c format against the -t pane,
+                 -- so the directory is looked up first.)
+                 mw <- readIORef activeSplitWindowRef
+                 mtgt <- maybe (return Nothing) activePaneIdOfWindow mw
+                 mdir <- maybe (return Nothing) (\t -> tmuxOnIds [t] Nothing $ \srv raw ->
+                           tmuxOutOn srv ["display-message", "-p", "-t", raw t
+                                         , "#{pane_current_path}"]) mtgt
+                 let tq x = "'" <> T.replace "'" "'\\''" x <> "'"
+                 return $ "split-window " <> (if horizontal then "-h" else "-v")
+                   <> maybe "" (\t -> " -t " <> rawTmuxId t) mtgt
+                   <> maybe "" (\d -> " -c " <> tq d) mdir
                else do
                  -- Split the FOCUSED leksah pane's window (its active tmux
                  -- pane), not whatever window happens to be tmux-current.
