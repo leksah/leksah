@@ -32,7 +32,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (null, pack, strip)
 
 import Reflex
-       (constDyn, ffor, leftmost, current, tag)
+       (constDyn, delay, getPostBuild, ffor, leftmost, current, tag)
 import Reflex.Dom.Core
        (elAttr, elAttr', textInput, text, (=:), Event,
         attributes, domEvent, EventName(..), _textInput_value,
@@ -45,6 +45,7 @@ import IDE.Workspace (setProjectCmdPrefix, wsCell, wsCmdPrefix)
 import IDE.Ws.Types (ProjectKey(..))
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.TextAssist (noTextAssist)
+import IDE.Web.Widget.PathField (focusFieldJs)
 
 -- | Render the modal for a project.  Reads the project's current command
 -- prefix, lets the user edit it, and on Save persists it (empty clears it).
@@ -67,9 +68,11 @@ remoteSettingsDialog pk = do
             text "Command prefix (e.g. nix develop -c) — used to open terminals, and to run tools on remote projects:"
         prefTi <- textInput $ def
             & attributes .~ constDyn
-                ("placeholder" =: "e.g. nix develop -c" <> "style" =: fieldStyle
+                ("id" =: "remote-settings-prefix" <> "placeholder" =: "e.g. nix develop -c" <> "style" =: fieldStyle
                  <> noTextAssist)
             & textInputConfig_initialValue .~ current0
+        -- The keyboard starts in the field (a just-built input is not focused).
+        focusFieldJs "remote-settings-prefix" =<< delay 0.03 =<< getPostBuild
         (saveEl, _)   <- elAttr' "button" ("style" =: primaryBtnStyle) $ text "Save"
         (cancelEl, _) <- elAttr' "button" ("style" =: btnStyle) $ text "Cancel"
         performEvent_ $ ffor (tag (current (_textInput_value prefTi)) (domEvent Click saveEl)) $

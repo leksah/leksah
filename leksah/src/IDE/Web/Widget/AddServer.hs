@@ -42,7 +42,7 @@ import Data.Text.Encoding.Error (lenientDecode)
 import System.Exit (ExitCode(..))
 
 import Reflex
-       (constDyn, ffor, leftmost, current, holdDyn,
+       (constDyn, delay, getPostBuild, ffor, leftmost, current, holdDyn,
         fmapMaybe, tag, newTriggerEvent, updated)
 import Reflex.Dom.Core
        (elAttr, elAttr', textInput, text, dynText, (=:),
@@ -54,6 +54,7 @@ import IDE.Config
 import IDE.Utils.RemoteExec (runSsh)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.TextAssist (noTextAssist)
+import IDE.Web.Widget.PathField (focusFieldJs)
 
 -- | Render the modal.  Returns an 'Event' that fires (once) when the caller
 -- should tear the modal down: on Cancel, or after a server is successfully
@@ -69,8 +70,10 @@ addServerDialog = do
         elAttr "p" ("style" =: "font-weight:bold;margin:0 0 10px 0") $
             text "Add Server (over ssh)"
         hostTi <- textInput $ def & attributes .~ constDyn
-            ("placeholder" =: "ssh host — e.g. user@host or an ssh-config alias"
+            ("id" =: "add-server-host" <> "placeholder" =: "ssh host — e.g. user@host or an ssh-config alias"
              <> "style" =: fieldStyle <> noTextAssist)
+        -- The keyboard starts in the field (a just-built input is not focused).
+        focusFieldJs "add-server-host" =<< delay 0.03 =<< getPostBuild
         let failE = fmapMaybe (either Just (const Nothing)) resultE
         errD <- holdDyn "" $ leftmost
             [ snd <$> failE

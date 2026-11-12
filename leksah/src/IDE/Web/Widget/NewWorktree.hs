@@ -28,7 +28,7 @@ import Data.Text (Text)
 import qualified Data.Text as T (null, pack, strip)
 
 import Reflex
-       (constDyn, ffor, leftmost, current, holdDyn,
+       (constDyn, delay, getPostBuild, ffor, leftmost, current, holdDyn,
         fmapMaybe, tag, newTriggerEvent)
 import Reflex.Dom.Core
        (elAttr, elAttr', textInput, text, dynText, (=:),
@@ -40,6 +40,7 @@ import IDE.Web.Worktree (newClaudeWorktree, slugify)
 import IDE.Workspace (projectOpenPath)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.TextAssist (noTextAssist)
+import IDE.Web.Widget.PathField (focusFieldJs)
 
 -- | Render the modal for starting a Claude session in a fresh worktree of the
 -- repo containing @dir@.  Returns an 'Event' that fires (once) when the caller
@@ -56,8 +57,10 @@ newWorktreeDialog dir = do
             text ("An isolated checkout for one agent task, so parallel sessions\
                   \ never step on each other's files.  Repo: " <> T.pack dir)
         nameTi <- textInput $ def & attributes .~ constDyn
-            ("placeholder" =: "task name — e.g. fix flaky tests"
+            ("id" =: "new-worktree-name" <> "placeholder" =: "task name — e.g. fix flaky tests"
              <> "style" =: fieldStyle <> noTextAssist)
+        -- The keyboard starts in the field (a just-built input is not focused).
+        focusFieldJs "new-worktree-name" =<< delay 0.03 =<< getPostBuild
         -- Live preview of what will be created.
         elAttr "p" ("style" =: hintStyle) $
             dynText $ ffor (_textInput_value nameTi) $ \n ->
