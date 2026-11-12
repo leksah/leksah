@@ -35,12 +35,12 @@ import qualified Data.Map as M
 import Data.Maybe (isJust, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import System.Directory (doesFileExist, findExecutable)
+import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readProcess, readProcessWithExitCode)
+import System.Process (readProcess)
 import Text.Read (readMaybe)
 
-import IDE.Web.Instance (tmuxServerSocket)
+import IDE.Web.TmuxServer (TmuxServer(..), tmuxStdoutOn)
 
 -- | The host as it is now.
 data Host = Host
@@ -125,15 +125,10 @@ processParents = (`catch` \(_ :: SomeException) -> return M.empty) $ do
 -- | Leksah's tmux server, as @"\<pid\> \<start time\>"@ (the pair, because a
 -- pid alone can be reused), or 'Nothing' when it is not running.
 tmuxServer :: IO (Maybe Text)
-tmuxServer = (`catch` \(_ :: SomeException) -> return Nothing) $
-  findExecutable "tmux" >>= ask
-  where
-    ask Nothing = return Nothing
-    ask (Just tmux) = do
-      (_, out, _) <- readProcessWithExitCode tmux
-        ["-L", tmuxServerSocket, "list-sessions", "-F", "#{pid} #{start_time}"] ""
+tmuxServer = do
+      out <- tmuxStdoutOn LocalServer ["list-sessions", "-F", "#{pid} #{start_time}"]
       return . listToMaybe $
-        [ l | l <- map T.strip (T.lines (T.pack out))
+        [ l | l <- map T.strip (T.lines out)
             , isJust (serverPid l), T.any (== ' ') l ]
 
 -- | When the machine booted, read once (it cannot change under a running

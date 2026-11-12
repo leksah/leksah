@@ -72,7 +72,7 @@ module IDE.Web.SplitLayout
 
 import Control.Applicative ((<|>))
 import Control.Exception (catch, SomeException)
-import Control.Monad (void, unless)
+import Control.Monad (unless)
 import Data.Aeson
        (FromJSON(..), ToJSON(..), Value, object, withObject, (.=), (.:),
         (.:?), decodeStrict)
@@ -93,15 +93,13 @@ import Data.Text (Text)
 import qualified Data.Text as T
        (isPrefixOf, length, null, pack, splitOn, stripPrefix, unpack)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
-import System.Directory (findExecutable)
 import System.Log.Logger (debugM)
-import System.Process (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import IDE.Web.Model
        (LeafId(..), LeksahWindow(..), PaneContent(..), PaneKind(..),
         SplitOrientation(..), SplitTree(..), TabKey(..))
-import IDE.Web.ReplTmux (tmuxSocket)
+import IDE.Web.TmuxServer (TmuxServer(..), tmuxCmdOn, tmuxStdoutOn)
 import IDE.Web.Session (viewLeafAllowed)   -- + orphan JSON instances
 
 -- | Version of the @\@leksah_layout@ JSON.  v1 (the retired per-session
@@ -855,10 +853,8 @@ saveSessionLayouts sid lws
       if T.length b64 > 6144
         then debugM "leksah" $ "SplitLayout: @leksah_layout for " <> T.unpack sid
                <> " too large to persist (" <> show (T.length b64) <> " chars)"
-        else findExecutable "tmux" >>= mapM_ (\tmux ->
-               void $ readProcessWithExitCode tmux
-                 [ "-L", tmuxSocket, "set-option", "-t", T.unpack sid
-                 , "@leksah_layout", T.unpack b64 ] "")
+        else tmuxCmdOn LocalServer
+                 [ "set-option", "-t", T.unpack sid, "@leksah_layout", T.unpack b64 ]
 
 -- | Every local session's stored leksah windows, in one @list-sessions@
 -- call.  Sessions with no (or an undecodable) option contribute nothing —
@@ -866,13 +862,9 @@ saveSessionLayouts sid lws
 -- without a stored id (v1 migration) are minted one here; returns the map
 -- plus the next unused id number (seed 'nextLeksahWin' with at least this).
 readLeksahWindows :: IO (Map Text LeksahWindow, Int)
-readLeksahWindows = (`catch` \(_ :: SomeException) -> return (mempty, 0)) $
-  findExecutable "tmux" >>= \case
-    Nothing -> return (mempty, 0)
-    Just tmux -> do
-      (_, out, _) <- readProcessWithExitCode tmux
-        [ "-L", tmuxSocket, "list-sessions", "-F"
-        , "#{session_id}\t#{@leksah_layout}" ] ""
+readLeksahWindows = (`catch` \(_ :: SomeException) -> return (mempty, 0)) $ do
+      out <- T.unpack <$> tmuxStdoutOn LocalServer
+        [ "list-sessions", "-F", "#{session_id}\t#{@leksah_layout}" ]
       let parsed =
             [ p
             | line <- lines out

@@ -34,6 +34,7 @@ module IDE.Web.ReplTmux
   , shellCommandForDir
   , freshSessionName
   , tmuxOut
+  , tmuxStdout
   , paneCountOfWindow
   , runInTerminal
   , prefixedCmdLine
@@ -47,7 +48,7 @@ module IDE.Web.ReplTmux
   ) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (catch, try, SomeException)
+import Control.Exception (catch, SomeException)
 import Control.Monad (void, mfilter, forM_)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.List (find, isPrefixOf, sortOn)
@@ -75,6 +76,8 @@ import IDE.Reactive (readCell)
 import IDE.Utils.RemoteExec (runSsh)
 import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.Instance (tmuxServerSocket)
+import IDE.Web.TmuxServer
+       (TmuxServer(..), tmuxCmdOn, tmuxOkOn, tmuxOutOn, tmuxStdoutOn)
 import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
 import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
@@ -103,10 +106,11 @@ isBackingRunKey k =
 
 -- | Run a tmux command on leksah's private socket, ignoring failures.
 tmuxCmd :: [String] -> IO ()
-tmuxCmd args = (`catch` \(_ :: SomeException) -> return ()) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return ()
-        Just tmux -> void $ readProcessWithExitCode tmux (["-L", tmuxSocket] <> args) ""
+tmuxCmd = tmuxCmdOn LocalServer
+
+-- | 'tmuxStdoutOn' leksah's own server.
+tmuxStdout :: [String] -> IO Text
+tmuxStdout = tmuxStdoutOn LocalServer
 
 -- | @tmux send-keys@ on leksah's server — the ONE copy, shared by everything
 -- that types into a pane (the AI tools, the Review pane's comment sender, the
@@ -116,14 +120,8 @@ tmuxCmd args = (`catch` \(_ :: SomeException) -> return ()) $
 -- unsubmitted in the program's prompt), @[\"Enter\"]@ or @[\"2\"]@ for a key.
 -- 'False' when tmux is missing or the send failed.
 sendKeysTo :: Text -> [String] -> IO Bool
-sendKeysTo target args = fmap (either (const False) id) . try' $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return False
-        Just tmux -> do
-            (ec, _, _) <- readProcessWithExitCode tmux
-                (["-L", tmuxSocket, "send-keys", "-t", T.unpack target] <> args) ""
-            return (ec == ExitSuccess)
-  where try' a = try a :: IO (Either SomeException Bool)
+sendKeysTo target args =
+    tmuxOkOn LocalServer (["send-keys", "-t", T.unpack target] <> args) ""
 
 -- | Deliver @txt@ to a pane as a PASTE (bracketed, so the program reads it as
 -- one block) rather than as typing: @load-buffer@ then @paste-buffer -p@.
@@ -134,19 +132,12 @@ sendKeysTo target args = fmap (either (const False) id) . try' $
 -- turns.  No Enter is sent either way: the caller adds it.  'False' when tmux is
 -- missing or either step failed.
 pasteTo :: Text -> Text -> IO Bool
-pasteTo target txt = fmap (either (const False) id) . try' $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return False
-        Just tmux -> do
-            let buf = "leksah-paste"
-            (ec, _, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "load-buffer", "-b", buf, "-"] (T.unpack txt)
-            if ec /= ExitSuccess then return False else do
-              (ec', _, _) <- readProcessWithExitCode tmux
-                  [ "-L", tmuxSocket, "paste-buffer", "-d", "-p", "-b", buf
-                  , "-t", T.unpack target ] ""
-              return (ec' == ExitSuccess)
-  where try' a = try a :: IO (Either SomeException Bool)
+pasteTo target txt = do
+    let buf = "leksah-paste"
+    loaded <- tmuxOkOn LocalServer ["load-buffer", "-b", buf, "-"] (T.unpack txt)
+    if not loaded then return False else
+      tmuxOkOn LocalServer
+        ["paste-buffer", "-d", "-p", "-b", buf, "-t", T.unpack target] ""
 
 -- | The active pane of @sess@'s current window (the one shown in that session's
 -- terminal tab), or 'Nothing'.  'display-message -t \<session\>' proved
@@ -156,49 +147,26 @@ pasteTo target txt = fmap (either (const False) id) . try' $
 -- | Run a tmux command on leksah's server and return its (stripped) first
 -- output line, 'Nothing' when empty / tmux absent / any failure.
 tmuxOut :: [String] -> IO (Maybe Text)
-tmuxOut args = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                (["-L", tmuxSocket] ++ args) ""
-            return $ listToMaybe
-                [ l | l <- map T.strip (T.lines (T.pack out)), not (T.null l) ]
+tmuxOut = tmuxOutOn LocalServer
 
 -- | How many tmux panes window @\@N@ holds (0 on failure).
 paneCountOfWindow :: Text -> IO Int
-paneCountOfWindow w = (`catch` \(_ :: SomeException) -> return 0) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return 0
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-panes", "-t", T.unpack w
-                , "-F", "#{pane_id}"] ""
-            return (length (filter (not . T.null) (map T.strip (T.lines (T.pack out)))))
+paneCountOfWindow w = do
+    out <- tmuxStdout ["list-panes", "-t", T.unpack w, "-F", "#{pane_id}"]
+    return (length (filter (not . T.null) (map T.strip (T.lines out))))
 
 -- | The active pane of a specific tmux WINDOW (@\@N@) — the split target
 -- when a leksah window's focused pane is that tmux window.
 activePaneIdOfWindow :: Text -> IO (Maybe Text)
-activePaneIdOfWindow w = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "display-message", "-p", "-t", T.unpack w
-                , "#{pane_id}" ] ""
-            return $ listToMaybe
-                [ p | p <- map T.strip (T.lines (T.pack out)), not (T.null p) ]
+activePaneIdOfWindow w = tmuxOut ["display-message", "-p", "-t", T.unpack w, "#{pane_id}"]
 
 activePaneIdOfSession :: Text -> IO (Maybe Text)
-activePaneIdOfSession sess = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "list-panes", "-t", T.unpack sess
-                , "-F", "#{pane_active}\t#{pane_id}" ] ""
+activePaneIdOfSession sess = do
+            out <- tmuxStdout
+                [ "list-panes", "-t", T.unpack sess
+                , "-F", "#{pane_active}\t#{pane_id}" ]
             return $ listToMaybe
-                [ pid | l <- T.lines (T.pack out)
+                [ pid | l <- T.lines out
                       , let (act, rest) = T.breakOn "\t" l
                       , act == "1"
                       , let pid = T.drop 1 rest
@@ -210,19 +178,16 @@ activePaneIdOfSession sess = (`catch` \(_ :: SomeException) -> return Nothing) $
 -- by the ⌥-open-into-split pipeline for terminal-family targets (a plain shell,
 -- or a claude command).
 splitPane :: Bool -> Text -> FilePath -> Maybe Text -> IO (Maybe Text)
-splitPane horiz targetPane cwd mcmd = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return Nothing
-        Just tmux -> do
+splitPane horiz targetPane cwd mcmd = (`catch` \(_ :: SomeException) -> return Nothing) $ do
             shell <- getLoginShell
             let cmdArgs = case mcmd of
                     Nothing -> []
                     Just c  -> [T.unpack c <> " || exec " <> shell]
-            (_, out, _) <- readProcessWithExitCode tmux
-                ([ "-L", tmuxSocket, "split-window", if horiz then "-h" else "-v"
+            out <- tmuxStdout
+                ([ "split-window", if horiz then "-h" else "-v"
                  , "-t", T.unpack targetPane, "-c", cwd, "-P", "-F", "#{pane_id}"
-                 ] ++ cmdArgs) ""
-            let pid = T.strip (T.pack out)
+                 ] ++ cmdArgs)
+            let pid = T.strip out
             return $ if T.null pid then Nothing else Just pid
 
 -- | The shared repl session: ffcabal's cached component repls live here
@@ -242,15 +207,12 @@ ffcabalTmuxEnv = ("FFCABAL_TMUX_ARGS", "-L " <> tmuxSocket)
 -- | Find a window by exact name in the shared repl session: (session id,
 -- window id).  'Nothing' when the session or window doesn't exist.
 findReplWindow :: Text -> IO (Maybe (Text, Text))
-findReplWindow name = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "list-windows", "-t", "=" <> T.unpack replSessionName
-                , "-F", "#{session_id}\t#{window_id}\t#{window_name}" ] ""
+findReplWindow name = do
+            out <- tmuxStdout
+                [ "list-windows", "-t", "=" <> T.unpack replSessionName
+                , "-F", "#{session_id}\t#{window_id}\t#{window_name}" ]
             return $ listToMaybe
-                [ (sid, wid) | l <- T.lines (T.pack out)
+                [ (sid, wid) | l <- T.lines out
                 , (sid : wid : wname) <- [T.splitOn "\t" l]
                 , T.intercalate "\t" wname == name ]
 
@@ -263,13 +225,8 @@ findReplWindow name = (`catch` \(_ :: SomeException) -> return Nothing) $
 -- panes of a legacy-tagged window report its key); callers do membership
 -- tests, so that's harmless.
 liveRunKeys :: IO [Text]
-liveRunKeys = (`catch` \(_ :: SomeException) -> return []) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return []
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-panes", "-a", "-F", "#{@leksah_run}"] ""
-            return $ filter (not . T.null) (T.lines (T.pack out))
+liveRunKeys =
+    filter (not . T.null) . T.lines <$> tmuxStdout ["list-panes", "-a", "-F", "#{@leksah_run}"]
 
 -- | The first pane whose @\@leksah_run@ resolves to @key@, as
 -- @(session id, window id, pane id)@ — a pane option set by
@@ -278,15 +235,12 @@ liveRunKeys = (`catch` \(_ :: SomeException) -> return []) $
 -- or a legacy *window* option reaching the pane through tmux's option
 -- inheritance.  'Nothing' when no pane matches / tmux is unavailable.
 findRunPane :: Text -> IO (Maybe (Text, Text, Text))
-findRunPane key = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return Nothing
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
-                , "#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ] ""
+findRunPane key = do
+            out <- tmuxStdout
+                [ "list-panes", "-a", "-F"
+                , "#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ]
             return $ listToMaybe
-                [ (sid, wid, pid) | l <- T.lines (T.pack out)
+                [ (sid, wid, pid) | l <- T.lines out
                 , (sid : wid : pid : k) <- [T.splitOn "\t" l]
                 , T.intercalate "\t" k == key ]
 
@@ -294,16 +248,13 @@ findRunPane key = (`catch` \(_ :: SomeException) -> return Nothing) $
 -- (tmux @window_activity@, so \"recently used\" reflects actual output\/use):
 -- @(key, session id, window id, pane id)@.  Empty on any failure / no tmux.
 liveRunPanes :: IO [(Text, Text, Text, Text)]
-liveRunPanes = (`catch` \(_ :: SomeException) -> return []) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return []
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
-                , "#{window_activity}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ] ""
+liveRunPanes = do
+            out <- tmuxStdout
+                [ "list-panes", "-a", "-F"
+                , "#{window_activity}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ]
             return $ map snd $ sortOn (Down . fst)
                 [ (act, (key, sid, wid, pid))
-                | l <- T.lines (T.pack out)
+                | l <- T.lines out
                 , (actT : sid : wid : pid : k) <- [T.splitOn "\t" l]
                 , let key = T.intercalate "\t" k
                 , not (T.null key)
@@ -317,15 +268,12 @@ liveRunPanes = (`catch` \(_ :: SomeException) -> return []) $
 -- under).  Unlike 'liveRunPanes' this covers panes with no @\@leksah_run@ key
 -- too.  Empty on any failure / no tmux.
 livePanePids :: IO [(Text, Text, Text, Int)]
-livePanePids = (`catch` \(_ :: SomeException) -> return []) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return []
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
-                , "#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_pid}" ] ""
+livePanePids = do
+            out <- tmuxStdout
+                [ "list-panes", "-a", "-F"
+                , "#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_pid}" ]
             return [ (sid, wid, pid, ppid)
-                   | l <- T.lines (T.pack out)
+                   | l <- T.lines out
                    , [sid, wid, pid, ppidT] <- [T.splitOn "\t" l]
                    , Just ppid <- [readMaybe (T.unpack ppidT) :: Maybe Int] ]
 
@@ -333,16 +281,12 @@ livePanePids = (`catch` \(_ :: SomeException) -> return []) $
 -- an OSC title; Claude Code puts the title of the conversation it is showing
 -- there).
 livePaneTitles :: IO (Map Text Text)
-livePaneTitles = (`catch` \(_ :: SomeException) -> return M.empty) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return M.empty
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "list-panes", "-a", "-F"
-                , "#{pane_id}\t#{pane_title}" ] ""
+livePaneTitles = do
+            out <- tmuxStdout
+                [ "list-panes", "-a", "-F", "#{pane_id}\t#{pane_title}" ]
             return $ M.fromList
                 [ (pid, T.intercalate "\t" t)
-                | l <- T.lines (T.pack out), (pid : t) <- [T.splitOn "\t" l] ]
+                | l <- T.lines out, (pid : t) <- [T.splitOn "\t" l] ]
 
 -- | Select a tmux window by its unique window id (@\@N@) — repl window names
 -- contain ':' (@pkg:lib:name@), so id targeting is the only unambiguous form.
@@ -575,13 +519,8 @@ openTerminalInDirFor target dir0 = liftIO . void . forkIO $ do
 -- | A session name not yet in use: @base@, else @base-2@, @base-3@, …
 -- (tmux session names must be unique; dots and colons are not allowed).
 freshSessionName :: Text -> IO Text
-freshSessionName base0 = (`catch` \(_ :: SomeException) -> return base) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return base
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-sessions", "-F", "#{session_name}"] ""
-            let taken = T.lines (T.pack out)
+freshSessionName base0 = do
+            taken <- T.lines <$> tmuxStdout ["list-sessions", "-F", "#{session_name}"]
             return . head $
                 [ nm | nm <- base : [ base <> "-" <> T.pack (show n)
                                     | n <- [2 :: Int ..] ]
@@ -699,14 +638,11 @@ buildSplitWindowCommand horizontal session mtarget = do
         <> maybe "" (\t -> " -t " <> t) mtarget
     -- The active pane's current directory and its window's @leksah_run marker,
     -- in one round trip on leksah's private tmux server.
-    queryActivePane sess = (`catch` \(_ :: SomeException) -> return ("", "")) $
-        findExecutable "tmux" >>= \case
-          Nothing   -> return ("", "")
-          Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "display-message", "-p", "-t", T.unpack sess
-                , "-F", "#{pane_current_path}\t#{@leksah_run}" ] ""
-            case T.splitOn "\t" (T.strip (T.pack out)) of
+    queryActivePane sess = do
+            out <- tmuxStdout
+                [ "display-message", "-p", "-t", T.unpack sess
+                , "-F", "#{pane_current_path}\t#{@leksah_run}" ]
+            case T.splitOn "\t" (T.strip out) of
               (p : rest) -> return (T.unpack p, T.intercalate "\t" rest)
               _          -> return ("", "")
     -- tmux command-line single-quoting (tmux unquotes '…' literally and
@@ -751,21 +687,16 @@ newSessionWindow name dir mkey cmd keepShell =
 newWindowInSession :: Text -> FilePath -> Maybe Text -> Text -> Bool
                    -> IO (Maybe Text)
 newWindowInSession sid dir mkey cmd keepShell =
-  (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
+  (`catch` \(_ :: SomeException) -> return Nothing) $ do
             shell <- getLoginShell
-            let run as = readProcessWithExitCode tmux
-                             (["-L", tmuxSocket] ++ as) ""
-            (_, out, _) <- run
+            out <- tmuxStdout
                 [ "new-window", "-d", "-t", T.unpack sid
                 , "-c", dir, "-P", "-F", "#{window_id}\t#{pane_id}"
                 , T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell ]
-            case T.splitOn "\t" (T.strip (T.pack out)) of
+            case T.splitOn "\t" (T.strip out) of
               (wid : pid : _) | not (T.null pid) -> do
                 forM_ mkey $ \key ->
-                    run ["set-option", "-p", "-t", T.unpack pid
+                    tmuxCmd ["set-option", "-p", "-t", T.unpack pid
                         , "@leksah_run", T.unpack key]
                 return (Just wid)
               _ -> return Nothing

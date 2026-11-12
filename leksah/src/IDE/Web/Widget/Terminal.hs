@@ -164,9 +164,10 @@ import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
         findRunPane, liveRunPanes, isBackingRunKey, selectTmuxWindowById,
-        freshSessionName, tmuxOut,
+        freshSessionName, tmuxOut, tmuxStdout,
         getLoginShell, interactiveShellArgs, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
+import IDE.Web.TmuxServer (TmuxServer(..), tmuxRunOn)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -1094,18 +1095,15 @@ killRunPaneIfIdle :: Text -> IO ()
 killRunPaneIfIdle key = (`catch` \(_ :: SomeException) -> return ()) $
     findRunPane key >>= \case
       Nothing -> return ()
-      Just (_sid, _wid, pid) -> findExecutable "tmux" >>= \case
-        Nothing -> return ()
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                [ "-L", tmuxSocket, "display-message", "-p", "-t", T.unpack pid
-                , "#{pane_current_command}" ] ""
+      Just (_sid, _wid, pid) -> do
+            out <- tmuxStdout
+                [ "display-message", "-p", "-t", T.unpack pid
+                , "#{pane_current_command}" ]
             shell <- getLoginShell
-            let cmd = T.strip (T.pack out)
+            let cmd = T.strip out
                 idle = cmd `elem` T.pack (takeFileName shell)
                               : ["sh", "bash", "zsh", "fish", "ksh", "dash"]
-            when idle . void $ readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "kill-pane", "-t", T.unpack pid] ""
+            when idle $ tmuxCmd ["kill-pane", "-t", T.unpack pid]
 
 -- | Write (idempotently) a tiny helper that posts a macOS Notification Center
 -- notification for a tmux bell alert, and return its path.  Driven by the
@@ -1164,12 +1162,9 @@ listTerminalSessions :: IO [(Text, Text)]
 -- Browser demo: the canned sessions from the page stand in for tmux.
 listTerminalSessions = demoTerminals
 #else
-listTerminalSessions = (`catch` \(_ :: SomeException) -> return []) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return []
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-sessions", "-F", "#{session_id}\t#{session_name}"] ""
+listTerminalSessions = (`catch` \(_ :: SomeException) -> return []) $ do
+            out <- T.unpack <$> tmuxStdout
+                ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
             return [ (sid, T.intercalate "\t" rest)
                    | line <- lines out
                    , (sid:rest) <- [T.splitOn "\t" (T.pack line)]
@@ -1180,10 +1175,7 @@ listTerminalSessions = (`catch` \(_ :: SomeException) -> return []) $
 killTerminalSession :: Text -> IO ()
 killTerminalSession n = (`catch` \(_ :: SomeException) -> return ()) $ do
     unregisterTerminalPty n
-    findExecutable "tmux" >>= \case
-        Nothing -> return ()
-        Just tmux -> void $ readProcessWithExitCode tmux
-            ["-L", tmuxSocket, "kill-session", "-t", T.unpack n] ""
+    tmuxCmd ["kill-session", "-t", T.unpack n]
 
 -- | A tmux pane within a window: its index, a display label (its index and the
 -- command running in it), and whether it is the window's active pane.
@@ -1269,12 +1261,9 @@ listTerminalTree = do
                              [ TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing Nothing ] ]))
         | (sid, name) <- ts ++ created ]
 #else
-listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return M.empty
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-panes", "-a", "-F", paneTreeFormat] ""
+listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $ do
+            out <- T.unpack <$> tmuxStdout
+                ["list-panes", "-a", "-F", paneTreeFormat]
             enrichClaudeTitles (parsePaneTree out)
 
 -- | Serializes 'enrichClaudeTitles'' session renames across the per-window
@@ -1440,15 +1429,9 @@ paneTreeFormat = intercalate "\t"
 -- @#@ — tmux saw @-F@ with no value, failed, and the whole host showed as
 -- \"(unreachable)\" even though ssh was fine.
 sshTmux :: Text -> [String] -> IO (Maybe String)
-sshTmux host args = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-    (c, out, _) <- readProcessWithExitCode "ssh"
-        ([ "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", T.unpack host
-         , unwords ("tmux" : map shellQuote args) ]) ""
-    return $ if c == ExitSuccess then Just out else Nothing
-  where
-    shellQuote s = "'" <> concatMap esc s <> "'"
-    esc '\'' = "'\\''"
-    esc c    = [c]
+sshTmux host args = tmuxRunOn (SshServer host) args "" >>= \r -> return $ case r of
+    Just (ExitSuccess, out, _) -> Just out
+    _                          -> Nothing
 
 -- | The session/window/pane tree of a remote host's (default-socket) tmux —
 -- same shape as 'listTerminalTree'.  'Nothing' = unreachable / no server.
@@ -1557,13 +1540,10 @@ renameRemoteTmuxWindow host s w name =
 -- terminal widget attaches (leksah has no control clients of its own yet, so
 -- everything control-mode on the socket is stale).
 reapControlClients :: IO ()
-reapControlClients = (`catch` \(_ :: SomeException) -> return ()) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return ()
-        Just tmux -> do
-            (_, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-clients", "-F"
-                , "#{client_name}\t#{client_pid}\t#{client_control_mode}"] ""
+reapControlClients = (`catch` \(_ :: SomeException) -> return ()) $ do
+            out <- T.unpack <$> tmuxStdout
+                ["list-clients", "-F"
+                , "#{client_name}\t#{client_pid}\t#{client_control_mode}"]
             forM_ (lines out) $ \l -> case splitOn '\t' l of
                 [name, pid, "1"] -> do
                     -- KILL the client process, don't just detach: a wedged
@@ -1578,8 +1558,7 @@ reapControlClients = (`catch` \(_ :: SomeException) -> return ()) $
                         signalProcess sigKILL (fromIntegral p)
                             `catch` \(_ :: SomeException) -> return ()
 #endif
-                    void $ readProcessWithExitCode tmux
-                        ["-L", tmuxSocket, "detach-client", "-t", name] ""
+                    tmuxCmd ["detach-client", "-t", name]
                 _ -> return ()
   where
     splitOn c s = case break (== c) s of
@@ -1682,38 +1661,29 @@ killTmuxPaneId pid = tmuxCmd ["kill-pane", "-t", T.unpack pid]
 -- the NEW window's index (so the ⌘W close menu's "Move Pane to Hidden Window"
 -- can add it to 'hiddenWindows'); 'Nothing' on any error / no tmux.
 breakTmuxPaneId :: Text -> IO (Maybe Int)
-breakTmuxPaneId pid = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return Nothing
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "break-pane", "-d", "-P", "-F", "#{window_index}", "-s", T.unpack pid] ""
+breakTmuxPaneId pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            out <- tmuxStdout
+                ["break-pane", "-d", "-P", "-F", "#{window_index}", "-s", T.unpack pid]
             return $ readMaybe . T.unpack
-                =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+                =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | The window index of pane @pid@ (e.g. @%5@) — used by the ⌘W close menu's
 -- "Hide Window" to add that window to 'hiddenWindows'.  'Nothing' on error.
 windowIndexOfPane :: Text -> IO (Maybe Int)
-windowIndexOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return Nothing
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "display-message", "-p", "-t", T.unpack pid, "#{window_index}"] ""
+windowIndexOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            out <- tmuxStdout
+                ["display-message", "-p", "-t", T.unpack pid, "#{window_index}"]
             return $ readMaybe . T.unpack
-                =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+                =<< listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | Number of panes in session @n@'s CURRENT window (the tiling shown in wide0)
 -- — 0 on any error / no tmux.  The ⌘W close menu uses @> 1@ to decide the
 -- multi-pane vs single-pane form.
 paneCountOfSession :: Text -> IO Int
-paneCountOfSession n = (`catch` \(_ :: SomeException) -> return 0) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return 0
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-panes", "-t", T.unpack n, "-F", "#{pane_id}"] ""
-            return $ length (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+paneCountOfSession n = (`catch` \(_ :: SomeException) -> return 0) $ do
+            out <- tmuxStdout
+                ["list-panes", "-t", T.unpack n, "-F", "#{pane_id}"]
+            return $ length (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | Move pane @srcPaneId@ (a tmux pane id like @%5@) into window @dstW@ of
 -- session @dstS@, splitting the target window.  Targeting by pane id keeps the
@@ -1751,13 +1721,10 @@ selectTmuxPaneId p = do
 
 -- | The pane ids of window @w@ (@\@N@ — server-global), in tmux order.
 panesOfWindow :: Text -> IO [Text]
-panesOfWindow w = (`catch` \(_ :: SomeException) -> return []) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return []
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-panes", "-t", T.unpack w, "-F", "#{pane_id}"] ""
-            return $ filter (not . T.null) (map T.strip (T.lines (T.pack out)))
+panesOfWindow w = (`catch` \(_ :: SomeException) -> return []) $ do
+            out <- tmuxStdout
+                ["list-panes", "-t", T.unpack w, "-F", "#{pane_id}"]
+            return $ filter (not . T.null) (map T.strip (T.lines out))
 
 -- | Join pane @p@ into @dst@'s window as a split on the given side (@horiz@ =
 -- side-by-side, @before@ = left/top), detached.  @full@ (@-f@) makes the split
@@ -1779,14 +1746,11 @@ joinTmuxPaneFull p dst horiz before = joinTmuxPane p dst horiz before True
 -- | The current layout string of window @w@ (@\@N@), checksum-prefixed
 -- (tmux's @#{window_layout}@ — what 'IDE.Web.TmuxCC.parseLayout' reads).
 windowLayoutString :: Text -> IO (Maybe Text)
-windowLayoutString w = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return Nothing
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "display-message", "-p", "-t", T.unpack w,
-                 "-F", "#{window_layout}"] ""
-            return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+windowLayoutString w = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            out <- tmuxStdout
+                ["display-message", "-p", "-t", T.unpack w,
+                 "-F", "#{window_layout}"]
+            return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | Move pane @p@ into @dst@'s window (plain split beside @dst@, detached);
 -- callers re-lay the window out afterwards ('selectWindowLayout').
@@ -1812,14 +1776,11 @@ swapTmuxPanes a b =
 -- tmux pane must become its own leksah pane (node/root target, view-leaf
 -- target, or font mismatch).
 breakTmuxPaneTo :: Text -> Text -> IO (Maybe Text)
-breakTmuxPaneTo p dstS = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing   -> return Nothing
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "break-pane", "-d", "-P", "-F", "#{window_id}",
-                 "-s", T.unpack p, "-t", T.unpack dstS <> ":"] ""
-            return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines (T.pack out))))
+breakTmuxPaneTo p dstS = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            out <- tmuxStdout
+                ["break-pane", "-d", "-P", "-F", "#{window_id}",
+                 "-s", T.unpack p, "-t", T.unpack dstS <> ":"]
+            return $ listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | Rename session @s@ (a session id) to @name@.
 renameTmuxSession :: Text -> Text -> IO ()
@@ -1833,13 +1794,10 @@ renameTmuxWindow s w name =
 -- | The id (e.g. @%3@) of the active pane of session @n@ (a tmux session id),
 -- used to pick which pane to make transparent (see "IDE.Web.Main").
 activePaneId :: Text -> IO (Maybe Text)
-activePaneId n = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "display-message", "-p", "-t", T.unpack n, "-F", "#{pane_id}"] ""
-            return $ case filter (not . T.null) (map T.strip (T.lines (T.pack out))) of
+activePaneId n = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            out <- tmuxStdout
+                ["display-message", "-p", "-t", T.unpack n, "-F", "#{pane_id}"]
+            return $ case filter (not . T.null) (map T.strip (T.lines out)) of
                 (p:_) -> Just p
                 _     -> Nothing
 
@@ -1847,16 +1805,13 @@ activePaneId n = (`catch` \(_ :: SomeException) -> return Nothing) $
 -- (a tmux session id) — but only while that pane's window is the session's
 -- current one, so a transparency hole is hidden when its pane isn't on screen.
 paneGeometry :: Text -> Text -> IO (Maybe (Int, Int, Int, Int))
-paneGeometry n pid = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-panes", "-t", T.unpack n, "-F",
-                 "#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_height} #{window_active}"] ""
+paneGeometry n pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            out <- tmuxStdout
+                ["list-panes", "-t", T.unpack n, "-F",
+                 "#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_height} #{window_active}"]
             return $ listToMaybe
                 [ (l, t, w, h)
-                | line <- T.lines (T.pack out)
+                | line <- T.lines out
                 , (pid':lT:tT:wT:hT:waT:_) <- [T.words line]
                 , pid' == pid, waT == "1"
                 , Just l <- [readMaybe (T.unpack lT)]
@@ -1868,15 +1823,12 @@ paneGeometry n pid = (`catch` \(_ :: SomeException) -> return Nothing) $
 -- Used by @open-browser@ to map @$TMUX_PANE@ to a terminal so its pane can be
 -- snapped.
 sessionOfPane :: Text -> IO (Maybe Text)
-sessionOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> do
-            (_rc, out, _) <- readProcessWithExitCode tmux
-                ["-L", tmuxSocket, "list-panes", "-a", "-F", "#{session_id} #{pane_id}"] ""
+sessionOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+            out <- tmuxStdout
+                ["list-panes", "-a", "-F", "#{session_id} #{pane_id}"]
             return $ listToMaybe
                 [ sid
-                | line <- T.lines (T.pack out)
+                | line <- T.lines out
                 , (sid:pid':_) <- [T.words line]
                 , pid' == pid ]
 
