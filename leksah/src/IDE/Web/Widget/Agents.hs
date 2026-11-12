@@ -506,6 +506,8 @@ agentsCss = do
     -- The top agent's worktree tree, under its card.
     ".agents-worktrees" ? do
         "padding" -: "2px 4px 6px 4px"
+        "white-space" -: "nowrap"
+        "overflow-x" -: "auto"
         fontSize (px 12)
     ".agents-worktrees-head" ? do
         color dimColor

@@ -27,10 +27,13 @@ module IDE.Web.AgentWorktrees
   , agentSessions
   , worktreesOfAgent
   , allAgentWorktrees
+  , worktreesBySession
   ) where
 
 import Control.Exception (SomeException, catch)
 import Control.Monad (filterM)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
 
 import Data.List (sortOn)
 import qualified Data.Map as M
@@ -88,8 +91,37 @@ worktreesOfAgent sid = do
 
 -- | Every agent with a claim on a worktree that still exists: live agents
 -- first, then the rest by their newest claim.
+--
+-- Cached for a few seconds: every Agents node in the trees polls this (and
+-- 'worktreesBySession'), and one read per period is plenty.
 allAgentWorktrees :: IO [AgentWorktrees]
-allAgentWorktrees = do
+allAgentWorktrees = fst <$> snapshot
+
+-- | Every session id — an agent's current one and each earlier one that
+-- carried on into it — to that agent's worktrees (agents with any).  What a
+-- session row under an Agents node expands to.
+worktreesBySession :: IO (Map Text [AgentWorktree])
+worktreesBySession = snd <$> snapshot
+
+{-# NOINLINE snapshotRef #-}
+snapshotRef :: IORef (Double, ([AgentWorktrees], Map Text [AgentWorktree]))
+snapshotRef = unsafePerformIO (newIORef (0, ([], M.empty)))
+
+snapshot :: IO ([AgentWorktrees], Map Text [AgentWorktree])
+snapshot = do
+  now <- realToFrac <$> getPOSIXTime
+  (at, v) <- readIORef snapshotRef
+  if now - at < 4 then return v else do
+    gs    <- computeAgentWorktrees
+    conts <- agentContinuations
+    let bySid = M.fromList
+          [ (s, agWorktrees g) | g <- gs, s <- S.toList (agentSessions conts (agSession g)) ]
+        v' = (gs, bySid)
+    writeIORef snapshotRef (now, v')
+    return v'
+
+computeAgentWorktrees :: IO [AgentWorktrees]
+computeAgentWorktrees = do
   wis   <- allWorktrees
   conts <- agentContinuations
   names <- agentNames

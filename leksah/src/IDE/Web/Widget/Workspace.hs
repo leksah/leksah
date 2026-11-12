@@ -83,7 +83,7 @@ import Reflex
         tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (elDynClass, elAttr, dyn, (=:), elDynAttr,
-        divClass, text, el, elClass, dynText, domEvent, EventName(..))
+        divClass, text, el, elClass, dynText, domEvent, elDynHtmlAttr', EventName(..))
 
 import IDE.Web.Theme
        (selectionColor, hoverColor, dimColor, dimOpacity, fgColor,
@@ -113,7 +113,8 @@ import IDE.Web.Widget.Flake
         flakeTreeWidget, execButton, openNixWindow, developAttr)
 import IDE.Web.Widget.Menu (menu, menuSplit, menuSplitWith)
 import IDE.Web.Widget.FileTree
-       (fileTree, agentsNode, agentsNodeWith, gitClass, gitBadge, statusBadge)
+       (fileTree, agentsNodeKids, gitClass, gitBadge, statusBadge,
+        WorktreeKids, expandableAgentRow)
 import IDE.Web.Widget.Changes (gitChanges, FileChange(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.Claude
@@ -121,8 +122,10 @@ import IDE.Web.Claude
         claudeSessionsFor, claudeTranscriptPath, showLiveSession)
 import IDE.Web.AgentInfo (agentDirOf, agentTitles)
 import IDE.Web.AgentNames (agentNames)
+import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentWorktrees
-       (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, worktreesOfAgent)
+       (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, worktreesBySession,
+        worktreesOfAgent)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.WorktreeRegistry
@@ -201,6 +204,10 @@ workspaceCss = do
         marginLeft (px 20)
         paddingLeft nil
     "li.project" ?
+        whiteSpace nowrap
+    -- (The Agents node is not under a project row: without this a long
+    -- worktree row wraps its label below its expand arrow.)
+    "li.agent-worktrees" ?
         whiteSpace nowrap
     -- A temporary project (opened because a pane shows something in it):
     -- its own row reads as provisional until it is pinned.
@@ -940,11 +947,13 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
     (el "ul" $ do
         -- Sessions whose transcripts live in the worktree itself (self-hides
         -- when there are none).
-        when claudeAvail $ agentsNode "workspace" p
+        -- Each session row expands to its agent's worktrees.
+        let kids = agentWorktreeRows claudeAvail rootKeysD statusD
+        when claudeAvail $ agentsNodeKids "workspace" p (constDyn []) (Just kids)
         -- Sessions the REGISTRY links to this worktree (creator, workers,
         -- reviewers) — they usually live in a sibling checkout.
         void . dyn $ ffor regD $ \(_, _, claims) ->
-            forM_ claims $ \c -> worktreeClaimRow dir p statusD c
+            forM_ claims $ \c -> worktreeClaimRow dir p statusD (Just kids) c
         return (never :: Event t ()))
 
 -- | One registered-session row under a worktree: role + the session's own
@@ -955,8 +964,14 @@ worktreeRow claudeAvail dir rootKeysD statusD wt = do
 -- in a sibling checkout.
 worktreeClaimRow :: forall t m . MonadWidget t m
                  => FilePath -> FilePath -> Dynamic t [ClaudeStatusRow]
+                 -> Maybe (WorktreeKids t m)
                  -> (Text, Text, Text, Double) -> m ()
-worktreeClaimRow dir p statusD (sid, label, tip, _when) = el "li" $ do
+worktreeClaimRow dir p statusD mkids (sid, label, tip, _when) = do
+ nameD <- pollD Nothing (M.lookup sid <$> agentNames)
+ kids <- forM mkids $ \k -> do
+   wtsD <- pollD [] (M.findWithDefault [] sid <$> worktreesBySession)
+   return (wtsD, k)
+ expandableAgentRow ("claim:" <> T.pack p <> "#" <> sid) kids $ do
   let badgeD = ffor statusD $ \rows ->
         case [ r | r <- rows, csrSession r == sid ] of
           (r : _) | csrState r == "waiting"
@@ -973,8 +988,7 @@ worktreeClaimRow dir p statusD (sid, label, tip, _when) = el "li" $ do
                                   <> T.take 8 sid <> " — it may have been cleaned up")
   (rowEl, mE) <- treeSelect' "workspace"
       (menuSplit [ constDyn ("Open Session", (Nothing, open)) ]) $ do
-      elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg")
-        (return ())
+      agentFace nameD
       elAttr "span" ("title" =: tip) (text label)
       statusBadge badgeD
       return (never :: Event t (IO ()))
@@ -992,8 +1006,8 @@ worktreeClaimRow dir p statusD (sid, label, tip, _when) = el "li" $ do
 -- refreshes, so a registration made elsewhere (a hook, a scan run from the
 -- Worktrees node) shows up within seconds.
 worktreeClaims :: forall t m . MonadWidget t m
-               => FilePath -> m (Dynamic t [(Double, m ())])
-worktreeClaims p = do
+               => Maybe (WorktreeKids t m) -> FilePath -> m (Dynamic t [(Double, m ())])
+worktreeClaims mkids p = do
   pb <- getPostBuild
   (clE, fireCl) <- newTriggerEvent
   scan <- liftIO . newCoalescer $
@@ -1008,7 +1022,7 @@ worktreeClaims p = do
   clD     <- holdUniqDyn =<< holdDyn [] clE
   statusD <- holdUniqDyn =<< holdDyn [] (csRows <$> stE)
   return $ ffor clD $ map
-      (\c@(_, _, _, w) -> (w, worktreeClaimRow p p statusD c))
+      (\c@(_, _, _, w) -> (w, worktreeClaimRow p p statusD mkids c))
 
 -- | Where does a session's transcript live?  Tried in order: the worktree
 -- itself, wherever @agents.json@ says the session was ('agentDirOf'), the
@@ -1893,8 +1907,10 @@ workspaceWidget ctx activeFileD revealFileD = do
                       -- A project dir that is itself a worktree also lists
                       -- the sessions the registry links to it, INSIDE its
                       -- Agents node after its own sessions ('worktreeClaims').
-                      claimsD <- worktreeClaims (pkRoot pKey)
-                      agentsNodeWith "workspace" (pkRoot pKey) claimsD
+                      statusD <- claudeStatusRowsD
+                      let kids = agentWorktreeRows claudeAvail rootKeysD statusD
+                      claimsD <- worktreeClaims (Just kids) (pkRoot pKey)
+                      agentsNodeKids "workspace" (pkRoot pKey) claimsD (Just kids)
                   let packagesD = M.fromList . map (\p -> (pkgManifest p, p)) . prPackages <$> projectD
                   packagesE <- listViewWithKey packagesD $ \_manifest packageD -> do
                     cabalFileD <- holdUniqDyn $ pkgManifest <$> packageD
@@ -2180,6 +2196,7 @@ agentWorktreesNode rootKeysD = do
   where
     agentRow claudeAvail statusD sid gD = do
       wtsD <- holdUniqDyn (agWorktrees <$> gD)
+      nameD <- holdUniqDyn ((\g -> if T.null (agName g) then Nothing else Just (agName g)) <$> gD)
       let badgeD = ffor statusD $ \rows ->
             case [ r | r <- rows, csrSession r == sid ] of
               (r : _) | csrState r == "waiting"
@@ -2199,11 +2216,10 @@ agentWorktreesNode rootKeysD = do
               case [ d | Just d <- dirs ] of
                 (d : _) -> runClaudeCmd (ClaudeResume d sid)
                 []      -> appNote app ("no transcript found for session " <> T.take 8 sid)
-      void $ treeItem "agent-worktrees-agent" False
+      void $ treeItem "agent-session agent-worktrees-agent" False
         (do (rowEl, mE) <- treeSelect' "workspace"
                 (menuSplit [ ffor gD $ \g -> ("Show Agent", (Nothing, open g)) ]) $ do
-                elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg")
-                  (return ())
+                agentFace nameD
                 dynText labelD
                 statusBadge badgeD
                 return (never :: Event t (IO ()))
@@ -2212,3 +2228,9 @@ agentWorktreesNode rootKeysD = do
             return (never :: Event t ()))
         (el "ul" $ agentWorktreeRows claudeAvail rootKeysD statusD wtsD
                    >> return (never :: Event t ()))
+
+-- | An agent's face (its animal), as in the Agents nodes' session rows; the
+-- robot when it has no name.
+agentFace :: forall t m . MonadWidget t m => Dynamic t (Maybe Text) -> m ()
+agentFace nameD = void $ elDynHtmlAttr' "span" ("class" =: "tree-face")
+  (maybe "<img class=\"tree-icon\" src=\"/pics/tree-claude.svg\">" agentFaceSvg <$> nameD)

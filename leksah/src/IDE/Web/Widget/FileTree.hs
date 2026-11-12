@@ -10,6 +10,9 @@ module IDE.Web.Widget.FileTree
   , fileTree
   , agentsNode
   , agentsNodeWith
+  , agentsNodeKids
+  , WorktreeKids
+  , expandableAgentRow
   , statusBadge
   , GitStatus(..)
   , gitClass
@@ -26,10 +29,10 @@ import Data.Char (isSpace)
 import Data.List (isPrefixOf, tails, dropWhileEnd, partition, sortOn)
 import Data.Ord (Down(..))
 import Data.Map (Map, mapKeys)
-import qualified Data.Map as M (toList, fromList, lookup, empty, elems)
+import qualified Data.Map as M (toList, fromList, lookup, empty, elems, findWithDefault)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
-import qualified Data.Set as S (member, fromList)
+import qualified Data.Set as S (member, fromList, empty, insert, delete)
 import Data.Text (Text)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import qualified Data.Text as T (pack, unpack)
@@ -40,7 +43,8 @@ import IDE.Git (qualifyPath, runGitBatch)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.FS (fsListDirectory)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
 import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.LocalRefresh (registerLocalRefresh)
 import IDE.Web.ReplTmux (openTerminalInDir)
@@ -58,7 +62,7 @@ import Reflex.Dom.Core
 
 import IDE.Web.Events (FileEvents, FileEvent(..))
 import IDE.Web.Widget.Tree
-       (treeItem, treeItemDynAttr', treeSelect', scrollIntoViewNearest,
+       (treeItem, treeItemDynAttr', treeItemTracked, treeSelect', scrollIntoViewNearest,
         dblclickMods)
 import IDE.Web.SplitOpenRequest (SplitTarget(..), requestSplitOpen)
 import IDE.Web.Widget.Menu (menuSplit)
@@ -69,6 +73,7 @@ import IDE.Web.Claude
         copySessionId, revealSession, deleteSession)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentNames (agentNames)
+import IDE.Web.AgentWorktrees (AgentWorktree, worktreesBySession)
 import IDE.Web.Worktree (requestNewWorktree)
 import IDE.Web.ClaudeQueue (requestTaskQueue, requestPlanReview)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -405,8 +410,59 @@ agentsNode treeName dir = agentsNodeWith treeName dir (constDyn [])
 -- beside it.
 agentsNodeWith :: forall t m. MonadWidget t m
                => Text -> FilePath -> Dynamic t [(Double, m ())] -> m ()
-agentsNodeWith treeName dir extraD = do
+agentsNodeWith treeName dir extraD = agentsNodeKids treeName dir extraD Nothing
+
+-- | How an agent's row shows its worktrees when expanded (the Workspace
+-- pane's worktree rows — passed in, since they live in a module that imports
+-- this one).
+type WorktreeKids t m = Dynamic t [AgentWorktree] -> m ()
+
+-- | A row for one agent or session: expandable to its worktrees when it has
+-- any (given the renderer), a plain row otherwise.  @row@ draws the row
+-- itself (its 'treeSelect'').  Used for every agent row in the trees, so they
+-- all look and behave the same.
+--
+-- @key@ names the row for 'openAgentRows': the lists these rows sit in are
+-- rebuilt whenever a session's activity time changes (every few seconds for
+-- a working agent), and an opened row must stay open through that.
+expandableAgentRow :: forall t m. MonadWidget t m
+                   => Text -> Maybe (Dynamic t [AgentWorktree], WorktreeKids t m) -> m () -> m ()
+expandableAgentRow _ Nothing row = el "li" row
+expandableAgentRow key (Just (wtsD, kids)) row = do
+  hasD <- holdUniqDyn (not . null <$> wtsD)
+  void . dyn $ ffor hasD $ \has ->
+    if not has then el "li" row
+    else do
+      open0 <- liftIO (S.member key <$> readIORef openAgentRows)
+      (_, openE) <- treeItemTracked "agent-session" open0
+           (row >> return (never :: Event t ()))
+           (el "ul" (kids wtsD) >> return (never :: Event t ()))
+      performEvent_ $ ffor openE $ \o -> liftIO $
+        atomicModifyIORef' openAgentRows (\st -> (if o then S.insert key st else S.delete key st, ()))
+
+-- | The agent rows (by 'expandableAgentRow' key) the user has opened.
+{-# NOINLINE openAgentRows #-}
+openAgentRows :: IORef (Set Text)
+openAgentRows = unsafePerformIO (newIORef S.empty)
+
+-- | 'agentsNodeWith' whose session rows expand to the worktrees their agent
+-- registered (when @mkids@ gives a renderer).
+agentsNodeKids :: forall t m. MonadWidget t m
+               => Text -> FilePath -> Dynamic t [(Double, m ())]
+               -> Maybe (WorktreeKids t m) -> m ()
+agentsNodeKids treeName dir extraD mkids = do
   pb <- getPostBuild
+  -- The agents' worktrees by session (a cached read: see
+  -- 'worktreesBySession'), only when the rows can show them.
+  wtMapD <- case mkids of
+    Nothing -> return (constDyn M.empty)
+    Just _  -> do
+      (wE, fireW) <- newTriggerEvent
+      wTick <- tickLossyFromPostBuildTime 5
+      performEvent_ $ (liftIO . void . forkIO $ worktreesBySession >>= fireW)
+        <$ leftmost [() <$ pb, () <$ wTick]
+      holdUniqDyn =<< holdDyn M.empty wE
+  let kidsFor sid = ffor mkids $ \k -> (M.findWithDefault [] sid <$> wtMapD, k)
   (sessE, fireSess) <- newTriggerEvent
   (runE,  fireRun)  <- newTriggerEvent
   (nameE, fireName) <- newTriggerEvent
@@ -468,7 +524,7 @@ agentsNodeWith treeName dir extraD = do
           void . dyn $ (\ss extras -> sequence_
               [ w | (_, w) <- sortOn (Down . fst) $
                       [ (realToFrac (utcTimeToPOSIXSeconds (csModified s)) :: Double,
-                         sessionRow treeName dir doScan liveD namesD s) | s <- ss ]
+                         sessionRow treeName dir doScan liveD namesD (kidsFor (csId s)) s) | s <- ss ]
                       <> extras ])
             <$> sessD <*> extraD
           return (never :: Event t ()))
@@ -501,8 +557,10 @@ agentsNodeWith treeName dir extraD = do
 sessionRow
   :: forall t m. MonadWidget t m
   => Text -> FilePath -> IO () -> Dynamic t (Map Text ClaudeLive)
-  -> Dynamic t (Map Text Text) -> ClaudeSession -> m ()
-sessionRow treeName dir rescan liveD namesD s = el "li" $ do
+  -> Dynamic t (Map Text Text)
+  -> Maybe (Dynamic t [AgentWorktree], WorktreeKids t m) -> ClaudeSession -> m ()
+sessionRow treeName dir rescan liveD namesD kids s =
+ expandableAgentRow (treeName <> ":" <> T.pack dir <> "#" <> csId s) kids $ do
   (sEl, actE) <- treeSelect' treeName sessMenu $ do
       let nameD = M.lookup (csId s) <$> namesD
       void $ elDynHtmlAttr' "span" ("class" =: "tree-face")

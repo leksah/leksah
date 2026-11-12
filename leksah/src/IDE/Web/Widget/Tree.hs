@@ -12,6 +12,7 @@ module IDE.Web.Widget.Tree
   , treeItemDynAttr
   , treeItemDynAttr'
   , treeItemDynAttrSet'
+  , treeItemTracked
   , treeItem
   , treeItem'
   , scrollIntoViewNearest
@@ -175,7 +176,29 @@ treeItemDynAttrSet'
   -> m (Event t event)
   -> m (Event t event)
   -> m (Event t event)
-treeItemDynAttrSet' setExpandedE revealD itemClass startExpanded item children = mdo
+treeItemDynAttrSet' setExpandedE revealD itemClass startExpanded item children =
+  fst <$> treeItemCore setExpandedE revealD itemClass startExpanded item children
+
+-- | 'treeItem' that also reports the node being opened or closed — for a
+-- row inside a list that gets rebuilt, to remember its state across the
+-- rebuild (start it with that state).
+treeItemTracked
+  :: MonadWidget t m
+  => Text -> Bool -> m (Event t event) -> m (Event t event)
+  -> m (Event t event, Event t Bool)
+treeItemTracked itemClass =
+  treeItemCore never (constDyn False) (constDyn ("class" =: itemClass))
+
+treeItemCore
+  :: MonadWidget t m
+  => Event t Bool
+  -> Dynamic t Bool
+  -> Dynamic t (Map Text Text)
+  -> Bool
+  -> m (Event t event)
+  -> m (Event t event)
+  -> m (Event t event, Event t Bool)
+treeItemCore setExpandedE revealD itemClass startExpanded item children = mdo
   pb <- getPostBuild
   let setOpenE = ffilter id $ leftmost [updated revealD, tag (current revealD) pb]
   expanded <- holdUniqDyn =<< holdDyn startExpanded (leftmost
@@ -192,7 +215,7 @@ treeItemDynAttrSet' setExpandedE revealD itemClass startExpanded item children =
     itemE <- item
     childE <- switchHold never =<< dyn (bool (return never) (divClass "tree-children" children) <$> expanded)
     return (domEvent Click expander, leftmost [itemE, childE])
-  return events
+  return (events, updated expanded)
 
 treeItem
   :: MonadWidget t m
