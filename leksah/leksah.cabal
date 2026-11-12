@@ -169,6 +169,7 @@ library
         IDE.Web.AgentInfo
         IDE.Web.AgentHost
         IDE.Web.TmuxServer
+        IDE.Web.WakeOnLan
         IDE.Web.TextAssist
         IDE.Web.AgentNames
         IDE.Web.AgentRoles

@@ -24,6 +24,7 @@ module IDE.Config
   , BuildC(..)
   , TerminalC(..)
   , RemoteC(..)
+  , WakeOnLan(..)
   , LspC(..)
   , AiC(..)
     -- * The lot
@@ -136,7 +137,26 @@ data RemoteC = RemoteC
     { rcHosts   :: [Text]  -- ^ ssh hosts shown as top-level tree nodes
     , rcStartup :: [Text]  -- ^ hosts whose default session leksah opens at
                            --   startup (when no window shows it yet)
+    , rcWake    :: [WakeOnLan]
+                           -- ^ hosts leksah wakes (Wake-on-LAN) when they
+                           --   don't answer
     } deriving (Eq, Show)
+
+-- | How to wake one ssh host: its network card's MAC address, and where to
+-- broadcast the magic packet (@Nothing@ = 255.255.255.255).
+data WakeOnLan = WakeOnLan
+    { wolHost      :: Text
+    , wolMac       :: Text
+    , wolBroadcast :: Maybe Text
+    } deriving (Eq, Show)
+
+instance ToJSON WakeOnLan where
+    toJSON w = object (["host" .= wolHost w, "mac" .= wolMac w]
+                       <> maybe [] (\b -> ["broadcast" .= b]) (wolBroadcast w))
+
+instance FromJSON WakeOnLan where
+    parseJSON = withObject "WakeOnLan" $ \o ->
+        WakeOnLan <$> o .: "host" <*> o .: "mac" <*> o .:? "broadcast"
 
 data LspC = LspC
     { lcEnabled       :: Bool
@@ -212,7 +232,7 @@ defaultConfig = Config
         , tcControlMode = True
         , tcTmuxPrefix  = False
         }
-    , cfgRemote = RemoteC { rcHosts = [], rcStartup = [] }
+    , cfgRemote = RemoteC { rcHosts = [], rcStartup = [], rcWake = [] }
     , cfgLsp = LspC
         { lcEnabled       = True
         , lcServerCommand = ""
@@ -288,7 +308,8 @@ instance ToJSON Config where
             ]
         , sect "remote" $ let d = cfgRemote defaultConfig; s = cfgRemote c in
             [ chg "hosts"   rcHosts   d s
-            , chg "startup" rcStartup d s ]
+            , chg "startup" rcStartup d s
+            , chg "wake"    rcWake    d s ]
         , sect "lsp" $ let d = cfgLsp defaultConfig; s = cfgLsp c in
             [ chg "enabled"       lcEnabled       d s
             , chg "serverCommand" lcServerCommand d s
@@ -362,7 +383,8 @@ instance FromJSON Config where
             (cfgTerminal dc)
         cfgRemote' <- inSect o "remote" (\s -> RemoteC
             <$> fld s "hosts"   (rcHosts   (cfgRemote dc))
-            <*> fld s "startup" (rcStartup (cfgRemote dc)))
+            <*> fld s "startup" (rcStartup (cfgRemote dc))
+            <*> fld s "wake"    (rcWake    (cfgRemote dc)))
             (cfgRemote dc)
         cfgLsp' <- inSect o "lsp" (\s -> LspC
             <$> fld s "enabled"       (lcEnabled       (cfgLsp dc))

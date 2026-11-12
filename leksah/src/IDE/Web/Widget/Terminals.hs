@@ -363,8 +363,9 @@ terminalsWidget
   -> Dynamic t (Set (Text, Int))
                                -- ^ hidden tmux windows: (session, window index),
                                --   a remote session as @ssh://host#$N@
+  -> Dynamic t [Text]          -- ^ hosts with Wake-on-LAN set up
   -> m (Event t TerminalsEvents)
-terminalsWidget activeD attnD remoteHostsD hostTreesD startupD hiddenD = do
+terminalsWidget activeD attnD remoteHostsD hostTreesD startupD hiddenD wakeD = do
   -- One session's hidden window indices.
   let hiddenIn sess = (\h -> S.fromList [ i | (s', i) <- S.toList h, s' == sess ]) <$> hiddenD
   (termRoot, ev) <- elClass' "div" "terminals leksah-nav" $ do
@@ -409,7 +410,7 @@ terminalsWidget activeD attnD remoteHostsD hostTreesD startupD hiddenD = do
     -- One node per remote host, sessions/windows/panes over ssh (select-only);
     -- the data comes from the shared per-host poll in 'IDE.Web.Main'.
     remoteE <- el "ul" $ listViewWithKey (M.fromList . map (\h -> (h, ())) <$> remoteHostsD)
-        (\host _ -> remoteHostNode activeD (elem host <$> startupD) hiddenIn host
+        (\host _ -> remoteHostNode activeD (elem host <$> startupD) (elem host <$> wakeD) hiddenIn host
             (fromMaybe (True, M.empty) . M.lookup host <$> hostTreesD))
     -- Trailing "Add Server…" row: opens the Add Server modal (the same one as
     -- File ▸ Add Server…) via the request bridge; the added host lands in the
@@ -484,10 +485,10 @@ hostRow label newEv tip = do
 -- open/steer the host's control-mode tabs.
 remoteHostNode
   :: MonadWidget t m
-  => Dynamic t (Maybe Text) -> Dynamic t Bool -> (Text -> Dynamic t (Set Int)) -> Text
+  => Dynamic t (Maybe Text) -> Dynamic t Bool -> Dynamic t Bool -> (Text -> Dynamic t (Set Int)) -> Text
   -> Dynamic t (Bool, Map Text (Text, [TmuxWindow]))
   -> m (Event t NodeEvent)
-remoteHostNode activeD startupD hiddenIn host treeD = do
+remoteHostNode activeD startupD wakeOnD hiddenIn host treeD = do
     reachD <- holdUniqDyn (fst <$> treeD)
     itemsD <- holdUniqDyn (snd <$> treeD)
     treeItem "terminals-host" True
@@ -503,7 +504,10 @@ remoteHostNode activeD startupD hiddenIn host treeD = do
               , constDyn ("New Session",            NewRemoteTerminal host)
                 -- Open its default session as a leksah window at startup.
               , (\on -> ((if on then "\10003 " else "") <> "Open at Startup"
-                        , ToggleRemoteStartup host)) <$> startupD ]
+                        , ToggleRemoteStartup host)) <$> startupD
+                -- Wake the machine now (or set Wake-on-LAN up for it).
+              , (\on -> (if on then "Wake on LAN" else "Wake on LAN\8230 (set up)"
+                        , WakeRemoteHost host)) <$> wakeOnD ]
             pure $ leftmost [ Right (NewRemoteTerminal host) <$ newE
                             , Right (SelectRemoteHost host)  <$ domEvent Click lbl
                             , Right <$> menuE ])

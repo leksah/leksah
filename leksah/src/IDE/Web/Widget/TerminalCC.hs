@@ -127,6 +127,7 @@ import IDE.Web.Model
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.WindowBridge (setFocusedLeaf)
 import IDE.Web.NewLwRequest (reportWindowGone)
+import IDE.Web.WakeOnLan (ensureAwake)
 import IDE.Web.Dom
        (nextFrame, observeResize, holdsFocus, activeTagName, focusElement,
         focusFirst, toggleClassWhere)
@@ -332,7 +333,9 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
     -- a PTY (plain pipes), so the protocol stream is identical either way.
     performEvent_ $ ffor (leftmost [pb, retryE]) $ \_ -> liftIO . void . forkIO $ do
         cc <- case T.stripPrefix "ssh://" sessionId of
-            Just hostTarget ->
+            -- (a sleeping host with Wake-on-LAN set up is woken first; the
+            -- "(connecting…)" placeholder shows meanwhile)
+            Just hostTarget -> ensureAwake (T.takeWhile (/= '#') hostTarget) >>
                 let (host, hash) = T.breakOn "#" hostTarget
                     attach = case T.stripPrefix "#" hash of
                         Just target | not (T.null target) ->

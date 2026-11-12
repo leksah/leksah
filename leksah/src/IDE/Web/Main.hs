@@ -171,7 +171,10 @@ import IDE.App
 import IDE.Builder (buildActiveTarget)
 import IDE.Config
        (AiC(..), BuildC(..), Config(..), Editor(..), EditorC(..), FontC(..),
-        RemoteC(..), TerminalC(..), ThemeC(..), UiC(..), currentConfig, saveConfig)
+        RemoteC(..), TerminalC(..), ThemeC(..), UiC(..), WakeOnLan(..),
+        currentConfig, saveConfig)
+import IDE.Web.WakeOnLan (wakeFor, wakeAndWait)
+import IDE.Web.AddServerRequest (requestAddServer)
 #if defined(ghcjs_HOST_OS)
 import IDE.Config (configCell)
 #endif
@@ -300,7 +303,8 @@ import IDE.Web.Events
         _ToolbarCommand, _MenubarCommand, _KeymapCommand, _PackageCommand,
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
         _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane,
-        _NewRemoteTerminal, _SelectRemoteHost, _ToggleRemoteStartup, _SelectRemoteTerminal,
+        _NewRemoteTerminal, _SelectRemoteHost, _ToggleRemoteStartup, _WakeRemoteHost,
+        _SelectRemoteTerminal,
         _SelectRemoteTerminalWindow, _SelectRemoteTerminalPane,
         _CloseRemoteTerminal, _NewRemoteTerminalWindow, _KillRemoteTerminalWindow,
         _RenameRemoteTerminalSession, _RenameRemoteTerminalWindow,
@@ -7626,6 +7630,7 @@ main showMenubar macTitlebar wid ctx = mdo
         -- rendered in control-mode tabs keyed "ssh://host#session".
         newRemoteE     = fmapMaybe (^? _NewRemoteTerminal) terminalsListE
         toggleStartupE = fmapMaybe (^? _ToggleRemoteStartup) terminalsListE
+        wakeHostE      = fmapMaybe (^? _WakeRemoteHost) terminalsListE
         selRemoteE     = fmapMaybe (^? _SelectRemoteTerminal) terminalsListE
         selRemoteWinE  = fmapMaybe (^? _SelectRemoteTerminalWindow) terminalsListE
         selRemotePaneE = fmapMaybe (^? _SelectRemoteTerminalPane) terminalsListE
@@ -7676,6 +7681,13 @@ main showMenubar macTitlebar wid ctx = mdo
         renRemoteSessE   = fmapMaybe (^? _RenameRemoteTerminalSession) terminalsListE
         renRemoteWinE    = fmapMaybe (^? _RenameRemoteTerminalWindow) terminalsListE
         remoteAct io     = liftIO . void . forkIO $ io >> fireRemotePoke ()
+    -- "Wake on LAN" on a server's menu: wake it (then re-poll its tree, so it
+    -- stops reading "(unreachable)"); not set up yet → the Add Server dialog,
+    -- whose Wake-on-LAN section does that.
+    performEvent_ $ ffor wakeHostE $ \h -> liftIO . void . forkIO $
+        wakeFor h >>= \case
+          Nothing -> requestAddServer
+          Just w  -> wakeAndWait w >> fireRemotePoke ()
     -- "Open at Startup" on a server's menu: toggle it in the remote settings
     -- (persisted at once, like every settings change).
     performEvent_ $ ffor toggleStartupE $ \h -> liftIO . void . forkIO . withApp $ \app -> do
@@ -9770,6 +9782,7 @@ main showMenubar macTitlebar wid ctx = mdo
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
           TerminalsKey   -> toDM TerminalsTab <$> terminalsWidget activeTermD attentionD remoteHostsD hostTreesD
                               ((rcStartup . cfgRemote) <$> prefsD) hiddenWinsD
+                              ((map wolHost . rcWake . cfgRemote) <$> prefsD)
           LeksahWinKey n -> toDM TerminalTab <$> do
               -- A leksah window: its native split tree of panes (whole tmux
               -- windows and/or native views).  Session-backed windows render

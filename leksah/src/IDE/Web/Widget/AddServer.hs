@@ -34,6 +34,7 @@ import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Default (def)
 import Data.Function ((&))
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
        (any, null, pack, strip, takeWhile, lines)
@@ -42,15 +43,17 @@ import Data.Text.Encoding.Error (lenientDecode)
 import System.Exit (ExitCode(..))
 
 import Reflex
-       (constDyn, delay, getPostBuild, ffor, leftmost, current, holdDyn,
+       (constDyn, delay, getPostBuild, ffor, ffilter, leftmost, current, holdDyn,
         fmapMaybe, tag, newTriggerEvent, updated)
 import Reflex.Dom.Core
-       (elAttr, elAttr', textInput, text, dynText, (=:),
-        Event, attributes, domEvent, EventName(..), _textInput_value)
+       (elAttr, elAttr', elDynAttr, textInput, text, dynText, (=:), checkbox,
+        Event, attributes, domEvent, EventName(..), _textInput_value,
+        _textInput_keydown, _checkbox_value, textInputConfig_setValue)
 
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config
-       (Config(..), RemoteC(..), currentConfig, saveConfig)
+       (Config(..), RemoteC(..), WakeOnLan(..), currentConfig, saveConfig)
+import IDE.Web.WakeOnLan (detectMac, parseMac, wakeAndWait)
 import IDE.Utils.RemoteExec (runSsh)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.TextAssist (noTextAssist)
@@ -65,6 +68,10 @@ addServerDialog = do
     -- Left (retriable, msg) = inline error (retriable = probe failure, so the
     -- next Add on the same host skips the probe); Right = added.
     (resultE, fireResult) <- newTriggerEvent
+    -- Progress while it works (waking the machine can take a minute).
+    (progressE, fireProgress) <- newTriggerEvent
+    -- A detected MAC address, filled into its field.
+    (macFoundE, fireMacFound) <- newTriggerEvent
     elAttr "div" ("class" =: "add-server-overlay" <> "style" =: overlayStyle) $
       elAttr "div" ("class" =: "add-server-dialog" <> "style" =: dialogStyle) $ do
         elAttr "p" ("style" =: "font-weight:bold;margin:0 0 10px 0") $
@@ -74,11 +81,47 @@ addServerDialog = do
              <> "style" =: fieldStyle <> noTextAssist)
         -- The keyboard starts in the field (a just-built input is not focused).
         focusFieldJs "add-server-host" =<< delay 0.03 =<< getPostBuild
+        -- Wake-on-LAN: wake the machine when it doesn't answer (here, and
+        -- whenever leksah connects to it later).
+        wolCb <- elAttr "label" ("style" =: "display:flex;align-items:center;gap:6px;margin:8px 0 2px 0;font-size:12px") $ do
+            cb <- checkbox False def
+            text "Wake on LAN — wake this machine when it doesn't answer"
+            return cb
+        let wolOnD = _checkbox_value wolCb
+        (macTi, bcastTi, detectE) <- elDynAttr "div"
+            ((\on -> "style" =: ("margin:2px 0 0 22px;" <> if on then "" else "display:none")) <$> wolOnD) $ do
+          (macTi', detectEl) <- elAttr "div" ("style" =: "display:flex;gap:6px;align-items:center") $ do
+            m <- textInput $ def
+                & attributes .~ constDyn
+                    ("placeholder" =: "MAC address — e.g. a8:a1:59:12:34:56"
+                     <> "style" =: (fieldStyle <> ";flex:1") <> noTextAssist)
+                & textInputConfig_setValue .~ macFoundE
+            (d, _) <- elAttr' "button" ("style" =: "padding:3px 8px;white-space:nowrap"
+                                         <> "title" =: "Ask the machine (it must be up now) for its network card's address") $
+                text "Detect"
+            return (m, d)
+          b <- textInput $ def & attributes .~ constDyn
+              ("placeholder" =: "broadcast address (optional) — default 255.255.255.255"
+               <> "style" =: fieldStyle <> noTextAssist)
+          return (macTi', b, domEvent Click detectEl)
+        performEvent_ $ ffor (tag (current (_textInput_value hostTi)) detectE) $ \h ->
+            liftIO . void . forkIO $ do
+                fireProgress ("Asking " <> T.strip h <> " for its MAC address…")
+                detectMac (T.strip h) >>= \case
+                    Just mac -> fireMacFound mac >> fireProgress ""
+                    Nothing  -> fireResult (Left (False,
+                        "Could not detect it — the machine must be up and reachable over ssh."))
         let failE = fmapMaybe (either Just (const Nothing)) resultE
+            editedE = leftmost [ () <$ updated (_textInput_value hostTi)
+                               , () <$ updated (_textInput_value macTi) ]
         errD <- holdDyn "" $ leftmost
             [ snd <$> failE
-            , "" <$ updated (_textInput_value hostTi) ]
-        elAttr "p" ("style" =: "color:#c0392b;min-height:1.1em;margin:8px 0 4px 0;font-size:12px") $
+            , "" <$ editedE
+            , "" <$ progressE ]
+        progD <- holdDyn "" $ leftmost [ progressE, "" <$ failE, "" <$ editedE ]
+        elAttr "p" ("style" =: "color:var(--leksah-fg-dim);min-height:1.1em;margin:8px 0 0 0;font-size:12px") $
+            dynText progD
+        elAttr "p" ("style" =: "color:#c0392b;min-height:1.1em;margin:2px 0 4px 0;font-size:12px") $
             dynText errD
         -- After a failed reachability probe, the NEXT Add of the same text
         -- skips the probe ("press Add again to add it anyway"); editing the
@@ -88,42 +131,71 @@ addServerDialog = do
             , False <$ updated (_textInput_value hostTi) ]
         (addEl, _)    <- elAttr' "button" ("style" =: primaryBtnStyle) $ text "Add"
         (cancelEl, _) <- elAttr' "button" ("style" =: btnStyle) $ text "Cancel"
-        let valsD = (,) <$> _textInput_value hostTi <*> skipProbeD
-        performEvent_ $ ffor (tag (current valsD) (domEvent Click addEl)) $
-            \(h, skip) -> liftIO . void . forkIO $ addServerIO h skip fireResult
+        let wolD = (\on mac b -> if on then Just (mac, b) else Nothing)
+                     <$> wolOnD <*> _textInput_value macTi <*> _textInput_value bcastTi
+            valsD = (,,) <$> _textInput_value hostTi <*> skipProbeD <*> wolD
+            -- Enter in a field = Add (keydown: keypress is unreliable for
+            -- Enter in WKWebView).
+            enterE = leftmost [ () <$ ffilter (== 13) (_textInput_keydown hostTi)
+                              , () <$ ffilter (== 13) (_textInput_keydown macTi)
+                              , () <$ ffilter (== 13) (_textInput_keydown bcastTi) ]
+            submitE = leftmost [ domEvent Click addEl, enterE ]
+        performEvent_ $ ffor (tag (current valsD) submitE) $
+            \(h, skip, wol) -> liftIO . void . forkIO $
+                addServerIO h skip wol fireProgress fireResult
         return $ leftmost
             [ ()  <$ domEvent Click cancelEl
             , fmapMaybe (either (const Nothing) Just) resultE ]
 
--- | Do the actual work on a background thread: validate, probe, append to the
--- 'rcHosts' setting; report Left (retriable, error) / Right () through the
--- callback.  The ssh probe stays off the frame thread.
-addServerIO :: Text -> Bool -> (Either (Bool, Text) () -> IO ()) -> IO ()
-addServerIO host skipProbe fire =
+-- | Do the actual work on a background thread: validate, probe (waking the
+-- machine first when Wake-on-LAN is on and it doesn't answer), add to the
+-- 'rcHosts' setting (and its 'rcWake' entry); report progress, and Left
+-- (retriable, error) / Right () through the callbacks.  An ALREADY-listed
+-- host with Wake-on-LAN given just has its wake settings updated.
+addServerIO :: Text -> Bool -> Maybe (Text, Text) -> (Text -> IO ())
+            -> (Either (Bool, Text) () -> IO ()) -> IO ()
+addServerIO host skipProbe mwol progress fire =
     (`catch` \(e :: SomeException) -> fire (Left (False, T.pack (show e)))) $ do
       let h = T.strip host
+          mwake = ffor mwol $ \(mac, b) ->
+            WakeOnLan h (T.strip mac) (if T.null (T.strip b) then Nothing else Just (T.strip b))
       if T.null h
         then fire (Left (False, "Host is required."))
       else if T.any (== ' ') h
         then fire (Left (False, "Host must not contain spaces — use an ssh destination or config alias."))
+      else if maybe False (isNothing . parseMac . wolMac) mwake
+        then fire (Left (False, "That is not a MAC address (six hex pairs, e.g. a8:a1:59:12:34:56)."))
       else getGlobalApp >>= \case
         Nothing  -> fire (Left (False, "IDE is not ready yet."))
         Just app -> do
           cfg <- currentConfig (appConfig app)
-          if h `elem` rcHosts (cfgRemote cfg)
+          let known = h `elem` rcHosts (cfgRemote cfg)
+              save = do
+                -- Re-read at write time so the probe window can't clobber
+                -- a concurrent settings change.
+                cfg' <- currentConfig (appConfig app)
+                let rc = cfgRemote cfg'
+                saveConfig (appConfig app) cfg'
+                    { cfgRemote = rc
+                        { rcHosts = if known then rcHosts rc else rcHosts rc <> [h]
+                        , rcWake  = maybe (rcWake rc)
+                            (\w -> filter ((/= h) . wolHost) (rcWake rc) <> [w]) mwake } }
+                fire (Right ())
+          if known && isNothing mwake
             then fire (Left (False, h <> " is already in the server list."))
-            else do
-              probed <- if skipProbe then return (Right ()) else probeHost h
-              case probed of
-                Left err -> fire (Left (True, err))
-                Right () -> do
-                  -- Re-read at write time so the probe window can't clobber
-                  -- a concurrent settings change.
-                  cfg' <- currentConfig (appConfig app)
-                  saveConfig (appConfig app) cfg'
-                      { cfgRemote = (cfgRemote cfg')
-                          { rcHosts = rcHosts (cfgRemote cfg') <> [h] } }
-                  fire (Right ())
+          else if known || skipProbe then save
+          else do
+            progress ("Checking " <> h <> "…")
+            probed <- probeHost h
+            case (probed, mwake) of
+              (Right (), _) -> save
+              (Left err, Nothing) -> fire (Left (True, err))
+              (Left _, Just w) -> do
+                progress (h <> " is not answering — sent Wake-on-LAN, waiting for it to come up (up to 2 minutes)…")
+                wakeAndWait w >>= \case
+                  Right True  -> save
+                  Right False -> fire (Left (True, h <> " did not come up after the Wake-on-LAN packet — press Add again to add it anyway."))
+                  Left e      -> fire (Left (False, "Could not send the Wake-on-LAN packet: " <> e))
 
 -- | One no-op ssh exec to catch typos/config problems up front.  ssh exits
 -- 255 for its own failures (DNS, route, auth, timeout); anything else means

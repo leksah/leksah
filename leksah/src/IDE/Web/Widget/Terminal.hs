@@ -168,6 +168,7 @@ import IDE.Web.ReplTmux
         freshSessionName, tmuxOut, tmuxStdout,
         getLoginShell, interactiveShellArgs, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
+import IDE.Web.WakeOnLan (ensureAwake)
 import IDE.Web.TmuxServer
        (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn, tmuxStdoutOn,
         tmuxOnIds, qualifyTmuxId)
@@ -1485,6 +1486,7 @@ resolveRemoteSession :: Text -> IO (Maybe (Text, Text))
 resolveRemoteSession key = case remoteTabHostTarget key of
   Nothing -> return Nothing
   Just (host, target) -> do
+    _ <- ensureAwake host   -- (Wake-on-LAN, when set up and it's asleep)
     let srv = SshServer host
         q x = "ssh://" <> host <> "#" <> x
         bare = T.null (T.drop 1 (snd (T.breakOn "#" key)))
