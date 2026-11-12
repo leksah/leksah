@@ -92,8 +92,10 @@ data TerminalEvents
   -- mousedown listener) a pane click.  This is the leksah-owned pane-recency
   -- signal that floats the pane to the flipper MRU front; deliberately NOT the
   -- control-mode @%window-pane-changed@ broadcast, which also follows other
-  -- clients attached to the same tmux session.
-  | TerminalPaneFocused Text
+  -- clients attached to the same tmux session.  Carries the terminal's session
+  -- key (local @$id@ or remote @ssh://…@ tab key) as well as the @%id@: pane ids
+  -- are only unique per tmux SERVER, and a remote server's @%1@ is not ours.
+  | TerminalPaneFocused Text Text
   -- | The session's *current* window was just closed (its last pane exited), so
   -- tmux is about to pick a replacement by its own rule — the IDE overrides that
   -- to activate the second entry in the tab-button list (the ⌘1 button) instead.

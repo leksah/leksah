@@ -1566,7 +1566,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
       -- The active window closed: the IDE activates the ⌘1 button (below).
       , TerminalActiveWinClosed <$ activeWinClosedE
       -- A leksah-issued pane focus (⌘-number split select): float it to the MRU.
-      , TerminalPaneFocused <$> paneFocusE
+      , TerminalPaneFocused sessionId <$> paneFocusE
       -- Went to the Retry page (appeared here, or selected while showing):
       -- float this terminal to the flipper front (IDE gates the appear case).
       , connErrShownWE
@@ -1870,6 +1870,9 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
                  -- data-pane = the tmux %id, so a flip target (published by
                  -- reflex as a %id) can be located in the DOM to hang a ⌘` hint.
                  <> "data-pane" =: pane
+                 -- data-session scopes data-pane: %ids are per tmux server, so
+                 -- a remote pane can share one with a local pane.
+                 <> "data-session" =: sessionId
                  <> "style" =: styleOf r d) <$> rectD <*> dimsD <*> tunnelD) $ do
         -- ⌘W close menu, rendered INSIDE this pane so CSS centres it (no JS
         -- geometry) — shown only for the pane the menu currently targets.  The

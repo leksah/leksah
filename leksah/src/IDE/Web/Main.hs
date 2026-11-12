@@ -2223,15 +2223,30 @@ bellLocation n tree = do
     Nothing | length (twPanes w) <= 1 -> name
             | otherwise               -> name <> ", " <> T.pack (show pnum)
 
--- | Resolve a tmux @#{pane_id}@ (e.g. @%5@, server-global) to its flipper item
--- by scanning the pane tree for the pane's @(session, window index, pane index)@.
+-- | Resolve a tmux @#{pane_id}@ (e.g. @%5@) in the terminal keyed @sess@ (its
+-- 'allTreeD' key: a local @$id@ or a remote @ssh://…@ tab key) to its flipper
+-- item @(session, window index, pane index)@.  The lookup MUST be scoped to the
+-- session: pane ids are unique only per tmux server, so a remote server's @%1@
+-- also matches the local @%1@ — and an unscoped scan resolved a click on the
+-- remote pane to the local one (whichever key sorts first).  An empty @sess@
+-- (an old page without @data-session@) falls back to the unscoped scan.
 -- This is a pure *translation* of a pane leksah already identified (a click or a
 -- leksah-issued select) into the indices 'FlipPane' carries — NOT a reading of
 -- "which pane tmux thinks is active", so it stays a leksah-owned recency signal.
-flipForPaneId :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe FlipItem
-flipForPaneId pid tree = listToMaybe
+flipForPaneId :: Text -> Text -> Map Text (Text, [TmuxWindow]) -> Maybe FlipItem
+flipForPaneId sess pid tree = listToMaybe
   [ FlipPane n (twIndex w) (tpIndex p)
-  | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w, tpId p == pid ]
+  | (n, (_, wins)) <- if T.null sess then M.toList tree
+                        else maybe [] (\e -> [(sess, e)]) (M.lookup sess tree)
+  , w <- wins, p <- twPanes w, tpId p == pid ]
+
+-- | Split the @"SESSION\t%PANE"@ a page's pane-focus JS hands over (see
+-- 'leksahFocusedTermPane' / 'leksahPaneFocus') into its two halves; text with no
+-- tab is a bare pane id.
+splitPaneRef :: Text -> (Text, Text)
+splitPaneRef t = case T.breakOn "\t" t of
+    (p, "") -> ("", p)
+    (s, rest) -> (s, T.drop 1 rest)
 
 -- | The flip item representing a whole session — its active (or first) window's
 -- active (or first) pane, from the tree.  Used to float a terminal to the MRU
@@ -3307,7 +3322,8 @@ termActivityJs = T.unlines
   , "  window.leksahFocusedTermPane = function(){"
   , "    var ae = document.activeElement;"
   , "    var pn = ae && ae.closest && ae.closest('.terminal-cc-pane');"
-  , "    return pn ? (pn.getAttribute('data-pane') || '') : '';"
+  , "    return pn && pn.getAttribute('data-pane')"
+  , "      ? (pn.getAttribute('data-session') || '') + '\\t' + pn.getAttribute('data-pane') : '';"
   , "  };"
   , "  document.addEventListener('mousedown', function(e){"
   , "    if (!(e.target.closest)) return;"
@@ -3317,7 +3333,7 @@ termActivityJs = T.unlines
   -- tmux poll, so it can't be moved by another client, and no stale-tree race).
   , "    var pn = e.target.closest('.terminal-cc-pane');"
   , "    if (pn && window.leksahPaneFocus){ var pid = pn.getAttribute('data-pane');"
-  , "      if (pid) window.leksahPaneFocus(pid); }"
+  , "      if (pid) window.leksahPaneFocus((pn.getAttribute('data-session') || '') + '\\t' + pid); }"
   , "  }, true);"
   , "  document.addEventListener('keydown', function(e){"
   , "    if (e.ctrlKey && (e.key === 'b' || e.key === 'B') && e.target.closest"
@@ -6848,8 +6864,8 @@ main showMenubar macTitlebar wid ctx = mdo
                      _                     -> Nothing) (updated activePaneD)
         -- A leksah-issued pane focus bubbled up from a CC tab (⌘-number split).
         ccPaneFocusE = fmapMaybe (\m -> listToMaybe
-                     [ p | (_, dm) <- M.toList m
-                         , Just (Identity (TerminalPaneFocused p)) <- [DM.lookup TerminalTab dm] ]) tabE
+                     [ (s, p) | (_, dm) <- M.toList m
+                         , Just (Identity (TerminalPaneFocused s p)) <- [DM.lookup TerminalTab dm] ]) tabE
         -- A leksah-window tab clicked in the tab row: promote its focused
         -- pane (see fireLwTabClick) — a focused VIEW leaf as its 'FlipView',
         -- a tmux window's active pane as its 'FlipPane' (falling back to any
@@ -6879,8 +6895,8 @@ main showMenubar macTitlebar wid ctx = mdo
                   Nothing -> anyView)
           ((,) <$> current leksahWindowsD' <*> current allTreeD) lwTabClickE
         -- Translate a clicked/selected pane id to its FlipPane (pure tree lookup).
-        paneFocusFlipE = fmapMaybe id $ attachWith (\tree pid -> flipForPaneId pid tree)
-                     (current allTreeD) (leftmost [ jsPaneFocusE, ccPaneFocusE ])
+        paneFocusFlipE = fmapMaybe id $ attachWith (\tree (s, pid) -> flipForPaneId s pid tree)
+                     (current allTreeD) (leftmost [ splitPaneRef <$> jsPaneFocusE, ccPaneFocusE ])
         -- The user went to a terminal's Retry/error page: (deliberate?, session)
         -- from the tab that bubbled TerminalConnErrShown.  Resolve the session
         -- to its current pane via the tree and float it to the flipper MRU
@@ -6971,7 +6987,8 @@ main showMenubar macTitlebar wid ctx = mdo
         wlog wid "EXIT becameKeyPaneId"
         return r
     let becameKeyPaneFlipE = fmapMaybe id $ attachWith
-          (\tree pid -> if T.null pid then Nothing else flipForPaneId pid tree)
+          (\tree ref -> let (s, pid) = splitPaneRef ref
+                        in if T.null pid then Nothing else flipForPaneId s pid tree)
           (current allTreeD) becameKeyPaneIdE
         flipBumpE = leftmost [ localFlipBumpE, becameKeyEditorE, becameKeyPaneFlipE ]
     flipMruD <- holdUniqDyn (_flipMru <$> ide)
