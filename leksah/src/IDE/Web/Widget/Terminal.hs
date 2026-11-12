@@ -1715,9 +1715,9 @@ windowIndexOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 -- — 0 on any error / no tmux.  The ⌘W close menu uses @> 1@ to decide the
 -- multi-pane vs single-pane form.
 paneCountOfSession :: Text -> IO Int
-paneCountOfSession n = (`catch` \(_ :: SomeException) -> return 0) $ do
-            out <- tmuxStdout
-                ["list-panes", "-t", T.unpack n, "-F", "#{pane_id}"]
+paneCountOfSession n = tmuxOnIds [n] 0 $ \srv raw -> do
+            out <- tmuxStdoutOn srv
+                ["list-panes", "-t", raw n, "-F", "#{pane_id}"]
             return $ length (filter (not . T.null) (map T.strip (T.lines out)))
 
 -- | Move pane @srcPaneId@ (a tmux pane id like @%5@) into window @dstW@ of

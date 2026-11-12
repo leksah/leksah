@@ -6915,6 +6915,15 @@ main showMenubar macTitlebar wid ctx = mdo
     -- Same for remote CC tabs: poke the ssh poll.
     performEvent_ $ ffor (ffilter (any ("ssh://" `T.isPrefixOf`)) treeChangedTabsE) $ \_ ->
         liftIO $ fireRemotePoke ()
+    -- …and for a LOCAL tab showing a remote nested child window (its window
+    -- changes arrive as the parent tab's, keyed by the parent's session).
+    performEvent_ $ ffor (ffilter id $ attachWith
+            (\lws ks -> or [ windowServer clw /= LocalServer
+                           | LeksahWinKey n <- ks, Just lw <- [M.lookup n lws]
+                           , PaneContent (PaneNested c) _ <- M.elems (lwPanes lw)
+                           , Just clw <- [M.lookup c lws] ])
+            (current leksahWindowsD') treeChangedKeysE) $ \_ ->
+        liftIO $ fireRemotePoke ()
     -- OFF the reflex thread: a tmux subprocess per poke (term-activity fires
     -- on every window/pane select) would hitch the UI run synchronously.
     (otherPollE, fireOtherPoll) <- newTriggerEvent
@@ -7828,6 +7837,9 @@ main showMenubar macTitlebar wid ctx = mdo
         -- now instead of on the next 2s (local) / 10s (ssh) poll.
         treeChangedTabsE = termSessionsBy
           (\case TerminalTreeChanged -> True; _ -> False)
+        treeChangedKeysE = ffilter (not . null) $ ffor tabE $ \m ->
+          [ k | (k, dm) <- M.toList m
+              , Just (Identity TerminalTreeChanged) <- [DM.lookup TerminalTab dm] ]
         -- A terminal whose attached tmux client exited (the session ended, e.g.
         -- `exit` in its last window): close its tab so it doesn't linger showing
         -- "[exited]".  Event-driven off tabE — the same safe feedback path as
@@ -8364,12 +8376,23 @@ main showMenubar macTitlebar wid ctx = mdo
         -- Terminals branch off to the close menu, keyed by the BACKING
         -- session (unless the focused pane is a view — that closes above);
         -- everything else keeps decide-then-close.
+        -- (the session of the pane that really has the focus: a nested pane's
+        -- own, so its menu acts on it, not on the parent's panes)
+        -- …with its focused tmux WINDOW where there is one: a session can
+        -- back several leksah windows (a nested child shares its session with
+        -- the window it came from), so the session's own active pane may be
+        -- in another of them.
         termCloseReqE = fmapMaybe id $ attachWith
           (\i k -> case k of
-              TerminalKey n -> Just n
+              TerminalKey n -> Just (n, Nothing)
               LeksahWinKey n | Nothing <- leafOfTerm i n
-                             , not (isRemoteLw i n) ->
-                  M.lookup n (i ^. leksahWindows) >>= lwSession
+                             , not (isRemoteLw i n) -> do
+                  lw <- M.lookup (focusedLwOf (i ^. leksahWindows) n) (i ^. leksahWindows)
+                  sess <- lwSession lw
+                  let mw = case lwFocused lw >>= (`M.lookup` lwPanes lw) of
+                        Just (PaneContent (PaneTmux w) _) -> Just w
+                        _                                 -> Nothing
+                  return (sess, mw)
               _ -> Nothing)
           (current ide) closeTargetE
         -- A window on a REMOTE session has no close menu (its entries run
@@ -9256,8 +9279,10 @@ main showMenubar macTitlebar wid ctx = mdo
     -- Gather the focused tmux pane %id + the pane count of its current window
     -- (to choose the 4-option vs 2-option form).  No tmux / no pane → fall back
     -- to the old whole-terminal detach.
-    termGatheredE <- performEvent $ ffor termCloseReqE $ \sess -> liftIO $
-        (\mp c -> (sess, mp, c)) <$> activePaneId sess <*> paneCountOfSession sess
+    termGatheredE <- performEvent $ ffor termCloseReqE $ \(sess, mw) -> liftIO $
+        (\mp c -> (sess, mp, c))
+          <$> maybe (activePaneId sess) activePaneIdOfWindow mw
+          <*> maybe (paneCountOfSession sess) paneCountOfWindow mw
     let termMenuOpenE       = fmapMaybe (\(s,mp,c) -> (\p -> (s,p,c)) <$> mp) termGatheredE
         termFallbackDetachE = fmapMaybe (\(s,mp,_) -> if isNothing mp then Just [TerminalKey s] else Nothing) termGatheredE
     -- The menu renders INSIDE its target pane (paneWidget's slot), so CSS centres
@@ -9272,7 +9297,10 @@ main showMenubar macTitlebar wid ctx = mdo
         menuChoiceE = attachWithMaybe (\mt ch -> (\(s, p, _) -> (ch, s, p)) <$> mt)
                           (current closeMenuTargetD) closeChoiceE
         renderCloseMenu paneId multi = do
-          let opts | multi     = [ (TCHide,   "Hide Window")
+          -- A REMOTE pane (a nested one: its id is server-qualified) can only
+          -- be killed — hiding relies on the local reconcile's hidden list.
+          let opts | "ssh://" `T.isPrefixOf` paneId = [ (TCKill, "Kill Pane"), (TCCancel, "Cancel Close") ]
+                   | multi     = [ (TCHide,   "Hide Window")
                                  , (TCKill,   "Kill Pane")
                                  , (TCMove,   "Move Pane to Hidden Window")
                                  , (TCCancel, "Cancel Close") ]
@@ -9310,7 +9338,7 @@ main showMenubar macTitlebar wid ctx = mdo
           -- the focused pane — drives the existing shadow overlay (paneHlJs).
           performEvent_ $ ffor (leftmost [tag (current selD) pb, updated selD]) $ \s ->
               liftJSM . void $ jsg ("window" :: Text) ^. js2 ("leksahMenuShadow" :: Text)
-                  paneId (multi && fst (opts !! s) == TCHide)
+                  (rawTmuxId paneId) (multi && fst (opts !! s) == TCHide)
           let keyChoiceE = ffor (tag (current selD) enterE) $ \s -> fst (opts !! s)
               chE = leftmost [ clickE, keyChoiceE, TCCancel <$ escE ]
           performEvent_ $ ffor chE $ \ch -> do
@@ -9320,7 +9348,10 @@ main showMenubar macTitlebar wid ctx = mdo
         termHideE = fmapMaybe (\(ch,s,p) -> if ch == TCHide then Just (s, p)  else Nothing) menuChoiceE
         termMoveE = fmapMaybe (\(ch,s,p) -> if ch == TCMove then Just (s, p)  else Nothing) menuChoiceE
     -- Kill: just kill the pane (it vanishes from the live tree → flipper/tabs).
-    performEvent_ $ ffor termKillE $ liftIO . void . forkIO . killTmuxPaneId
+    -- (A remote pane's host tree is re-polled at once, so its windows follow.)
+    performEvent_ $ ffor termKillE $ \p -> liftIO . void . forkIO $ do
+        killTmuxPaneId p
+        when ("ssh://" `T.isPrefixOf` p) $ fireRemotePoke ()
     -- Hide: hide the focused pane's window.  Move: break the pane into a new
     -- window and hide THAT.  Both resolve to (session, windowIndex) → 'hiddenWindows'.
     hideWinE <- performEvent $ ffor termHideE $ \(s, p) -> liftIO $ fmap (\w -> (s, w)) <$> windowIndexOfPane p

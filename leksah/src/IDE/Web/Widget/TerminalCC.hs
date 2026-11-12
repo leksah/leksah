@@ -196,6 +196,8 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
     (linkE, triggerLink) <- newTriggerEvent
     (lookupE, triggerLookup) <- newTriggerEvent
     (bellE, triggerBell) <- newTriggerEvent
+    -- A nested child window's own window add/close (see the nested leaf).
+    (nestedTreeE, fireNestedTree) <- newTriggerEvent
     -- Hovering a file link in a pane's output asks the LSP layer for a tooltip
     -- (file diagnostics + a symbol hover when a line is known); the reply is
     -- fired here and pushed back into JS (LeksahTermLinks.resolveHover) on this
@@ -1284,7 +1286,10 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                                            pendingMountRef cellL mbFont pane rectD'
                                                            dimsD (M.lookup pane <$> tunnelGenD)
                                                            (void (ffilter (== pane) paneFocusE))
-                                                           closeMenuD renderCloseMenu
+                                                           -- (the menu's target is in model
+                                                           -- form: server-qualified when remote)
+                                                           (fmap (\(p, m) -> (unqual p, m)) <$> closeMenuD)
+                                                           (renderCloseMenu . qual)
                                             -- Repaint this window's panes when the leaf
                                             -- comes back into view (un-zoom): their xterms
                                             -- may have been built hidden (display:none) and
@@ -1401,8 +1406,16 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                       let isBell e = case e of
                                             TerminalBell -> True
                                             _            -> False
+                                          isTree e = case e of
+                                            TerminalTreeChanged -> True
+                                            _                   -> False
                                       performEvent_ $ ffor (ffilter isBell evs) $
                                           \_ -> liftIO (triggerBell ())
+                                      -- its windows coming and going re-poll
+                                      -- the trees (the IDE pokes the remote
+                                      -- poll for a tab holding remote children)
+                                      performEvent_ $ ffor (ffilter isTree evs) $
+                                          \_ -> liftIO (fireNestedTree ())
                             -- Focus entering this leaf makes it the layout's
                             -- focused leaf — the target of ⌘S/⌥⌘=/⌥⌘−/splits.
                             -- A mouse-DOWN counts too, because a click does not
@@ -1644,6 +1657,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
       -- pane set itself (fired from inside the session widget), else the
       -- ⌘-number offset (and tab badges) lag until the next unrelated poll.
       , TerminalTreeChanged <$ paneSetChangedE
+      , TerminalTreeChanged <$ nestedTreeE
       -- The active window closed: the IDE activates the ⌘1 button (below).
       , TerminalActiveWinClosed <$ activeWinClosedE
       -- A leksah-issued pane focus (⌘-number split select): float it to the MRU.
