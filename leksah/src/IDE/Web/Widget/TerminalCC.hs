@@ -86,7 +86,7 @@ import Control.Monad (forM, forM_, forever, unless, when, void)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64 as B64 (encode)
-import Data.Char (isAlphaNum, ord)
+import Data.Char (isAlphaNum, isDigit, ord)
 import Data.IORef
        (IORef, atomicModifyIORef', modifyIORef', newIORef, readIORef,
         writeIORef)
@@ -112,7 +112,7 @@ import Reflex.Dom.Core
         elAttr', elDynAttr, elDynAttr', listWithKey, text,
         widgetHold, _element_raw, EventName(Click, Keydown), (=:))
 import Language.Javascript.JSaddle
-       (JSM, JSVal, fun, js, js0, js1, js2, js3, js4, jsg,
+       (JSM, JSVal, eval, fun, js, js0, js1, js2, js3, js4, jsg,
         jss, liftJSM, new, obj, valIsNull, valIsUndefined, valToBool,
         valToNumber, valToText)
 
@@ -417,6 +417,33 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- the control client's current window/pane IS the displayed one.
             liftIO $ registerTerminalCC sessionId (ccSend cc)
                        >>= writeIORef ccRegIdRef
+            -- ⌘-drag inside a REMOTE tab.  The gesture (leafDragJs) is built
+            -- on leksah windows, which all live on the local tmux server, so a
+            -- remote tab publishes no split geometry and never took part.  What
+            -- it can do is rearrange its own panes: leafDragJs arms an 'rtmux'
+            -- drag there and, on release over another of the tab's panes, calls
+            -- this with (source pane, target pane, top/bottom?, before?) — a
+            -- move-pane over THIS tab's control connection, so it runs on the
+            -- remote server.  Re-registered on every (re)connect.
+            when isRemote $ do
+                pbDrop <- getPostBuild
+                performEvent_ $ ffor pbDrop $ \_ -> liftJSM $ do
+                    _ <- eval ("window.__leksahRemoteDrop = window.__leksahRemoteDrop || {};" :: Text)
+                    reg <- jsg ("__leksahRemoteDrop" :: Text)
+                    reg ^. jss lwId (fun $ \_ _ args -> case args of
+                        (sV : dV : vV : bV : _) -> do
+                            s <- valToText sV
+                            d <- valToText dV
+                            vert <- valToBool vV
+                            before <- valToBool bV
+                            let paneId p = case T.uncons p of
+                                    Just ('%', n) -> not (T.null n) && T.all isDigit n
+                                    _             -> False
+                            when (paneId s && paneId d && s /= d) . liftIO . void . forkIO $
+                                void $ ccCommand cc $ T.unwords $
+                                    ["move-pane"] <> ["-h" | not vert] <> ["-b" | before]
+                                    <> ["-s", s, "-t", d]
+                        _ -> return ())
             -- A tunnel closed (the app sent BYE or died): the xterm — which
             -- kept consuming non-frame output all along — comes back into
             -- view; refresh it from the pane's current screen.

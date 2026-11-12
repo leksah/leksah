@@ -4624,7 +4624,31 @@ leafDragJs = T.unlines
   , "    if (w0){ shadowTo(w0.rect[0], w0.rect[1], w0.rect[2], w0.rect[3]);"
   , "             st.lastDst = {kind:'window'}; return; }"
   , "    srcBox(); st.lastDst = {kind:'none'}; }"
+  -- A REMOTE tab's own panes (src kind 'rtmux'): it has no leksah-window
+  -- geometry, and its panes live on another machine's tmux server, so the only
+  -- moves are among the tab's own panes — the same per-pane halves as
+  -- 'tmuxCands', committed by the tab itself (TerminalCC registers
+  -- __leksahRemoteDrop[lw]) as a move-pane over its control connection.
+  -- Anywhere else parks the shadow on the source: releasing there is a no-op.
+  , "  function trackRemote(e){"
+  , "    var t = document.elementFromPoint(e.clientX, e.clientY);"
+  , "    var cc = t && t.closest && t.closest('.terminal-cc[data-lw]');"
+  , "    var cands = [];"
+  , "    if (cc && cc.getAttribute('data-lw') === st.srcLw){"
+  , "      var cr = cc.getBoundingClientRect();"
+  , "      cands = tmuxCands(t, [{p:[], leaf:st.srcLeaf}], cr,"
+  , "                        e.clientX - cr.left, e.clientY - cr.top,"
+  , "                        {srcKind:'tmux', srcPane:st.srcPane}); }"
+  , "    var best = null;"
+  , "    cands.forEach(function(c){ halves(c).forEach(function(k){"
+  , "      var d = dist(e.clientX - cr.left, e.clientY - cr.top,"
+  , "                   k.rect[0]+k.rect[2]/2, k.rect[1]+k.rect[3]/2);"
+  , "      if (!best || d < best.d) best = {d:d, k:k, pane:c.tp.pane}; }); });"
+  , "    if (!best){ srcBox(); st.lastDst = {kind:'none'}; return; }"
+  , "    shadowTo(cr.left+best.k.rect[0], cr.top+best.k.rect[1], best.k.rect[2], best.k.rect[3]);"
+  , "    st.lastDst = {kind:'rpane', pane:best.pane, v:best.k.v, after:best.k.after}; }"
   , "  function track(e){"
+  , "    if (st.srcKind==='rtmux') return trackRemote(e);"
   -- What is under the POINTER, not what the event calls its target.  An editor
   -- runs its own pointer monitor for drag-select and takes pointer capture with
   -- it, which retargets every mousemove of the drag back to the editor: e.target
@@ -4736,6 +4760,11 @@ leafDragJs = T.unlines
   -- The trailing click (dispatched between mouseup and this timeout) is
   -- swallowed; then the guard goes away so the NEXT click is real.
   , "    setTimeout(function(){ document.removeEventListener('click', swallow, true); }, 0);"
+  , "    if (st.srcKind==='rtmux'){"
+  , "      var rf = (window.__leksahRemoteDrop||{})[st.srcLw], rs = st.srcPane;"
+  , "      st = null;"
+  , "      if (dst && dst.kind==='rpane' && rf) rf(rs, dst.pane, !!dst.v, !!dst.after);"
+  , "      return; }"
   , "    var payload = { src: (st.srcKind==='tmux') ? {lw:st.srcLw, leaf:st.srcLeaf, pane:st.srcPane}"
   , "                       : (st.srcKind==='pane') ? {lw:st.srcLw, leaf:st.srcLeaf}"
   , "                       : {tab:st.srcTab},"
@@ -4816,6 +4845,16 @@ leafDragJs = T.unlines
   , "              && e.clientY>=hr.top && e.clientY<=hr.bottom){"
   , "            src.kind='tmux'; src.pane=hls[hi].getAttribute('data-pane');"
   , "            src.el=hls[hi]; break; } } }"
+  -- A remote tab: no geometry, but its own panes can be rearranged ('trackRemote').
+  , "    } else if (leaf && cc && (window.__leksahRemoteDrop||{})[cc.getAttribute('data-lw')]){"
+  , "      var rh = leaf.querySelectorAll('.terminal-cc-hl[data-pane]');"
+  , "      for (var ri=0; rh.length > 1 && ri<rh.length; ri++){"
+  , "        var rr = rh[ri].getBoundingClientRect();"
+  , "        if (e.clientX>=rr.left && e.clientX<=rr.right"
+  , "            && e.clientY>=rr.top && e.clientY<=rr.bottom){"
+  , "          src = {kind:'rtmux', lw:cc.getAttribute('data-lw'),"
+  , "                 leaf:parseInt(leaf.getAttribute('data-leaf'),10),"
+  , "                 pane:rh[ri].getAttribute('data-pane'), el:rh[ri]}; break; } }"
   , "    } else {"
   -- The tab ROW first: a plain tab's BUTTON is the obvious handle to pick its
   -- pane up by — for an editor sharing the area with other tabs it is the only
