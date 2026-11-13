@@ -149,48 +149,14 @@
         "type": "github"
       }
     },
-    "ghcjs-base-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1794397172,
-        "narHash": "sha256-01u5MJUDkUGjOzLuIAQPOEG3Uln7Apu59+qqM6SidQI=",
-        "owner": "ghcjs",
-        "repo": "ghcjs-base",
-        "rev": "d011bf93e1609af70c7182054fc3d1f6900e0db4",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ghcjs",
-        "repo": "ghcjs-base",
-        "rev": "d011bf93e1609af70c7182054fc3d1f6900e0db4",
-        "type": "github"
-      }
-    },
-    "ghcjs-dom-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1794366668,
-        "narHash": "sha256-IuemFU0+rbwKEV73Kcw2mdbOFPHKwEolCY/SqUnAVxs=",
-        "owner": "ghcjs",
-        "repo": "ghcjs-dom",
-        "rev": "f0a3d8fefc79a734cdc102c0922d15ee8bf8ea28",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ghcjs",
-        "repo": "ghcjs-dom",
-        "rev": "f0a3d8fefc79a734cdc102c0922d15ee8bf8ea28",
-        "type": "github"
-      }
-    },
     "hackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1794112627,
-        "narHash": "sha256-DQmcpf5tdYhg4+pEreEi1Hz/iY8sq7m2S2DaygswRL0=",
+        "lastModified": 1794418193,
+        "narHash": "sha256-ehdj/BKbWR+UPOmoBCaBlfxfsI1XgJmmgjV8+H8wPWU=",
         "owner": "input-output-hk",
         "repo": "hackage.nix",
-        "rev": "3d4b75e9523f363ca8c5a4be82421251c06ea2d7",
+        "rev": "e293f718e98237626279803ab05c48e4ca780bf0",
         "type": "github"
       },
       "original": {
@@ -650,37 +616,20 @@
         "type": "github"
       }
     },
-    "jsaddle-dom-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1794366667,
-        "narHash": "sha256-M1K7EDKkDICftVy1qNEhREagT3JL47Mk6MdLbrZ0K2w=",
-        "owner": "ghcjs",
-        "repo": "jsaddle-dom",
-        "rev": "8855bb6935d82571e943ab2e01d83072974bd2c5",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ghcjs",
-        "repo": "jsaddle-dom",
-        "rev": "8855bb6935d82571e943ab2e01d83072974bd2c5",
-        "type": "github"
-      }
-    },
     "jsaddle-terminal-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1794398028,
+        "lastModified": 1794399529,
         "narHash": "sha256-/uinzGN3sBhNjczkwW3bVW86tVM35iPTigvOj4ZK6fM=",
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "23e748b94c64e39a6a09b3309d87675b5b4fd43c",
+        "rev": "8cba4b691f6f75c47d2517c61956ab5de6d9656f",
         "type": "github"
       },
       "original": {
         "owner": "ghcjs",
         "repo": "jsaddle",
-        "rev": "23e748b94c64e39a6a09b3309d87675b5b4fd43c",
+        "rev": "8cba4b691f6f75c47d2517c61956ab5de6d9656f",
         "type": "github"
       }
     },
@@ -867,12 +816,9 @@
         "ffcabal-src": "ffcabal-src",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
-        "ghcjs-base-src": "ghcjs-base-src",
-        "ghcjs-dom-src": "ghcjs-dom-src",
         "haskellNix": "haskellNix",
         "hls-github": "hls-github",
         "hyper-linux": "hyper-linux_2",
-        "jsaddle-dom-src": "jsaddle-dom-src",
         "jsaddle-terminal-src": "jsaddle-terminal-src",
         "nixpkgs": [
           "haskellNix",

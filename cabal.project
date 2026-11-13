@@ -6,7 +6,7 @@
 
 -- Pin Hackage to the snapshot haskell.nix built the dev shell from: the
 -- newest upload in the snapshot named by the newest entry of its hackage.nix
--- input's index-state-hashes.nix.  That entry is a day label (2026-11-08T00:00:00Z)
+-- input's index-state-hashes.nix.  That entry is a day label (2026-11-11T00:00:00Z)
 -- and cabal rejects any time after the snapshot's last upload; the nix eval
 -- error ("Latest known index-state ... is older than the requested") prints
 -- the exact time to use.  Without
@@ -16,7 +16,7 @@
 -- instead of reusing the shell's store.  Bump this together with the
 -- haskell.nix pin; cabal inside the shell needs an index at least this new
 -- (`cabal update`).
-index-state: 2026-11-07T22:48:03Z
+index-state: 2026-11-11T17:26:35Z
 
 packages:
  leksah/
@@ -43,64 +43,26 @@ source-repository-package
   location: https://github.com/leksah/ffcabal
   tag: ad54e7188587423e60d34b76334b526f5e36deed
 
--- jsaddle (core), jsaddle-wkwebview, jsaddle-terminal, jsaddle-webkitgtk
--- (GTK4/WebKitGTK 6.0) and jsaddle-webview2 (Windows) come from the jsaddle
--- monorepo.  We build jsaddle core from source (not Hackage) for
--- runJavaScriptWithSerializer, which jsaddle-wkwebview uses to serialise the
--- batch round-trip across windows sharing the one Cocoa main queue; this means
--- the reflex-dom stack rebuilds against it.  wkwebview/webkitgtk/webview2 are
--- buildable only on their own platforms (guards in their .cabal files).
--- For nix the location+tag is resolved to a flake input via inputMap in
--- flake.nix (no network fetch during pure eval).
--- Pinned to the dom-gen-regenerate branch: jsaddle master (fdf66f5, which has
--- everything leksah needs: PRs #168, #169, #170, #171, #173) plus jsaddle
--- 0.9.10.0's Int53/Word53 and the non-orphan Object/JSArray instances that
--- jsaddle-dom 0.10 needs, and the Hackage version bumps (jsaddle-wkwebview
--- 0.9.10.0, needing jsaddle >= 0.9.10.0; jsaddle-webkitgtk 0.10.0.0).  What the master PRs added, in
--- case a bisect lands here: registered ObjC↔Haskell callbacks + the
--- objc-in-library flag that leksah.sh --ghci needs (GHCi's RTS linker can't
--- register ObjC classes, so the ObjC is preloaded as dylibs);
--- jsaddleWebViewInvalidate, which lets leksah detach a jsaddle context so a
--- released webview's WebContent process can exit (a reload leak in ghci mode);
--- a TChan for batch results (an unbounded blocked-thread leak); three ObjC
--- over-retain fixes; a single Cocoa translation unit so dependents' TH
--- splices can load the library at all; and (#173) invalidation under the
--- shared batch lock, so closing one window can't freeze the others.
+-- jsaddle 0.9.10.0, jsaddle-wkwebview 0.9.10.0, jsaddle-webkitgtk 0.10.0.0,
+-- jsaddle-warp 0.9.9.7, jsaddle-dom / ghcjs-dom / ghcjs-dom-jsaddle 0.10.0.0
+-- and ghcjs-base 0.8.1.0 come from Hackage (the lower bounds in
+-- leksah.cabal keep the solver off the pre-0.10 DOM stack and pre-0.9.10
+-- jsaddle).  jsaddle-terminal and jsaddle-webview2 (Windows; buildable only
+-- there) have never been released, so they still come from the jsaddle
+-- monorepo, at master.  For nix the location+tag is resolved to a flake input
+-- via inputMap in flake.nix (no network fetch during pure eval).
 source-repository-package
   type: git
   location: https://github.com/ghcjs/jsaddle
-  tag: 23e748b94c64e39a6a09b3309d87675b5b4fd43c
-  subdir: jsaddle
-          jsaddle-wkwebview
-          jsaddle-terminal
-          jsaddle-webkitgtk
+  tag: 8cba4b691f6f75c47d2517c61956ab5de6d9656f
+  subdir: jsaddle-terminal
           jsaddle-webview2
 
--- jsaddle-dom / ghcjs-dom 0.10, regenerated from the current webref IDL and
--- MDN browser-compat-data (dom-gen-regenerate branches; not on Hackage yet).
--- ghcjs-base 0.8.1 is what jsaddle 0.9.10 needs on the JS backend; it is
--- buildable only there, so natively this pin is inert.  For nix each
--- location+tag is mapped to a flake input via inputMap in flake.nix.
-source-repository-package
-  type: git
-  location: https://github.com/ghcjs/jsaddle-dom
-  tag: 8855bb6935d82571e943ab2e01d83072974bd2c5
-
-source-repository-package
-  type: git
-  location: https://github.com/ghcjs/ghcjs-dom
-  tag: f0a3d8fefc79a734cdc102c0922d15ee8bf8ea28
-  subdir: ghcjs-dom
-          ghcjs-dom-jsaddle
-
-source-repository-package
-  type: git
-  location: https://github.com/ghcjs/ghcjs-base
-  tag: d011bf93e1609af70c7182054fc3d1f6900e0db4
-
--- reflex-dom-core 0.9.0.0: the reflex-dom develop branch plus the port to
--- ghcjs-dom 0.10 (a major bump, since its API exposes the changed DOM types), with a manual `jsffi` flag
--- mirroring ghcjs-dom's; see the arch(javascript) constraints below.
+-- reflex-dom-core 0.9.0.0 is NOT on Hackage yet (reflex-frp/reflex-dom#509):
+-- the reflex-dom develop branch plus the port to ghcjs-dom 0.10 (a major bump,
+-- since its API exposes the changed DOM types), with a manual `jsffi` flag
+-- mirroring ghcjs-dom's; see the arch(javascript) constraints below.  Switch
+-- to Hackage once it is released.
 source-repository-package
   type: git
   location: https://github.com/ghcjs/reflex-dom
