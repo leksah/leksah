@@ -152,15 +152,15 @@
     "hackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1794418193,
-        "narHash": "sha256-ehdj/BKbWR+UPOmoBCaBlfxfsI1XgJmmgjV8+H8wPWU=",
-        "owner": "input-output-hk",
+        "lastModified": 1794633218,
+        "narHash": "sha256-fnuCLccsKpSNcNdTa7U1Iax/4RnBHNnCfBSIy4WaZT8=",
+        "owner": "ican-group",
         "repo": "hackage.nix",
-        "rev": "e293f718e98237626279803ab05c48e4ca780bf0",
+        "rev": "4205256efc1de5936f4819398fb733794787749b",
         "type": "github"
       },
       "original": {
-        "owner": "input-output-hk",
+        "owner": "ican-group",
         "repo": "hackage.nix",
         "type": "github"
       }
@@ -168,15 +168,15 @@
     "hackage-for-stackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1794112587,
-        "narHash": "sha256-PyOVGkb8YyR8YvNcbQJtZF8FJD7Yw8cZ0pO06BEsMI8=",
-        "owner": "input-output-hk",
+        "lastModified": 1794633179,
+        "narHash": "sha256-VEW9iUOkKJJekJHIoX4jEbdQls2q+RkOYQY+jviqKYc=",
+        "owner": "ican-group",
         "repo": "hackage.nix",
-        "rev": "43511004322701e2b1d12150f0a09cc12372e0de",
+        "rev": "a04ba630d80d1fac06347b426144f18c4fe7bb8d",
         "type": "github"
       },
       "original": {
-        "owner": "input-output-hk",
+        "owner": "ican-group",
         "ref": "for-stackage",
         "repo": "hackage.nix",
         "type": "github"
@@ -187,13 +187,13 @@
       "locked": {
         "lastModified": 1750307553,
         "narHash": "sha256-iiafNoeLHwlSLQTyvy8nPe2t6g5AV4PPcpMeH/2/DLs=",
-        "owner": "input-output-hk",
+        "owner": "ican-group",
         "repo": "hackage.nix",
         "rev": "f7867baa8817fab296528f4a4ec39d1c7c4da4f3",
         "type": "github"
       },
       "original": {
-        "owner": "input-output-hk",
+        "owner": "ican-group",
         "repo": "hackage.nix",
         "type": "github"
       }
@@ -260,11 +260,11 @@
         "stackage": "stackage"
       },
       "locked": {
-        "lastModified": 1794175066,
-        "narHash": "sha256-ojNKsc12z89oBsQPQSYpB5BODRf4piZ28mgQa7ddxjA=",
+        "lastModified": 1794654744,
+        "narHash": "sha256-oeIpuMB7TkM/Y3ln0GftsnOGu8d1HuBiI9fMO9VsrA0=",
         "owner": "input-output-hk",
         "repo": "haskell.nix",
-        "rev": "45cf4a2f5f4b72a34141bb2f6c1fbdaabc47f984",
+        "rev": "88d7649ecad5bb5ad37c1a58db835c80c6b7ac7e",
         "type": "github"
       },
       "original": {
@@ -616,23 +616,6 @@
         "type": "github"
       }
     },
-    "jsaddle-terminal-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1794399529,
-        "narHash": "sha256-/uinzGN3sBhNjczkwW3bVW86tVM35iPTigvOj4ZK6fM=",
-        "owner": "ghcjs",
-        "repo": "jsaddle",
-        "rev": "8cba4b691f6f75c47d2517c61956ab5de6d9656f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ghcjs",
-        "repo": "jsaddle",
-        "rev": "8cba4b691f6f75c47d2517c61956ab5de6d9656f",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1771008912,
@@ -819,7 +802,6 @@
         "haskellNix": "haskellNix",
         "hls-github": "hls-github",
         "hyper-linux": "hyper-linux_2",
-        "jsaddle-terminal-src": "jsaddle-terminal-src",
         "nixpkgs": [
           "haskellNix",
           "nixpkgs-unstable"
@@ -830,15 +812,15 @@
     "stackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1794024259,
-        "narHash": "sha256-1XjknkUH8ENHQaoWSO+M3US7/vJsEYjMgBVdci9DBmI=",
-        "owner": "input-output-hk",
+        "lastModified": 1794630593,
+        "narHash": "sha256-9oVgJdaHpT1QfyZN7Sc7YyGVsFkn8oWx5nyjtj1/1jM=",
+        "owner": "ican-group",
         "repo": "stackage.nix",
-        "rev": "2b2df46b0dbe0f415c3c69a42f922f9f2a473e91",
+        "rev": "d6fa6be2ea5da74579f90c0ef3a5352d64ed2c45",
         "type": "github"
       },
       "original": {
-        "owner": "input-output-hk",
+        "owner": "ican-group",
         "repo": "stackage.nix",
         "type": "github"
       }

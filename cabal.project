@@ -6,7 +6,7 @@
 
 -- Pin Hackage to the snapshot haskell.nix built the dev shell from: the
 -- newest upload in the snapshot named by the newest entry of its hackage.nix
--- input's index-state-hashes.nix.  That entry is a day label (2026-11-11T00:00:00Z)
+-- input's index-state-hashes.nix.  That entry is a day label (2026-11-14T00:00:00Z)
 -- and cabal rejects any time after the snapshot's last upload; the nix eval
 -- error ("Latest known index-state ... is older than the requested") prints
 -- the exact time to use.  Without
@@ -16,7 +16,7 @@
 -- instead of reusing the shell's store.  Bump this together with the
 -- haskell.nix pin; cabal inside the shell needs an index at least this new
 -- (`cabal update`).
-index-state: 2026-11-11T17:26:35Z
+index-state: 2026-11-14T01:29:20Z
 
 packages:
  leksah/
@@ -43,20 +43,12 @@ source-repository-package
   location: https://github.com/leksah/ffcabal
   tag: ad54e7188587423e60d34b76334b526f5e36deed
 
--- jsaddle 0.9.10.0, jsaddle-wkwebview 0.9.10.0, jsaddle-webkitgtk 0.10.0.0,
--- jsaddle-warp 0.9.9.7, jsaddle-dom / ghcjs-dom / ghcjs-dom-jsaddle 0.10.0.0
--- and ghcjs-base 0.8.1.0 come from Hackage (the lower bounds in
--- leksah.cabal keep the solver off the pre-0.10 DOM stack and pre-0.9.10
--- jsaddle).  jsaddle-terminal and jsaddle-webview2 (Windows; buildable only
--- there) have never been released, so they still come from the jsaddle
--- monorepo, at master.  For nix the location+tag is resolved to a flake input
--- via inputMap in flake.nix (no network fetch during pure eval).
-source-repository-package
-  type: git
-  location: https://github.com/ghcjs/jsaddle
-  tag: 8cba4b691f6f75c47d2517c61956ab5de6d9656f
-  subdir: jsaddle-terminal
-          jsaddle-webview2
+-- The whole jsaddle / DOM stack comes from Hackage: jsaddle 0.9.10.0,
+-- jsaddle-wkwebview 0.9.10.0, jsaddle-webkitgtk 0.10.0.0, jsaddle-warp
+-- 0.9.9.7, jsaddle-terminal and jsaddle-webview2 0.1.0.0, jsaddle-dom /
+-- ghcjs-dom / ghcjs-dom-jsaddle 0.10.0.0 and ghcjs-base 0.8.1.0 (the lower
+-- bounds in leksah.cabal keep the solver off the pre-0.10 DOM stack and
+-- pre-0.9.10 jsaddle).
 
 -- reflex-dom-core 0.9.0.0 is NOT on Hackage yet (reflex-frp/reflex-dom#509):
 -- the reflex-dom develop branch plus the port to ghcjs-dom 0.10 (a major bump,

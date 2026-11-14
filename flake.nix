@@ -16,12 +16,6 @@
   inputs.hyper-linux.url = "github:zw3rk/hyper-linux";
   inputs.flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   inputs.flake-utils.url = "github:numtide/flake-utils";
-  # jsaddle-terminal and jsaddle-webview2 are not on Hackage, so they come from
-  # the jsaddle monorepo; wire it so the haskell.nix planner resolves the
-  # source-repository-package in cabal.project without a network fetch (pure
-  # eval).
-  inputs.jsaddle-terminal-src.url = "github:ghcjs/jsaddle/8cba4b691f6f75c47d2517c61956ab5de6d9656f";
-  inputs.jsaddle-terminal-src.flake = false;
   # reflex-dom-core 0.9.0.0, not on Hackage yet (see cabal.project).
   inputs.reflex-dom-src.url = "github:ghcjs/reflex-dom/e57a114c5121b8fecf9eece3ee196d28120e908a";
   inputs.reflex-dom-src.flake = false;
@@ -92,7 +86,6 @@
                 # inputs so the haskell.nix planner resolves them without a
                 # network fetch (pure eval).
                 inputMap = {
-                  "https://github.com/ghcjs/jsaddle/8cba4b691f6f75c47d2517c61956ab5de6d9656f" = inputs.jsaddle-terminal-src;
                   "https://github.com/ghcjs/reflex-dom/e57a114c5121b8fecf9eece3ee196d28120e908a" = inputs.reflex-dom-src;
                   "https://github.com/leksah/ffcabal/ad54e7188587423e60d34b76334b526f5e36deed" = inputs.ffcabal-src;
                 };
