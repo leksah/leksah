@@ -16,7 +16,12 @@
 --   * full: the same head, then its bio (else its description), the facts
 --     leksah knows (checkout, branch, PR, who started it, whom it started, how
 --     long it has been going), what it last said, its done summary, and the
---     actions (show, message, refresh, suspend\/resume, rename).
+--     actions (branch off, refresh, suspend\/resume, forget, rename).
+--
+-- A click anywhere on a card brings its agent's pane up (or resumes it) —
+-- except on its own controls (buttons, links, the rename field) and except a
+-- click that ends a text selection, so the bio and what it said stay
+-- selectable.
 --
 -- Whether a card is full is up to the caller ('agentCard' takes a "must be
 -- full" 'Dynamic' — the Agents pane's top card) and to the user (⋯).
@@ -51,7 +56,7 @@ import Reflex.Dom.Core
         elAttr', elClass, elDynAttr, elDynAttr', elDynHtmlAttr',
         elementConfig_initialAttributes, inputElement,
         inputElementConfig_elementConfig, inputElementConfig_initialValue,
-        keydown, keypress, text, EventName(..), (=:), _element_raw,
+        keydown, keypress, text, wrapDomEvent, EventName(..), (=:), _element_raw,
         _inputElement_element, _inputElement_hasFocus, _inputElement_value)
 import Language.Javascript.JSaddle (liftJSM)
 
@@ -60,7 +65,15 @@ import IDE.Web.AgentInfo (AgentNode(..))
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.Dom (focusElement)
 import GHCJS.DOM.HTMLInputElement (select)
-import GHCJS.DOM.Types (Element(..), HTMLInputElement(..), uncheckedCastTo)
+import GHCJS.DOM (currentWindowUnchecked)
+import GHCJS.DOM.Element (closest)
+import GHCJS.DOM.GlobalEventHandlers (click)
+import GHCJS.DOM.EventM (EventM, on, target)
+import GHCJS.DOM.Selection (getIsCollapsed)
+import GHCJS.DOM.Types
+       (Element(..), EventTarget(..), HTMLElement(..), HTMLInputElement(..),
+        PointerEvent, uncheckedCastTo)
+import GHCJS.DOM.Window (getSelection)
 import IDE.Web.TextAssist (noTextAssist)
 
 -- | What a card's buttons do.  Each runs off the reflex thread.
@@ -87,13 +100,10 @@ agentCard acts mustD startOpen nD = mdo
   openD <- holdDyn startOpen (not <$> tag (current openD) moreE)
   fullD <- holdUniqDyn ((||) <$> mustD <*> openD)
   renamingD <- holdDyn False (leftmost [True <$ renameE, False <$ doneRenameE])
-  (moreE, headE, doneRenameE, bodyE) <-
-    elDynAttr "div" (cardAttrs <$> nD <*> fullD) $ do
-      (hd, mE, dE) <- divClass "agent-card-top" $ do
-        -- The face and the three lines are the card's handle: a click there
-        -- brings its agent up.  The ⋯ sits OUTSIDE it, so
-        -- opening a card is not also a click on it.
-        (h, d) <- elAttr' "div" ("class" =: "agent-card-handle") $ do
+  (cardEl, (moreE, doneRenameE, bodyE)) <-
+    elDynAttr' "div" (cardAttrs <$> nD <*> fullD) $ do
+      (mE, dE) <- divClass "agent-card-top" $ do
+        (_, d) <- elAttr' "div" ("class" =: "agent-card-handle") $ do
           -- The face, three text lines tall, with its state glyph as a badge.
           elClass "div" "agent-card-avatar" $ do
             void $ elDynHtmlAttr' "span" ("class" =: "agent-card-face") (faceOf <$> nD)
@@ -118,13 +128,25 @@ agentCard acts mustD startOpen nD = mdo
             return d'
         (b, _) <- elDynAttr' "button" (moreAttrs <$> fullD <*> mustD) $
           dynText ((\f -> if f then "▴" else "⋯") <$> fullD)
-        return (domEvent Click h, domEvent Click b, d)
+        return (domEvent Click b, d)
       -- The rest only while full.
       bE <- switchHold never =<< dyn (ffor fullD $ \full ->
         if full then fullBody else return never)
-      return (mE, hd, dE, bE)
+      return (mE, dE, bE)
+  -- A click anywhere on the card that is not on one of its controls (the ⋯,
+  -- the action buttons, a link, the rename field) and does not end a text
+  -- selection.
+  cardClickE <- fmap (ffilter id) . wrapDomEvent (uncheckedCastTo HTMLElement (_element_raw cardEl)) (`on` click) $ do
+    t <- target :: EventM HTMLElement PointerEvent (Maybe EventTarget)
+    onControl <- case t of
+      Nothing -> return False
+      Just el -> isJust <$> closest (uncheckedCastTo Element el)
+                   ("button, a, input, textarea, .agent-link" :: Text)
+    selected <- getSelection =<< currentWindowUnchecked
+    collapsed <- maybe (return True) getIsCollapsed selected
+    return (not onControl && collapsed)
   let renameE = bodyE
-      clickE  = gate (not <$> current renamingD) headE
+      clickE  = gate (not <$> current renamingD) (() <$ cardClickE)
   performEvent_ $ ffor (tagPromptlyDyn nD clickE) $ \n ->
     liftIO . void . forkIO $ caOpen acts n
   where
@@ -199,7 +221,6 @@ agentCard acts mustD startOpen nD = mdo
           text (T.take 600 t)
       -- The actions.
       divClass "agent-card-actions" $ do
-        showE    <- btn "Show" (const True)
         branchE  <- btn "Branch off" anLive
         refreshE <- btn "Refresh" anLive
         suspendE <- btn "Suspend" anLive
@@ -208,7 +229,6 @@ agentCard acts mustD startOpen nD = mdo
         renE     <- btn "Rename" (const True)
         let run f e = performEvent_ $ ffor (tagPromptlyDyn nD e) $ \n ->
               liftIO . void . forkIO $ f n
-        run (caOpen acts) showE
         run (caBranch acts) branchE
         run (caRefresh acts) refreshE
         run (caSuspend acts) suspendE
@@ -370,6 +390,10 @@ agentCardCss = do
     "font-size" -: "12px"
     "line-height" -: "1.35"
     "min-width" -: "0"
+    -- The whole card is the click target that brings its agent up.
+    "cursor" -: "pointer"
+  ".agent-card button, .agent-card input" ? ("cursor" -: "auto")
+  ".agent-card .agent-card-bio, .agent-card .agent-card-said" ? ("cursor" -: "text")
   ".agent-card.agent-card-manager" ?
     ("border-color" -: "#a371f7")
   ".agent-card.agent-card-gone" ? ("opacity" -: "0.6")
@@ -383,7 +407,6 @@ agentCardCss = do
     "gap" -: "8px"
     "flex" -: "1 1 auto"
     "min-width" -: "0"
-    "cursor" -: "default"
   ".agent-card .agent-card-avatar" ? do
     "position" -: "relative"
     "flex" -: "0 0 auto"
