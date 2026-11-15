@@ -4658,6 +4658,10 @@ leafDragJs = T.unlines
   , "  function pickAt(cx, cy, src){"
   , "    var t = document.elementFromPoint(cx, cy);"
   , "    if (!t || !t.closest) return null;"
+  -- This window's tab row: a window (tab) of its own, as in the local track.
+  , "    var strip = t.closest('.tab-buttons.area-wide0');"
+  , "    if (strip){ var sr = strip.getBoundingClientRect();"
+  , "      return {dst:{kind:'window'}, rect:[sr.left, sr.top, sr.width, sr.height]}; }"
   , "    var cc = t.closest('.terminal-cc[data-lw]');"
   -- No leksah window under the pointer, but still inside the editor area: the
   -- whole area is the target and the drop opens the pane as a NEW tab here.
@@ -4853,22 +4857,24 @@ leafDragJs = T.unlines
   , "    publishMove(null);"
   , "    var t = document.elementFromPoint(e.clientX, e.clientY) || e.target;"
   , "    if (!t || !t.closest) { srcBox(); st.lastDst = {kind:'none'}; return; }"
-  -- The wide0 tab row: peek the hovered tab (dwell 150ms) so the user can
-  -- drag on into its body.
-  , "    var tw = t.closest('.tab-buttons.area-wide0 .tab-wrap[data-tabkey]');"
-  , "    if (tw){"
-  -- Back over the button the drag STARTED from: park, don't peek at ourselves.
-  , "      if (st.srcKind==='tab' && tw.getAttribute('data-tabkey')===st.srcTab){"
-  , "        clearPeekHl(); srcBox(); st.lastDst = {kind:'none'}; return; }"
-  , "      if (st.peekEl !== tw){ clearPeekHl();"
+  -- The wide0 tab ROW, anywhere on it: a drop there makes the pane a window
+  -- (tab) of its own.  Hovering a tab still peeks it (dwell 150ms), so the
+  -- user can drag on down into its body to drop beside its panes instead.
+  , "    var strip = t.closest('.tab-buttons.area-wide0');"
+  , "    if (strip){"
+  , "      var tw = t.closest('.tab-wrap[data-tabkey]');"
+  -- Back over the button the drag STARTED from: don't peek at ourselves.
+  , "      if (!tw || (st.srcKind==='tab' && tw.getAttribute('data-tabkey')===st.srcTab)){"
+  , "        clearPeekHl();"
+  , "      } else if (st.peekEl !== tw){ clearPeekHl();"
   , "        st.peekEl = tw; tw.classList.add('leksah-drag-peek');"
   , "        var key = tw.getAttribute('data-tabkey');"
   , "        st.peekTimer = setTimeout(function(){"
   , "          if (window.leksahLeafPeek) window.leksahLeafPeek(key); }, 150);"
   , "      }"
-  , "      var r = tw.getBoundingClientRect();"
+  , "      var r = strip.getBoundingClientRect();"
   , "      shadowTo(r.left, r.top, r.width, r.height);"
-  , "      st.lastDst = {kind:'tab', tab: tw.getAttribute('data-tabkey')};"
+  , "      st.lastDst = {kind:'window'};"
   , "      return; }"
   , "    clearPeekHl();"
   -- Inside a leksah-window container: the candidate-split preview.
@@ -5037,8 +5043,26 @@ leafDragJs = T.unlines
   , "    var el = pane ? (shown(pe) ? pe : wrap) : (shown(le) ? le : wrap);"
   , "    return pane ? {kind:'tmux', lw:lw, leaf:leaf, pane:pane, el:el}"
   , "                : {kind:'pane', lw:lw, leaf:leaf, el:el}; }"
+  -- An agent's card in the Agents pane picks up that agent's pane (no ⌘),
+  -- found by name in __leksahAgentPanes.  Not from its controls (buttons,
+  -- links, the rename field) or its selectable text (bio, last said), which
+  -- keep their own behaviour; below the threshold it is the card's click.
+  , "  function agentCardSource(e){"
+  , "    var t = e.target; if (!t || !t.closest) return null;"
+  , "    var card = t.closest('.agent-card[data-agent-name]');"
+  , "    if (!card || t.closest('button, a, input, textarea, .agent-link, .agent-card-bio, .agent-card-said')) return null;"
+  , "    var info = (window.__leksahAgentPanes||{})[card.getAttribute('data-agent-name')];"
+  , "    if (!info || !(window.__leksahLwSrc||{})[info.lw]) return null;"
+  , "    var cc = document.querySelector('.terminal-cc[data-lw=\"' + info.lw + '\"]');"
+  , "    var le = cc && cc.querySelector('.terminal-cc-leaf[data-leaf=\"' + info.leaf + '\"]');"
+  , "    var pe = info.pane && le && le.querySelector('.terminal-cc-hl[data-pane=\"' + info.pane + '\"]');"
+  , "    function shown(x){ if (!x) return false; var r = x.getBoundingClientRect();"
+  , "      return r.width > 2 || r.height > 2; }"
+  , "    var el = info.pane ? (shown(pe) ? pe : card) : (shown(le) ? le : card);"
+  , "    return info.pane ? {kind:'tmux', lw:info.lw, leaf:info.leaf, pane:info.pane, el:el}"
+  , "                     : {kind:'pane', lw:info.lw, leaf:info.leaf, el:el}; }"
   , "  document.addEventListener('mousedown', function(e){"
-  , "    var tabSrc = e.button === 0 ? lwTabSource(e) : null;"
+  , "    var tabSrc = e.button === 0 ? (lwTabSource(e) || agentCardSource(e)) : null;"
   , "    if (e.button !== 0 || (!e[MOD] && !tabSrc)) return;"
   -- Arming state that outlived its gesture (a native drag that slipped past
   -- both guards, a missed mouseup) must not deafen every later drag.
@@ -7408,6 +7432,31 @@ main showMenubar macTitlebar wid ctx = mdo
           <> "],srv:" <> maybe "null" jsQuote srv <> "}"
         | (i, lw) <- M.toList lws
         , let (_, _, srv, tmuxLeaves) = lwGeom lw ] <> "};"
+    -- Where each named agent's pane is, so dragging its card in the Agents
+    -- pane picks that pane up (see 'leafDragJs').  A Claude pane that shares
+    -- its tmux window with others moves on its own (the tmux pane id); a
+    -- canned agent shown as a terminal VIEW leaf (the browser demo) is that
+    -- leaf.
+    agentPanesD <- holdUniqDyn $ (\lws tree ->
+        M.fromListWith (\_ old -> old) $
+          [ (a, (lwi, l, if length (twPanes w) > 1 then Just (tpId pn) else Nothing))
+          | (s, (_, wins)) <- M.toList tree, w <- wins, pn <- twPanes w
+          , Just a <- [tpAgentName pn]
+          , Just (lwi, LeafId l) <- [flipPaneLeaf lws tree s (twIndex w)] ]
+          <>
+          [ (a, (lwi, l, Nothing))
+          | (lwi, lw) <- M.toList lws
+          , (LeafId l, PaneContent (PaneView (TerminalKey s)) _) <- M.toList (lwPanes lw)
+          , Just (_, wins) <- [M.lookup s tree], w <- wins, pn <- twPanes w
+          , Just a <- [tpAgentName pn] ])
+        <$> leksahWindowsD' <*> allTreeD
+    agentPanesPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [ updated agentPanesD
+                                   , tag (current agentPanesD) agentPanesPb ]) $ \m ->
+      liftJSM . void . eval $ "window.__leksahAgentPanes = {" <> T.intercalate ","
+        [ jsQuote a <> ":{lw:" <> jsQuote lwi <> ",leaf:" <> T.pack (show l)
+          <> ",pane:" <> maybe "null" jsQuote mp <> "}"
+        | (a, (lwi, l, mp)) <- M.toList m ] <> "};"
     -- The pane→owning-leksah-window resolver over the live maps, threaded to
     -- everything that maps flip items to buttons/tabs ('paneOwnerLw').
     let ownerOfD = paneOwnerLw <$> leksahWindowsD' <*> allTreeD
