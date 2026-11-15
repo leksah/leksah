@@ -253,6 +253,9 @@ cardAttrs n full =
      <> [ "agent-card-gone" | not (anLive n) ]
      <> [ "agent-card-manager" | anManager n ])
   <> "data-session" =: anSession n
+  -- The agent's pane, for dragging the card (see 'leafDragJs' in IDE.Web.Main,
+  -- which looks the name up in @window.__leksahAgentPanes@).
+  <> "data-agent-name" =: anName n
   <> "title" =: (anDetail n <> "\n" <> T.pack (anDir n) <> "\n" <> anSession n)
 
 faceOf :: AgentNode -> Text
