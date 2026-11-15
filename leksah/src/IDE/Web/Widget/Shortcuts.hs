@@ -11,7 +11,9 @@
 --   * \"Global\" — every always-available binding (the DOM keydown table);
 --   * \"Window & Pane Navigation\" — the @nav.*@ numbered chords, compressed
 --     to their ranges (⌘1–9);
---   * one group per menu that carries shortcuts (Terminal, AI, tmux hints…).
+--   * one group per menu that carries shortcuts (Terminal, AI, tmux hints…),
+--     with runs of numbered items (\"Window 0\" … \"Window 9\") collapsed the
+--     same way ('collapseNumbered').
 --
 -- The layout is a CSS multi-column flow: each group stays intact
 -- ('break-inside: avoid') and the groups reflow into as many columns as the
@@ -27,8 +29,8 @@ module IDE.Web.Widget.Shortcuts
   ) where
 
 import Control.Monad.IO.Class (liftIO)
-import Data.List (groupBy)
-import Data.Function (on)
+import Data.Char (isDigit)
+import Data.List (nub)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -73,14 +75,16 @@ globalGroup km =
     | b <- km, csWhen (bSpec b) == WhenAlways, not (isNav b) ])
 
 -- | The @nav.*@ chords, one row per (command, modifier set) with the digit
--- range compressed (⌘1–9); plus the flipper-commit note.
+-- range compressed (⌘1–9); plus the flipper-commit note.  Grouped by key, not
+-- by adjacency: the keymap interleaves the sets (⌘1, ⌥⌘1, ⌃⌘1, ⌘2, …), so
+-- grouping neighbours left one row per digit.
 navGroup :: Keymap -> Group
 navGroup km =
   ("Window & Pane Navigation",
-    [ row grp
-    | grp <- groupBy ((==) `on` navKey) [ b | b <- km, isNav b ] ]
+    [ row [ b | b <- navs, navKey b == k ] | k <- nub (map navKey navs) ]
     <> [ Chord "" "Hold the flip modifier, release to commit the tab flip" ])
   where
+    navs = [ b | b <- km, isNav b ]
     navKey b = (csId (bSpec b), T.dropEnd 1 (toGlyphs (bChord b)))
     row grp@(b0:_) =
         let glyphs0 = toGlyphs (bChord b0)
@@ -95,9 +99,43 @@ navGroup km =
 -- | Every menu that defines at least one shortcut, grouped by menu name.
 menuGroups :: Keymap -> [Group]
 menuGroups km =
-  [ (name, ls)
+  [ (name, collapseNumbered ls)
   | (name, items) <- renderedMenus km
   , let ls = concatMap menuLines items, not (null ls) ]
+
+-- | Collapse a run of numbered lines — consecutive rows whose chord and
+-- description both end in the same digit, counting up by one (tmux's
+-- \"⌃B 0  Window 0\" … \"⌃B 9  Window 9\") — into one row: \"⌃B 0–9  Window
+-- 0–9\".  Only runs of three or more, and only when the description names
+-- the same number as the key, so rows that merely share a key pattern
+-- (\"⌃B ⌥1 Even horizontal\" …) stay as they are.
+collapseNumbered :: [Line] -> [Line]
+collapseNumbered (l@(Chord g d) : rest)
+  | Just (gp, dp, n) <- numbered g d
+  , let run = takeRun gp dp (n + 1) rest
+  , length run >= 2 =
+      let lastN = n + length run
+          range = T.pack (show n) <> "–" <> T.pack (show lastN)
+      in Chord (gp <> range) (dp <> range) : collapseNumbered (drop (length run) rest)
+  | otherwise = l : collapseNumbered rest
+  where
+    takeRun gp dp k (x@(Chord g' d') : xs)
+      | Just (gp', dp', k') <- numbered g' d', gp' == gp, dp' == dp, k' == k
+      = x : takeRun gp dp (k + 1) xs
+    takeRun _ _ _ _ = []
+collapseNumbered (l : rest) = l : collapseNumbered rest
+collapseNumbered [] = []
+
+-- | A row whose chord and description end in the same single digit: the
+-- chord's prefix, the description's prefix and the digit.
+numbered :: Text -> Text -> Maybe (Text, Text, Int)
+numbered g d = case (T.unsnoc g, T.unsnoc d) of
+  (Just (gp, c), Just (dp, c'))
+    | c == c', isDigit c
+    , not (T.null gp), not (isDigit (T.last gp))
+    , not (T.null dp), not (isDigit (T.last dp))
+    -> Just (gp, dp, fromEnum c - fromEnum '0')
+  _ -> Nothing
 
 -- | The shortcut lines a menu item contributes.  'MenuShortcut' (the display
 -- \"hint\") already holds rendered glyphs; the real key equivalents
