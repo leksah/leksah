@@ -38,6 +38,7 @@ import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
        (any, null, pack, strip, takeWhile, lines)
+import qualified Data.Map.Strict as M
 import Data.Text.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import System.Exit (ExitCode(..))
@@ -48,7 +49,8 @@ import Reflex
 import Reflex.Dom.Core
        (elAttr, elAttr', elDynAttr, textInput, text, dynText, (=:), checkbox,
         Event, attributes, domEvent, EventName(..), _textInput_value,
-        _textInput_keydown, _checkbox_value, textInputConfig_setValue)
+        _textInput_keydown, _checkbox_value, textInputConfig_setValue,
+        textInputConfig_initialValue)
 
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config
@@ -82,6 +84,16 @@ addServerDialog = do
              <> "style" =: fieldStyle <> noTextAssist)
         -- The keyboard starts in the field (a just-built input is not focused).
         focusFieldJs "add-server-host" =<< delay 0.03 =<< getPostBuild
+        -- The tmux server leksah's terminals use there (tmux -L NAME); blank =
+        -- the host's default server.
+        sockTi <- elAttr "label" ("style" =: "display:flex;align-items:center;gap:6px;margin:8px 0 0 0;font-size:12px") $ do
+            text "tmux socket (-L)"
+            textInput $ def
+                & textInputConfig_initialValue .~ "leksah"
+                & attributes .~ constDyn
+                    ("placeholder" =: "blank = the host's default tmux server"
+                     <> "title" =: "The tmux -L socket name leksah's terminals use on this host"
+                     <> "style" =: (fieldStyle <> ";flex:1") <> noTextAssist)
         -- Wake-on-LAN: wake the machine when it doesn't answer (here, and
         -- whenever leksah connects to it later).
         wolCb <- elAttr "label" ("style" =: "display:flex;align-items:center;gap:6px;margin:8px 0 2px 0;font-size:12px") $ do
@@ -134,28 +146,32 @@ addServerDialog = do
         (cancelEl, _) <- elAttr' "button" ("style" =: btnStyle) $ text "Cancel"
         let wolD = (\on mac b -> if on then Just (mac, b) else Nothing)
                      <$> wolOnD <*> _textInput_value macTi <*> _textInput_value bcastTi
-            valsD = (,,) <$> _textInput_value hostTi <*> skipProbeD <*> wolD
+            valsD = (,,,) <$> _textInput_value hostTi <*> skipProbeD <*> wolD
+                          <*> _textInput_value sockTi
             -- Enter in a field = Add (keydown: keypress is unreliable for
             -- Enter in WKWebView).
             enterE = leftmost [ () <$ ffilter (== 13) (_textInput_keydown hostTi)
+                              , () <$ ffilter (== 13) (_textInput_keydown sockTi)
                               , () <$ ffilter (== 13) (_textInput_keydown macTi)
                               , () <$ ffilter (== 13) (_textInput_keydown bcastTi) ]
             submitE = leftmost [ domEvent Click addEl, enterE ]
         performEvent_ $ ffor (tag (current valsD) submitE) $
-            \(h, skip, wol) -> liftIO . void . forkIO $
-                addServerIO h skip wol fireProgress fireResult
+            \(h, skip, wol, sock) -> liftIO . void . forkIO $
+                addServerIO h skip wol sock fireProgress fireResult
         return $ leftmost
             [ ()  <$ domEvent Click cancelEl
             , fmapMaybe (either (const Nothing) Just) resultE ]
 
 -- | Do the actual work on a background thread: validate, probe (waking the
 -- machine first when Wake-on-LAN is on and it doesn't answer), add to the
--- 'rcHosts' setting (and its 'rcWake' entry); report progress, and Left
+-- 'rcHosts' setting (and its 'rcWake' and 'rcTmuxSockets' entries — a blank
+-- socket name removes the host's entry, so it uses its default tmux server);
+-- report progress, and Left
 -- (retriable, error) / Right () through the callbacks.  An ALREADY-listed
 -- host with Wake-on-LAN given just has its wake settings updated.
-addServerIO :: Text -> Bool -> Maybe (Text, Text) -> (Text -> IO ())
+addServerIO :: Text -> Bool -> Maybe (Text, Text) -> Text -> (Text -> IO ())
             -> (Either (Bool, Text) () -> IO ()) -> IO ()
-addServerIO host skipProbe mwol progress fire =
+addServerIO host skipProbe mwol sock progress fire =
     (`catch` \(e :: SomeException) -> fire (Left (False, T.pack (show e)))) $ do
       let h = T.strip host
           mwake = ffor mwol $ \(mac, b) ->
@@ -180,7 +196,10 @@ addServerIO host skipProbe mwol progress fire =
                     { cfgRemote = rc
                         { rcHosts = if known then rcHosts rc else rcHosts rc <> [h]
                         , rcWake  = maybe (rcWake rc)
-                            (\w -> filter ((/= h) . wolHost) (rcWake rc) <> [w]) mwake } }
+                            (\w -> filter ((/= h) . wolHost) (rcWake rc) <> [w]) mwake
+                        , rcTmuxSockets = if T.null (T.strip sock)
+                            then M.delete h (rcTmuxSockets rc)
+                            else M.insert h (T.strip sock) (rcTmuxSockets rc) } }
                 fire (Right ())
               -- …and that it can run tmux there (its own, or nix's).
               checkTmuxThenSave = do

@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 -- | Per-instance identity, so more than one leksah can run at once.
 --
 -- Three resources are otherwise single, fixed, and HOST-global — the
@@ -19,9 +20,13 @@ module IDE.Web.Instance
   , tmuxServerSocket
   ) where
 
+import Control.Exception (SomeException, try)
+import qualified Data.Text as T
 import System.Environment (lookupEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
+
+import IDE.Config (Config(..), TerminalC(..), readConfigFile)
 
 -- | The UI port used when @LEKSAH_PORT@ is unset — the historical default,
 -- kept so the normal single-instance dev loop (and everything that assumes
@@ -67,9 +72,22 @@ instanceTag
 cmdSocketFileName :: FilePath
 cmdSocketFileName = "cmd" <> instanceTag <> ".sock"
 
--- | The @tmux -L@ server-socket name leksah's terminals live on: @leksah@ for
--- the default instance, @leksah-\<port\>@ otherwise.  Using a distinct server
--- (not just distinct session names) puts a second instance's terminals on a
--- wholly separate tmux server, so neither can see or resize the other's panes.
+-- | The @tmux -L@ server-socket name leksah's terminals live on: the
+-- @terminal.tmuxSocket@ setting (Preferences ▸ Terminal; default @leksah@)
+-- for the default instance, with @-\<port\>@ appended otherwise.  Using a
+-- distinct server (not just distinct session names) puts a second instance's
+-- terminals on a wholly separate tmux server, so neither can see or resize the
+-- other's panes.
+--
+-- Read ONCE, at first use: every tmux call leksah makes, and the sessions
+-- already open on that server, have to agree on it, so a change in
+-- Preferences takes effect at the next start.
 tmuxServerSocket :: String
-tmuxServerSocket = "leksah" <> instanceTag
+tmuxServerSocket = configured <> instanceTag
+  where
+    configured = case T.unpack . T.strip . tcTmuxSocket . cfgTerminal . fst
+                        <$> unsafePerformIO (try readConfigFile) of
+      Right name | not (null name) -> name
+      Left (_ :: SomeException)    -> "leksah"
+      _                            -> "leksah"
+{-# NOINLINE tmuxServerSocket #-}

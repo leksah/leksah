@@ -48,6 +48,7 @@ import qualified Data.Aeson.Encode.Pretty as AP
 import qualified Data.Aeson.Key as Key
 import Data.Aeson.Types (Pair, Parser)
 import qualified Data.ByteString.Lazy as LBS
+import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -131,6 +132,9 @@ data TerminalC = TerminalC
     { tcFileLinks   :: Bool  -- ^ recognise file paths\/identifiers
     , tcControlMode :: Bool  -- ^ render terminals via tmux control mode
     , tcTmuxPrefix  :: Bool  -- ^ intercept the tmux prefix key in-page
+    , tcTmuxSocket  :: Text  -- ^ the @tmux -L@ server-socket name leksah's own
+                             --   terminals live on (read once at startup:
+                             --   'IDE.Web.Instance.tmuxServerSocket')
     } deriving (Eq, Show)
 
 data RemoteC = RemoteC
@@ -140,6 +144,10 @@ data RemoteC = RemoteC
     , rcWake    :: [WakeOnLan]
                            -- ^ hosts leksah wakes (Wake-on-LAN) when they
                            --   don't answer
+    , rcTmuxSockets :: Map Text Text
+                           -- ^ per host, the @tmux -L@ socket name leksah's
+                           --   terminals use there; a host with no entry uses
+                           --   its default tmux server (no @-L@)
     } deriving (Eq, Show)
 
 -- | How to wake one ssh host: its network card's MAC address, and where to
@@ -231,8 +239,10 @@ defaultConfig = Config
         { tcFileLinks   = True
         , tcControlMode = True
         , tcTmuxPrefix  = False
+        , tcTmuxSocket  = "leksah"
         }
-    , cfgRemote = RemoteC { rcHosts = [], rcStartup = [], rcWake = [] }
+    , cfgRemote = RemoteC { rcHosts = [], rcStartup = [], rcWake = []
+                          , rcTmuxSockets = mempty }
     , cfgLsp = LspC
         { lcEnabled       = True
         , lcServerCommand = ""
@@ -305,11 +315,13 @@ instance ToJSON Config where
             [ chg "fileLinks"   tcFileLinks   d s
             , chg "controlMode" tcControlMode d s
             , chg "tmuxPrefix"  tcTmuxPrefix  d s
+            , chg "tmuxSocket"  tcTmuxSocket  d s
             ]
         , sect "remote" $ let d = cfgRemote defaultConfig; s = cfgRemote c in
             [ chg "hosts"   rcHosts   d s
             , chg "startup" rcStartup d s
-            , chg "wake"    rcWake    d s ]
+            , chg "wake"    rcWake    d s
+            , chg "tmuxSockets" rcTmuxSockets d s ]
         , sect "lsp" $ let d = cfgLsp defaultConfig; s = cfgLsp c in
             [ chg "enabled"       lcEnabled       d s
             , chg "serverCommand" lcServerCommand d s
@@ -379,12 +391,14 @@ instance FromJSON Config where
         cfgTerminal' <- inSect o "terminal" (\s -> TerminalC
             <$> fld s "fileLinks"   (tcFileLinks   (cfgTerminal dc))
             <*> fld s "controlMode" (tcControlMode (cfgTerminal dc))
-            <*> fld s "tmuxPrefix"  (tcTmuxPrefix  (cfgTerminal dc)))
+            <*> fld s "tmuxPrefix"  (tcTmuxPrefix  (cfgTerminal dc))
+            <*> fld s "tmuxSocket"  (tcTmuxSocket  (cfgTerminal dc)))
             (cfgTerminal dc)
         cfgRemote' <- inSect o "remote" (\s -> RemoteC
             <$> fld s "hosts"   (rcHosts   (cfgRemote dc))
             <*> fld s "startup" (rcStartup (cfgRemote dc))
-            <*> fld s "wake"    (rcWake    (cfgRemote dc)))
+            <*> fld s "wake"    (rcWake    (cfgRemote dc))
+            <*> fld s "tmuxSockets" (rcTmuxSockets (cfgRemote dc)))
             (cfgRemote dc)
         cfgLsp' <- inSect o "lsp" (\s -> LspC
             <$> fld s "enabled"       (lcEnabled       (cfgLsp dc))

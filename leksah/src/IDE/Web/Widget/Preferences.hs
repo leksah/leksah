@@ -22,9 +22,9 @@ import Data.Default (def)
 import Data.List (elemIndex)
 import Data.Maybe (fromMaybe)
 import Data.Map (Map)
-import qualified Data.Map as M (fromList)
+import qualified Data.Map as M (fromList, toList)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, lines, unlines, null, strip)
+import qualified Data.Text as T (pack, unpack, lines, unlines, null, strip, breakOn, drop)
 import Text.Read (readMaybe)
 
 
@@ -156,10 +156,19 @@ preferencesWidget ctx = do
             (tcControlMode . cfgTerminal) (\v -> onTerminal $ \s -> s { tcControlMode = v })
         , b wired "Intercept the tmux prefix (C-b) in terminals"
             (tcTmuxPrefix . cfgTerminal) (\v -> onTerminal $ \s -> s { tcTmuxPrefix = v })
+          -- Read once at startup ('IDE.Web.Instance.tmuxServerSocket'): every
+          -- tmux call and every open session must agree on the server.
+        , txt wired "tmux socket name (tmux -L; takes effect after a restart)"
+            (tcTmuxSocket . cfgTerminal) (\v -> onTerminal $ \s -> s { tcTmuxSocket = v })
         ]
     , section "Remote"
         [ linesField wired cfg0 "Remote hosts in the Terminals tree (ssh, one per line)"
             (rcHosts . cfgRemote) (\v -> onRemote $ \s -> s { rcHosts = v })
+          -- One "host=name" per line; a host not listed uses its default tmux
+          -- server.  Applies to connections made from now on.
+        , linesField wired cfg0 "Remote tmux socket names (host=name, one per line; unlisted hosts use the default server)"
+            (socketLines . rcTmuxSockets . cfgRemote)
+            (\v -> onRemote $ \s -> s { rcTmuxSockets = parseSocketLines v })
         ]
     , section "Language Server (LSP)"
         [ b wired "Enable language server (diagnostics, hover, completion, F12 navigation)"
@@ -266,6 +275,18 @@ intField
 intField w cfg0 lbl get set = prefRow w lbl $ do
   inp <- numberInput (show (get cfg0))
   return $ fmapMaybe (fmap set . readMaybe . T.unpack) (updated (_inputElement_value inp))
+
+-- | 'rcTmuxSockets' as @host=name@ lines, and back (blank or malformed lines
+-- are dropped).
+socketLines :: Map Text Text -> [Text]
+socketLines m = [ h <> "=" <> n | (h, n) <- M.toList m ]
+
+parseSocketLines :: [Text] -> Map Text Text
+parseSocketLines ls = M.fromList
+  [ (T.strip h, T.strip n)
+  | l <- ls, let (h, rest) = T.breakOn "=" l
+  , not (T.null rest), let n = T.drop 1 rest
+  , not (T.null (T.strip h)), not (T.null (T.strip n)) ]
 
 -- | A text field.
 textField

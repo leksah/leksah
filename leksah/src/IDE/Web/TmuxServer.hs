@@ -27,6 +27,7 @@ module IDE.Web.TmuxServer
   , tmuxOnIds
   , tmuxRunOn
   , remoteTmux
+  , remoteSocketArgs
   , tmuxCmdOn
   , tmuxOkOn
   , tmuxOutOn
@@ -49,6 +50,8 @@ import System.Directory (findExecutable)
 import System.Exit (ExitCode(..))
 import System.Process (readProcessWithExitCode)
 
+import IDE.App (appConfig, getGlobalApp)
+import IDE.Config (Config(..), RemoteC(..), currentConfig)
 import IDE.Web.Instance (tmuxServerSocket)
 
 -- | A tmux server leksah can run commands on.
@@ -125,9 +128,24 @@ tmuxRunOn srv args input = (`catch` \(_ :: SomeException) -> return Nothing) $
     SshServer host -> remoteTmux host >>= \case
       -- (no tmux there: the reason, as the command's error)
       Left err       -> return (Just (ExitFailure 127, "", T.unpack err))
-      Right (bin, _) -> Just <$> readProcessWithExitCode "ssh"
-        [ "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", T.unpack host
-        , unwords (shellQuote bin : map shellQuote args) ] input
+      Right (bin, _) -> do
+        sock <- remoteSocketArgs host
+        Just <$> readProcessWithExitCode "ssh"
+          [ "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", T.unpack host
+          , unwords (shellQuote bin : map shellQuote (sock <> args)) ] input
+
+-- | The @-L NAME@ arguments for leksah's tmux server on remote @host@: the
+-- host's entry in @remote.tmuxSockets@ (Add Server, or Preferences ▸
+-- Remote), or none — the host's default tmux server — when it has no entry.
+-- Read per call, so a changed setting applies to the next command.
+remoteSocketArgs :: Text -> IO [String]
+remoteSocketArgs host = getGlobalApp >>= \case
+  Nothing  -> return []
+  Just app -> do
+    cfg <- currentConfig (appConfig app)
+    return $ case T.strip <$> M.lookup host (rcTmuxSockets (cfgRemote cfg)) of
+      Just name | not (T.null name) -> ["-L", T.unpack name]
+      _                             -> []
 
 
 -- | Single-quote one word for a remote (ssh) shell.

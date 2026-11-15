@@ -59,6 +59,7 @@ import System.Process (readProcessWithExitCode)
 
 import IDE.App (appWorkspace, withApp)
 import IDE.Paths (sidecarPath)
+import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.Claude
        (ClaudeCmd(..), runClaudeCmd, claudeRunning, claudeLiveBySession,
         ClaudeLive(..), mruClaudePane, claudeTranscriptPath)
@@ -255,7 +256,7 @@ paneText :: Text -> IO Text
 paneText pane = do
   r <- (`catch` \(_ :: SomeException) -> return (ExitFailure 1, "", "")) $
     readProcessWithExitCode "tmux"
-      ["-L", "leksah", "capture-pane", "-p", "-t", T.unpack pane] ""
+      ["-L", tmuxServerSocket, "capture-pane", "-p", "-t", T.unpack pane] ""
   return $ case r of
     (ExitSuccess, out, _) -> T.pack out
     _                     -> ""

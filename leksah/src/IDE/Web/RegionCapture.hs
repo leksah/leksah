@@ -39,6 +39,7 @@ import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
 
+import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.ReplTmux (sendKeysTo)
 
 -- | Monotonic counter for temp filenames, so successive captures don't
@@ -104,7 +105,7 @@ sendTextToTarget target txt = case regionTmuxTarget target of
 resolveTmuxSessionId :: Text -> IO (Maybe Text)
 resolveTmuxSessionId sess = do
   r <- try (readProcessWithExitCode "tmux"
-              ["-L", "leksah", "display-message", "-p", "-t", T.unpack sess,
+              ["-L", tmuxServerSocket, "display-message", "-p", "-t", T.unpack sess,
                "#{session_id}"] "")
          :: IO (Either SomeException (ExitCode, String, String))
   return $ case r of

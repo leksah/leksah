@@ -128,7 +128,7 @@ import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.WindowBridge (setFocusedLeaf)
 import IDE.Web.NewLwRequest (reportWindowGone)
 import IDE.Web.WakeOnLan (ensureAwake)
-import IDE.Web.TmuxServer (remoteTmux)
+import IDE.Web.TmuxServer (remoteTmux, remoteSocketArgs)
 import IDE.Web.Dom
        (nextFrame, observeResize, holdsFocus, activeTagName, focusElement,
         focusFirst, toggleClassWhere)
@@ -361,7 +361,10 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                   shellQuote s = "'" <> concatMap esc s <> "'"
                   esc '\'' = "'\\''"
                   esc c    = [c]
-                  remoteCmd = unwords (map shellQuote (bin : "-C" : attach))
+              -- leksah's tmux server there: the host's configured -L socket,
+              -- or its default server ('remoteSocketArgs').
+              sock <- remoteSocketArgs host0
+              let remoteCmd = unwords (map shellQuote (bin : sock <> ("-C" : attach)))
               startCCWith
                     [ "ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"
                     , T.unpack host, remoteCmd ]

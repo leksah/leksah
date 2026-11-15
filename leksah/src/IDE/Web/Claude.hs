@@ -109,6 +109,7 @@ import Text.Read (readMaybe)
 
 import IDE.App (appUi, getGlobalApp)
 import IDE.Reactive (readCell)
+import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.Model (WebUi(_leksahWindows))
 import IDE.Web.AgentNames
        (adoptContinuation, agentContinuations, agentNameFor, sessionOfRunKey)
@@ -1211,7 +1212,7 @@ sessionOwningPid pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 paneCurrentPath :: Text -> IO (Maybe FilePath)
 paneCurrentPath pane = (`catch` \(_ :: SomeException) -> return Nothing) $ do
   (ec, out, _) <- readProcessWithExitCode "tmux"
-    ["-L", "leksah", "display-message", "-p", "-t", T.unpack pane
+    ["-L", tmuxServerSocket, "display-message", "-p", "-t", T.unpack pane
     , "-F", "#{pane_current_path}"] ""
   let p = T.strip (T.pack out)
   return $ if ec /= ExitSuccess || T.null p then Nothing else Just (T.unpack p)
