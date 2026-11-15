@@ -253,6 +253,13 @@
            long as you're there; pin it to keep it.</p>
       </div>
       <div class="card">
+        <h3>Terminals on other machines <span class="tag">experimental</span></h3>
+        <p>Add a server and its tmux sessions open as ordinary Leksah windows —
+           split, drag and flip them like local ones, or nest a remote pane
+           inside a local window. Servers can open at startup and be woken with
+           Wake-on-LAN, and a host without tmux gets nixpkgs' tmux if it has Nix.</p>
+      </div>
+      <div class="card">
         <h3>Remote projects <span class="tag">experimental</span></h3>
         <p>Open a project over SSH: editing, builds and the language server run
            on the remote machine while the UI stays local.</p>
@@ -269,7 +276,10 @@
            beside you, and report back. The Agents pane shows what each one is
            doing right now — the tool it is running, what it edited, its branch
            and PR — the Team pane their bios, and a manager agent coordinates
-           the rest. Suspend one and resume it later, right where it was.</p>
+           the rest. Suspend one and resume it later, right where it was; after
+           a reboot, the agents it interrupted are offered back — all at once, or
+           let the manager choose. Each agent's worktrees show under it in the
+           workspace, as projects you can open.</p>
       </div>
       <div class="card">
         <h3>Multiple windows</h3>
@@ -333,7 +343,10 @@
         WebView via <a href="https://github.com/ghcjs/jsaddle">jsaddle</a>,
         over a websocket to your browser, or compiled to JavaScript outright
         — the <a href="/try/">demo above</a> is the IDE itself, built with
-        GHC's JS backend.
+        GHC's JS backend. Its DOM bindings,
+        <a href="https://hackage.haskell.org/package/ghcjs-dom">ghcjs-dom</a>
+        and <a href="https://hackage.haskell.org/package/jsaddle-dom">jsaddle-dom</a>
+        0.10, are regenerated from today's web standards.
       </p>
       <p>
         It's also self-hosting in the most literal sense: Leksah is developed
@@ -346,7 +359,9 @@
   </section>
 
   <footer>
-    <span>© 2007–2026 the Leksah team · <a href="https://github.com/leksah/leksah/blob/master/LICENSE">GPL-2.0</a></span>
+    <span>© 2007–2026 the Leksah team · <a href="https://github.com/leksah/leksah/blob/master/LICENSE">Apache-2.0</a>
+      (the classic Gtk UI, <a href="https://github.com/leksah/leksah/tree/master/leksah-classic"><code>leksah-classic</code></a>,
+      is still <a href="https://github.com/leksah/leksah/blob/master/leksah-classic/LICENSE">GPL-2.0-or-later</a>)</span>
     <span class="spacer"></span>
     <a href="https://github.com/leksah/leksah">GitHub</a>
     <a href="https://github.com/leksah/leksah/issues">Issues</a>
