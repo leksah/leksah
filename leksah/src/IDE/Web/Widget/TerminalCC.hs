@@ -2146,6 +2146,10 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         _ <- opts ^. jss ("lineHeight" :: Text) (1.07 :: Double)
         _ <- opts ^. jss ("letterSpacing" :: Text) (-0.5 :: Double)
         _ <- opts ^. jss ("allowProposedApi" :: Text) True
+        -- Option-drag always selects text, even when the program in the pane has
+        -- turned mouse tracking on (Claude Code's full-screen UI, vim, htop…) and
+        -- a plain drag goes to the program instead.
+        _ <- opts ^. jss ("macOptionClickForcesSelection" :: Text) True
         -- Unicode 11 widths, as in the classic widget — emoji are
         -- width 2 to tmux and the apps, so xterm must agree.
         uni <- new (jsg ("Unicode11Addon" :: Text) ^. js ("Unicode11Addon" :: Text)) ()

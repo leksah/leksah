@@ -731,6 +731,10 @@ terminalWidget ctx termId selectedE = do
       -- API, which throws ("allowProposedApi") unless this is enabled.  Must be
       -- set before the find bar drives a search (it is — before loadAddon below).
       _ <- opts ^. jss ("allowProposedApi" :: Text) True
+      -- Option-drag always selects text, even when the program in the pane has
+      -- turned mouse tracking on (Claude Code's full-screen UI, vim, htop…) and
+      -- a plain drag goes to the program instead.
+      _ <- opts ^. jss ("macOptionClickForcesSelection" :: Text) True
 
       -- Unicode 11 widths (xterm defaults to Unicode 6, where emoji are
       -- width 1 — tmux and modern apps assume 2, so ✅ etc. misalign).
