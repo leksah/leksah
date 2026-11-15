@@ -76,6 +76,7 @@ import Reflex.Dom.Core
         runHydrationDomBuilderT, runPostBuildT, runWithJSContextSingleton,
         withJSContextSingleton)
 import Reflex.Host.Class (newEventWithTriggerRef)
+import qualified Language.Javascript.JSaddle as JS (eval)
 
 import IDE.Web.WindowScope
        (WindowScope, markFrameLoopDone, onScopeClose, scopeIsClosed,
@@ -165,6 +166,9 @@ attachGuarded
   => WindowScope -> (String -> IO ()) -> e -> JSContextSingleton x -> Widget x ()
   -> JSM ()
 attachGuarded scope onAbort rootElement jsSing w = do
+  -- Before anything is built: make requestAnimationFrame robust to a page
+  -- WebKit considers hidden (see 'rafFallbackJs').
+  _ <- JS.eval rafFallbackJs
   doc <- getOwnerDocumentUnchecked rootElement
   df <- createDocumentFragment doc
   -- Under 'frameLock': this call builds the whole widget tree AND fires its
@@ -196,6 +200,39 @@ attachGuarded scope onAbort rootElement jsSing w = do
     Right ((_, events), fc) -> do
       replaceElementContents rootElement df
       liftIO $ guardedAsyncEvents scope onAbort events fc
+
+-- | reflex-dom applies EVERY DOM change (attribute updates, 'dyn' swaps, list
+-- inserts) inside @requestAnimationFrame@ ('runInAnimationFrame' in
+-- "Reflex.Dom.Builder.Immediate").  WebKit fires no animation frames for a
+-- page it considers hidden — a window that starts fully covered by another,
+-- and sometimes one that has since come to the front (WKWebView's
+-- visibility can lag) — so such a window built its elements and then never
+-- received a single update: no root class, no tabs, no title, a flipper that
+-- never opened, while its Haskell side ran on normally.
+--
+-- So each callback is ALSO scheduled on a short timer, and runs from
+-- whichever fires first (once).  A visible page keeps frame-aligned timing;
+-- a hidden one still updates, a little later.  Installed once per page.
+rafFallbackJs :: String
+rafFallbackJs = concat
+  [ "(function(){"
+  , " if (window.__leksahRafFallback) return;"
+  , " window.__leksahRafFallback = true;"
+  , " var raf = window.requestAnimationFrame.bind(window),"
+  , "     caf = window.cancelAnimationFrame.bind(window);"
+  , " var next = 1, live = {};"
+  , " window.requestAnimationFrame = function(cb){"
+  , "  var id = next++, done = false, r, t;"
+  , "  var run = function(ts){ if (done) return; done = true; delete live[id];"
+  , "    caf(r); clearTimeout(t); cb(ts); };"
+  , "  r = raf(run);"
+  , "  t = setTimeout(function(){ run(performance.now()); }, 100);"
+  , "  live[id] = function(){ done = true; caf(r); clearTimeout(t); };"
+  , "  return id; };"
+  , " window.cancelAnimationFrame = function(id){"
+  , "  var c = live[id]; if (c) { delete live[id]; c(); } };"
+  , "})()"
+  ]
 
 -- | The frame loop.  One batch of triggers per iteration, exactly as
 -- reflex-dom does it, except that the batch runs under 'try' — a frame that
