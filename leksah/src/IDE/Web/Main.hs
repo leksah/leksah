@@ -686,7 +686,9 @@ data LeafDragDst
                                      --   on any leksah window — open the source
                                      --   as a NEW tab there.  The only way into
                                      --   a window that has no tabs at all.
-  | LDDstNone                        -- ^ nowhere / cancelled
+  | LDDstNone (Maybe Text)           -- ^ nowhere / cancelled; the tab that was
+                                     --   showing when the drag began (its
+                                     --   @show@-key), to go back to
   deriving (Eq, Show)
 
 parseLeafDrop :: Value -> Maybe (LeafDragSrc, LeafDragDst)
@@ -715,7 +717,7 @@ dropDstP = withObject "dst" (\d -> d .: "kind" >>= \k ->
                "tab"  -> LDDstTab <$> d .: "tab"
                "foreign" -> pure LDDstForeign
                "window"  -> pure LDDstWindow
-               _      -> pure LDDstNone)
+               _      -> LDDstNone <$> optional (d .: "restore"))
 
 -- | The cross-window pane move — ONE pure step, so no intermediate state (an
 -- unowned tmux window ripe for stray adoption, an emptied source window) is
@@ -4988,6 +4990,8 @@ leafDragJs = T.unlines
   , "                       : (st.srcKind==='pane') ? {lw:st.srcLw, leaf:st.srcLeaf}"
   , "                       : {tab:st.srcTab},"
   , "                    dst: dst || {kind:'none'} };"
+  -- A cancelled drag goes back to the tab that was showing when it began.
+  , "    if (payload.dst.kind==='none' && st.prevTab) payload.dst.restore = st.prevTab;"
   -- Released over another OS window: the window the pointer is over is the one
   -- holding the candidate, in its own geometry — so IT commits (it calls its
   -- own leksahLeafDrop with a perfectly ordinary payload).  Sending our own
@@ -5171,6 +5175,8 @@ leafDragJs = T.unlines
   , "    st = { srcKind:src.kind, srcLw:src.lw, srcLeaf:src.leaf, srcTab:src.tab,"
   , "           srcPane:src.pane, srcEl:src.el, sx:e.clientX, sy:e.clientY,"
   , "           srcSrv:src.srv, srcIsTmux:src.isTmux, srcSpec:src.spec, treeRoot:src.root,"
+  , "           prevTab: (function(){ var s = document.querySelector('.tab-buttons.area-wide0 .tab-wrap.selected[data-tabkey]');"
+  , "                                 return s ? s.getAttribute('data-tabkey') : null; })(),"
   , "           engaged:false, peekEl:null, peekTimer:null, lastDst:{kind:'none'} };"
   , "    document.addEventListener('mousemove', mv, true);"
   , "    document.addEventListener('pointermove', pm, true);"
@@ -9607,7 +9613,13 @@ main showMenubar macTitlebar wid ctx = mdo
           -- (see @leksahDragPreview@); reaching here means nothing was under it.
           LDDstForeign -> activateSrc src
           LDDstWindow -> dropIntoNewWindow src
-          LDDstNone -> activateSrc src
+          -- Cancelled (Escape, or released over nothing): back to the tab that
+          -- was showing when the drag began — a drag can start from a handle
+          -- for a window that isn't on screen (its tab, an agent card, a Tmux
+          -- tree row), and switching to THAT window would be a surprise.
+          -- Peeks during the drag are undone by this real activation too.
+          LDDstNone (Just prev) -> fireLeafSelectReq prev
+          LDDstNone Nothing -> activateSrc src
           LDDstPane dlwId ptr box mtt -> do
             lws0 <- view leksahWindows <$> readCell (appUi app)
             case M.lookup dlwId lws0 of
