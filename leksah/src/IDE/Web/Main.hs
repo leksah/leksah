@@ -153,7 +153,7 @@ import Reflex
        (switchDyn, switchHold, foldDyn, ffor,
         Dynamic, Event, holdDyn, merge, newTriggerEvent, leftmost, never, getPostBuild, select, fan, fanMap,
         fmapMaybe, ffilter, attachWith, attachWithMaybe, attach, current, updated, holdUniqDyn, tag, gate, zipDyn,
-        sample, constDyn,
+        sample, constDyn, mergeWith,
         tagPromptlyDyn, attachPromptlyDynWithMaybe, debounce, delay, headE, tickLossyFromPostBuildTime)
 import Reflex.Dom.Core
        (dyn, dyn_, dynText, el, elAttr, elAttr', elDynAttr, elDynAttr', divClass,
@@ -301,7 +301,7 @@ import IDE.Web.Events
        (IDEWidget(..), TabEvents(..), TabKey(..), TerminalEvents(..),
         FindbarEvents(..), FlipItem(..),
         KeymapEvents(..),
-        _ToolbarCommand, _MenubarCommand, _KeymapCommand, _PackageCommand,
+        _ToolbarCommand, _ToolbarTitleClick, _ToolbarMenuClick, _MenubarCommand, _KeymapCommand, _PackageCommand,
         _ProjectPackageEvents, _ProjectCommand, _NewTerminal, _SelectTerminal,
         _CloseTerminal, _SelectTerminalWindow, _SelectTerminalPane,
         _NewRemoteTerminal, _SelectRemoteHost, _ToggleRemoteStartup, _WakeRemoteHost,
@@ -1594,6 +1594,97 @@ flipOwnerWindow lws tree wins fi =
           Nothing -> TerminalKey s
             : [ LeksahWinKey i | (i, lw) <- M.toAscList lws, lwSession lw == Just s ]
   in listToMaybe [ w | (w, ww) <- M.toList wins, any (`elem` _wwWide0 ww) ks ]
+
+-- | How many panes share the TMUX window of a flipper item's pane, when that
+-- is more than one.  Narrow mode shows one pane at a time: a leksah window
+-- split into several leaves needs nothing special (the narrow CSS shows only
+-- the focused leaf, filling the window, and choosing a pane focuses its
+-- leaf), but a tmux window is ONE leaf that tmux draws with all its panes
+-- side by side — showing just one of them means breaking it out, so choosing
+-- such a pane asks to pop it out into its own window.
+sharedPaneCount :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Int
+sharedPaneCount _ tree fi = case fi of
+    FlipPane s w _ -> do
+      win <- find ((== w) . twIndex) (maybe [] snd (M.lookup s tree))
+      let n = length (twPanes win)
+      if n > 1 then Just n else Nothing
+    _ -> Nothing
+
+-- | The leksahLeafDrop source (JSON) for popping a flipper item's pane out of
+-- its window: its leaf, or the one tmux pane when its tmux window holds
+-- several.
+popOutSrcJson :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> FlipItem -> Maybe Text
+popOutSrcJson lws tree fi = case fi of
+    FlipView n l -> Just (obj n l Nothing)
+    FlipPane s w p -> do
+      (lwi, LeafId l) <- flipPaneLeaf lws tree s w
+      win <- find ((== w) . twIndex) (maybe [] snd (M.lookup s tree))
+      let pane = [ tpId pn | length (twPanes win) > 1, pn <- twPanes win, tpIndex pn == p ]
+      Just (obj lwi l (listToMaybe pane))
+    FlipTab _ -> Nothing
+  where
+    obj lwi l mp = "{lw:" <> jsQuote lwi <> ",leaf:" <> T.pack (show l)
+                   <> maybe "" (\pid -> ",pane:" <> jsQuote pid) mp <> "}"
+
+-- | The narrow-mode hook (see 'narrowCss' in "IDE.Web.Layout"): keeps the
+-- html.leksah-narrow class in step with the window width (below
+-- 'narrowBreakpoint' CSS px, or when window.__leksahForceNarrow is set) and
+-- reports it through window.leksahNarrowChanged; in narrow mode a tap outside
+-- the open flipper or ☰ menu closes it.
+narrowModeJs :: Text
+narrowModeJs = T.unlines
+  [ "(function(){"
+  , "  if (window.__leksahNarrowHooked){ window.leksahApplyNarrow(); return; }"
+  , "  window.__leksahNarrowHooked = true;"
+  , "  var mq = window.matchMedia('(max-width: " <> T.pack (show narrowBreakpoint) <> "px)');"
+  , "  var root = document.documentElement;"
+  , "  window.leksahApplyNarrow = function(){"
+  , "    var on = mq.matches || !!window.__leksahForceNarrow;"
+  , "    root.classList.toggle('leksah-narrow', on);"
+  , "    if (!on) root.classList.remove('narrow-menu-open');"
+  -- Told to Haskell on a LATER tick, never synchronously: this first runs
+  -- during the window's own build (postBuild), and a call back into Haskell
+  -- from inside that eval broke the build batch — a window that STARTED
+  -- narrow came up half-built (no classes, no tabs) and never updated.
+  , "    setTimeout(function(){ if (window.leksahNarrowChanged) window.leksahNarrowChanged(on); }, 0); };"
+  , "  if (mq.addEventListener) mq.addEventListener('change', window.leksahApplyNarrow);"
+  , "  else mq.addListener(window.leksahApplyNarrow);"
+  , "  document.addEventListener('mousedown', function(e){"
+  , "    var t = e.target; if (!t || !t.closest) return;"
+  , "    if (root.classList.contains('narrow-menu-open')"
+  , "        && !t.closest('.menubar') && !t.closest('.toolbar-menu'))"
+  , "      root.classList.remove('narrow-menu-open');"
+  , "    var open = [].slice.call(document.querySelectorAll('.flipper')).some(function(f){"
+  , "      return f.style.display !== 'none' && !f.closest('.ai-picker-host'); });"
+  , "    if (open && !t.closest('.flipper-content') && !t.closest('.toolbar-active-pane')"
+  , "        && window.leksahFlipBlurred) window.leksahFlipBlurred();"
+  , "  }, true);"
+  , "  window.leksahApplyNarrow();"
+  , "})();"
+  ]
+
+-- | The width (CSS px) at or below which a window uses narrow mode.
+narrowBreakpoint :: Int
+narrowBreakpoint = 700
+
+-- | The narrow-mode prompt for a pane that shares its window: True = pop it
+-- out into its own window, False = cancel.  Same overlay look as the other
+-- in-page dialogs (Add Server…).
+narrowPopDialog :: MonadWidget t m => Text -> Int -> m (Event t Bool)
+narrowPopDialog lbl n =
+  elAttr "div" ("class" =: "narrow-pop-overlay"
+                <> "style" =: "position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45)") $
+    elAttr "div" ("class" =: "narrow-pop-dialog"
+                  <> "style" =: "max-width:min(420px,calc(100% - 32px));background:var(--leksah-bg-sunken,var(--leksah-bg));color:var(--leksah-fg);border:1px solid var(--leksah-border-line);border-radius:10px;padding:16px;box-shadow:0 4px 24px rgba(0,0,0,0.5);font-size:15px") $ do
+      elAttr "p" ("style" =: "margin:0 0 6px 0;font-weight:bold") $
+        text ("\"" <> lbl <> "\" is in a tmux window with " <> T.pack (show n) <> " panes.")
+      elAttr "p" ("style" =: "margin:0 0 14px 0;opacity:0.8") $
+        text "Narrow mode shows one pane at a time."
+      (popEl, _) <- elAttr' "button" ("style" =: "display:block;width:100%;padding:10px;margin-bottom:8px;font-size:15px") $
+        text "Pop out into its own window"
+      (cancelEl, _) <- elAttr' "button" ("style" =: "display:block;width:100%;padding:10px;font-size:15px") $
+        text "Cancel"
+      return $ leftmost [ True <$ domEvent Click popEl, False <$ domEvent Click cancelEl ]
 
 -- | A Text as a single-quoted JS string literal.
 jsQuote :: Text -> Text
@@ -6137,7 +6228,9 @@ main showMenubar macTitlebar wid ctx = mdo
           , KeymapCommand <$> leftmost [keymapBridgeE, menubarStreamE] ]
     -- The web menu bar is suppressed when a native menu is present
     -- (leksah-wkwebview); its command events then simply never fire.
-    menubarE   <- if showMenubar then menubarWidget else return never
+    -- Built in every front end: where the native menu bar exists it stays
+    -- hidden (CSS), except in narrow mode, where ☰ opens it as a drop-down.
+    menubarE   <- menubarWidget
     -- The active-pane details shown in the toolbar strip (after the toggle,
     -- sliding right when the buttons are shown): the same label and icon the
     -- FLIPPER gives the pane ('flipPaneLabel' / 'flipIconSrc' — a terminal
@@ -6508,7 +6601,7 @@ main showMenubar macTitlebar wid ctx = mdo
                 -- Focus-only: resolve the pref's session name to the tmux id
                 -- leksah keys its terminal tabs by, and raise that tab.
                 _ -> forM_ (aiTargetSession target) $ \sess ->
-                        resolveTmuxSessionId sess >>= mapM_ fireTermRequest
+                        resolveTmuxSessionId sess >>= mapM_ (fireTermRequest . (,) False)
     aiRefD   <- holdDyn Nothing (fst <$> aiHaveChoicesE)
     aiItemsD <- holdDyn [] (map (\c -> (choiceKey c, c)) . snd <$> aiHaveChoicesE)
     let aiOpenE   = () <$ aiHaveChoicesE
@@ -6975,8 +7068,12 @@ main showMenubar macTitlebar wid ctx = mdo
     let tabOwner wws lws key = listToMaybe
           [ w | Just k <- [termTabKey lws key]
               , (w, ww) <- M.toList wws, k `elem` _wwWide0 ww ]
+        -- A "bring here" request ('requestBringTerm': an agent-card click)
+        -- is the exception: the key window — the one clicked in — serves it,
+        -- so the tab moves over to it.
         termRequestE = attachWithMaybe
-          (\(wws, lws, iAmKey) key -> case tabOwner wws lws key of
+          (\(wws, lws, iAmKey) (bring, key) -> case tabOwner wws lws key of
+              _ | bring  -> if iAmKey       then Just key else Nothing
               Just owner -> if owner == wid then Just key else Nothing
               Nothing    -> if iAmKey       then Just key else Nothing)
           ((,,) <$> current webWindowsD <*> current leksahWindowsD'
@@ -7620,12 +7717,49 @@ main showMenubar macTitlebar wid ctx = mdo
                      <> "   if (intoFrame) { intoFrame = false; return; }"
                      <> "   if (window.leksahFlipBlurred) window.leksahFlipBlurred();"
                      <> " }); })()" :: Text)
-    -- The tab flipper: always opens already-advanced (⌘` = the previous tab), so
-    -- it takes no open-at-0 input ('never'); it is dismissed without a commit
-    -- when the window loses or regains focus (flipBlurE, above).
-    (flipperVisibleD, flipperSelD, flipSelIndexD, flipRawE) <-
+    -- Narrow mode (phones and other small displays; see 'narrowCss' in
+    -- "IDE.Web.Layout"): a matchMedia hook keeps the html.leksah-narrow class
+    -- in step with the window width and tells us here ('narrowD').  In narrow
+    -- mode a tap outside the open flipper or ☰ menu closes it.
+    (narrowE, fireNarrow) <- newTriggerEvent
+    narrowPb <- getPostBuild
+    performEvent_ $ ffor narrowPb $ \_ -> liftJSM $ do
+        _ <- jsg ("window" :: Text) ^. jss ("leksahNarrowChanged" :: Text)
+                (fun $ \_ _ args -> case args of
+                    (v : _) -> valToBool v >>= liftIO . fireNarrow
+                    _       -> return ())
+        void $ eval narrowModeJs
+    narrowD <- holdUniqDyn =<< holdDyn False narrowE
+    -- Which area the narrow layout shows: the one whose tab was activated last.
+    let activeAreaD = (\vis mk -> listToMaybe [ a | (a, k) <- M.toList vis, Just k == mk ])
+                        <$> visibleTabsD <*> activePaneD
+    narrowAreaD <- holdUniqDyn =<< holdDyn "wide0" (fmapMaybe id (updated activeAreaD))
+    narrowAreaPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [updated narrowAreaD, tag (current narrowAreaD) narrowAreaPb]) $ \a ->
+      liftJSM . void . eval $
+        "(function(c){ ['tall','wide0','wide1'].forEach(function(x){ c.remove('narrow-show-' + x); });"
+        <> " c.add('narrow-show-' + " <> jsQuote a <> "); })(document.documentElement.classList)"
+    -- ☰ toggles the in-page menus; choosing a command closes them.
+    performEvent_ $ ffor (fmapMaybe (^? _ToolbarMenuClick) toolbarE) $ \_ -> liftJSM . void . eval $
+      ("document.documentElement.classList.toggle('narrow-menu-open')" :: Text)
+    performEvent_ $ ffor menubarE $ \_ -> liftJSM . void . eval $
+      ("document.documentElement.classList.remove('narrow-menu-open')" :: Text)
+    -- Clicking the title (the active pane's details) opens the flipper on the
+    -- current entry, in any window; pick with a click, dismiss with a click
+    -- outside it.
+    let titleFlipE = fmapMaybe (^? _ToolbarTitleClick) toolbarE
+    -- The tab flipper: always opens already-advanced (⌘` = the previous tab);
+    -- in narrow mode the title tap opens it at entry 0 instead.  It is
+    -- dismissed without a commit when the window loses or regains focus
+    -- (flipBlurE, above) and, in narrow mode, on a tap outside it.
+    (flipperVisibleD, flipperSelD, flipSelIndexD, flipRawE, flipClickE) <-
         flipperWidget flipItemsD flipStepE rawFlipDoneE selfSelectedD
-                      never flipBlurE flipLabel
+                      titleFlipE
+                      -- A click on an item commits it and closes the flipper,
+                      -- so a ⌘ release after it finds it closed and commits
+                      -- nothing more.
+                      (leftmost [flipBlurE, () <$ flipClickE])
+                      flipLabel
     -- …and when ⌘-Tab takes the ⌘ keyup but leaves leksah in front (the
     -- app switcher, Escaped or landing back on leksah): no blur, no focus,
     -- no keyup reaches the page.  So while the flipper is up — and only then
@@ -7636,9 +7770,13 @@ main showMenubar macTitlebar wid ctx = mdo
     -- A generation number retires the previous poll thread whenever the
     -- flipper opens again, so there is never more than one.
     flipPollGen <- liftIO (newIORef (0 :: Int))
-    performEvent_ $ ffor (updated flipperVisibleD) $ \vis -> liftIO $ do
+    -- (Not when the title click opened it: no ⌘ is held at all then.)
+    titleOpenD <- holdDyn False (leftmost [True <$ titleFlipE, False <$ flipStepE])
+    -- (zipDyn: the title click sets both in the SAME frame; a sampled
+    -- 'current titleOpenD' would still read the old False there.)
+    performEvent_ $ ffor (updated (zipDyn titleOpenD flipperVisibleD)) $ \(byTitle, vis) -> liftIO $ do
         gen <- atomicModifyIORef' flipPollGen (\g -> (g + 1, g + 1))
-        when vis . void . forkIO $
+        when (vis && not byTitle) . void . forkIO $
           let poll ups = do
                 threadDelay 100000
                 current' <- readIORef flipPollGen
@@ -7654,7 +7792,7 @@ main showMenubar macTitlebar wid ctx = mdo
     -- Wrapped so the two overlays are told apart in the DOM (both are
     -- '.flipper'); the wrapper is static, so it doesn't disturb the absolute
     -- positioning inside.
-    (aiPickerVisibleD, _aiPickerSelD, _aiPickerIdxD, aiCommitE) <-
+    (aiPickerVisibleD, _aiPickerSelD, _aiPickerIdxD, aiCommitE, _) <-
         divClass "ai-picker-host" $
             flipperWidget aiItemsD aiStepE aiDoneE (pure False)
                           aiOpenE aiCancelE aiChoiceLabel
@@ -7677,9 +7815,11 @@ main showMenubar macTitlebar wid ctx = mdo
     -- to a local one must bring us out from under it.  Entries with no owner
     -- (shared side/bottom tabs) leave the z-order alone.
     flipPreviewWinD <- holdUniqDyn $
-      (\vis lws tree wins msel ->
-          if vis then flipOwnerWindow lws tree wins . snd =<< msel else Nothing)
-      <$> flipperVisibleD <*> leksahWindowsD' <*> allTreeD <*> webWindowsD <*> flipperSelD
+      -- (Not for a flipper opened from the title: you pick from it with a
+      -- click, in this window, so nothing should come over it.)
+      (\byTitle vis lws tree wins msel ->
+          if vis && not byTitle then flipOwnerWindow lws tree wins . snd =<< msel else Nothing)
+      <$> titleOpenD <*> flipperVisibleD <*> leksahWindowsD' <*> allTreeD <*> webWindowsD <*> flipperSelD
     performEvent_ $ ffor (fmapMaybe id (updated flipPreviewWinD)) $ \(WindowId n) -> do
         wlog wid ("flipper preview -> order window " <> show n <> " front")
         liftIO (requestOrderWindowFront n)
@@ -7788,13 +7928,26 @@ main showMenubar macTitlebar wid ctx = mdo
                        <*> current allTreeD <*> current webWindowsD
                        <*> current tallVisD <*> current wide1VisD)
             barHiddenE
-    let flipSelE  = leftmost [ fmapMaybe (listToMaybe . M.toList) flipRawE
+    let flipSelE0 = leftmost [ fmapMaybe (listToMaybe . M.toList) flipRawE
                              , (\fi -> ("wide0", fi)) <$> numFlipE
                              , hideFlipE ]
+        -- Narrow mode shows one pane at a time, so a pane that shares its
+        -- TMUX window with others isn't switched to: the choice is held and
+        -- 'narrowPopD' asks whether to pop it out into its own window.
+        narrowSelB = (,,) <$> current narrowD <*> current leksahWindowsD' <*> current allTreeD
+        narrowPopE = attachWithMaybe
+          (\(narrow, lws, tree) (_, fi) ->
+             if narrow then (\n -> (fi, n)) <$> sharedPaneCount lws tree fi else Nothing)
+          narrowSelB flipSelE0
+        flipSelE  = attachWithMaybe
+          (\(narrow, lws, tree) sel@(_, fi) ->
+             if narrow && isJust (sharedPaneCount lws tree fi) then Nothing else Just sel)
+          narrowSelB flipSelE0
         -- The global flipper: classify each selection by the OS window that owns
         -- the tab (from the shared per-window state).  A wide0 item owned by
-        -- ANOTHER window is a cross-window select — raise that window and make
-        -- the item active THERE (never move it here); everything else (this
+        -- ANOTHER window is a cross-window select — released with ⌘, it
+        -- raises that window and makes the item active THERE; CLICKED, its
+        -- tab moves into THIS window, where the flipper was; everything else (this
         -- window's tabs, shared side/bottom tabs, panes not yet open anywhere)
         -- follows the in-place path below.
         classifyFlip (lws, tree, wins) (a, fi) =
@@ -7803,7 +7956,12 @@ main showMenubar macTitlebar wid ctx = mdo
             _                 -> Right (a, fi)
         classifiedFlipE = attachWith classifyFlip
             ((,,) <$> current leksahWindowsD' <*> current allTreeD <*> current webWindowsD) flipSelE
-        crossFlipE = fmapMaybe (either Just (const Nothing)) classifiedFlipE
+        crossFlipE0 = fmapMaybe (either Just (const Nothing)) classifiedFlipE
+        -- Tag each cross-window select with whether it was a click on the
+        -- item (which fires in the same frame as the commit).
+        crossFlipE = fmapMaybe (\(c, mx) -> (\x -> (c, x)) <$> mx) $
+          mergeWith (\(c1, x1) (c2, x2) -> (c1 || c2, x1 <|> x2))
+            [ (True, Nothing) <$ flipClickE, (\x -> (False, Just x)) <$> crossFlipE0 ]
         localFlipE = fmapMaybe (either (const Nothing) Just) classifiedFlipE
         flipTabE  = fmapMaybe (\(a, fi) -> case fi of
                         -- A view leaf commits by activating its leksah
@@ -7813,6 +7971,22 @@ main showMenubar macTitlebar wid ctx = mdo
                         _            -> Nothing) localFlipE
         flipPaneE = fmapMaybe (\(_, fi) -> case fi of FlipPane s w p -> Just (s, w, p); _ -> Nothing) localFlipE
         flipViewE = fmapMaybe (\(_, fi) -> case fi of FlipView n l -> Just (n, l); _ -> Nothing) localFlipE
+    -- The narrow-mode pop-out prompt (see 'narrowPopE'): "⟨pane⟩ is in a
+    -- window with N panes" — [Pop out into its own window] / [Cancel].  Pop
+    -- out is the pane drag's "make it a window of its own" drop, sent through
+    -- the same leksahLeafDrop entry ('dropIntoNewWindow').
+    rec narrowPopD <- holdDyn Nothing $ leftmost [ Just <$> narrowPopE, Nothing <$ narrowPopDoneE ]
+        narrowPopDoneE <- switchHold never =<< dyn (ffor narrowPopD $ \case
+          Nothing -> return never
+          Just (fi, n) -> do
+            lbl <- sample (current (flipItemLabel <$> leksahWindowsD' <*> terminalNamesD <*> allTreeD))
+            narrowPopDialog (lbl fi) n)
+    let narrowPopOutE = fmapMaybe id $ attachWith
+          (\(mp, lws, tree) popOut -> if popOut then fst <$> mp >>= popOutSrcJson lws tree else Nothing)
+          ((,,) <$> current narrowPopD <*> current leksahWindowsD' <*> current allTreeD) narrowPopDoneE
+    performEvent_ $ ffor narrowPopOutE $ \srcJson -> liftJSM . void . eval $
+      "window.leksahLeafDrop && window.leksahLeafDrop(JSON.stringify({src:" <> srcJson
+        <> ", dst:{kind:'window'}}))"
     performEvent_ $ ffor (attachWith (,) ((,) <$> lwsB <*> current allTreeD) flipPaneE) $
       \((lws, tree), (s, w, p)) -> do
         wlog wid ("ENTER flipPaneE selectTmuxPane " <> show (s, w, p))
@@ -7833,13 +8007,21 @@ main showMenubar macTitlebar wid ctx = mdo
               fireRemotePoke ()
           Nothing -> selectTmuxPane s w p
         wlog wid "EXIT flipPaneE"
-    -- Cross-window flip: raise the owning OS window and make the selected tab
-    -- active there; for a terminal pane, also switch tmux to that pane.  The tab
-    -- stays where it is (no move) — the flipper only navigates.
+    -- Cross-window flip.  Released with ⌘: raise the owning OS window and make
+    -- the item active there.  Clicked: the item's tab moves into THIS OS
+    -- window, the one whose flipper was clicked (the 'moveTabTo' in the overUi
+    -- list below).  Either way, for a terminal pane, also switch tmux to it.
     performEvent_ $ ffor (attachWith (,) ((,) <$> lwsB <*> current allTreeD) crossFlipE) $
-      \((lws, tree), (WindowId n, fi)) -> do
-        wlog wid ("crossFlip commit -> raise window " <> show n)
-        liftIO $ requestRaiseWindow n
+      \((lws, tree), (clicked, (WindowId n, fi))) -> do
+        if clicked
+          then do
+            wlog wid ("crossFlip click -> bring tab here from window " <> show n)
+            -- The live preview may have walked the item's old window over
+            -- this one; the item is HERE now, so come back to the front.
+            liftIO $ requestRaiseWindow (let WindowId me = wid in me)
+          else do
+            wlog wid ("crossFlip commit -> raise window " <> show n)
+            liftIO $ requestRaiseWindow n
         liftIO $ case fi of
           FlipPane s w p -> do
             -- Same up-front model commit as the local flip above.
@@ -10913,10 +11095,11 @@ main showMenubar macTitlebar wid ctx = mdo
       <> ((\(r, sid) -> [overUi (paneAISession %~ M.insert r sid)])
             <$> aiBindE)
       <> ((\k -> [overUi (webWindows %~ activateWide0 wid k)]) <$> wide0ActivateE)
-      -- Cross-window flip: make the selected tab active in ITS window (which was
-      -- just raised), without moving it here.  A pane's tab is resolved from
+      -- Cross-window flip: make the selected item's tab active in ITS window
+      -- (just raised) — or, when the item was CLICKED, move the tab over to
+      -- THIS OS window and make it active here.  A pane's tab is resolved from
       -- the live leksah-window map inside the mutation.
-      <> ((\(tree, (w, fi)) -> [overUi (\i ->
+      <> ((\(tree, (clicked, (w, fi))) -> [overUi (\i ->
               let lws = i ^. leksahWindows
                   mk = case fi of
                     FlipTab k       -> Just k
@@ -10930,7 +11113,8 @@ main showMenubar macTitlebar wid ctx = mdo
                         %~ M.adjust (\lw -> lw { lwFocused = Just (LeafId l) }) n
                     _            -> i'
               in case mk of
-                   Just k  -> focusView i & webWindows %~ activateWide0 w k
+                   Just k  -> focusView i & webWindows %~
+                                (if clicked then moveTabTo wid k else activateWide0 w k)
                    Nothing -> i)]) <$> attach (current allTreeD) crossFlipE)
       -- An in-window view-leaf flip commit focuses the leaf (its lw tab was
       -- selected via flipTabE).

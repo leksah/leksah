@@ -197,8 +197,11 @@ newtype MenubarEvents =
 
 makePrisms ''MenubarEvents
 
-newtype ToolbarEvents =
-  ToolbarCommand Command
+data ToolbarEvents
+  = ToolbarCommand Command
+  | ToolbarTitleClick   -- ^ narrow mode: the active-pane title was tapped
+                        --   (opens the flipper)
+  | ToolbarMenuClick    -- ^ narrow mode: the ☰ menu button was tapped
 
 makePrisms ''ToolbarEvents
 

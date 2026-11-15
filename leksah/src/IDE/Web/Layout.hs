@@ -591,3 +591,65 @@ layoutCss = do
     ".leksah-nav:focus" ? ("outline" -: "none")
     ".leksah-vlist:focus" ? ("outline" -: "none")
 
+    narrowCss
+
+-- | Narrow mode (phones and other small displays): set by the
+-- @html.leksah-narrow@ class, which a matchMedia hook in "IDE.Web.Main"
+-- toggles below 'narrowBreakpoint'.  The page becomes one top bar ([☰][title],
+-- see "IDE.Web.Widget.Toolbar") over ONE main region; every area — the editor
+-- area (wide0), the side bar (tall) and the bottom bar (wide1) — is laid into
+-- that region, and only the area whose pane was activated last shows
+-- (@html.narrow-show-{tall,wide0,wide1}@, kept by "IDE.Web.Main").  Tab strips,
+-- dividers and the status bar go: the title opens the flipper instead.
+--
+-- Hidden areas keep their full size and are only made invisible
+-- (@visibility@, like an inactive tab): a terminal that resized to nothing
+-- would resize its tmux window for every client attached to it.  The rules
+-- carry !important because the side/bottom bars' hide and auto-hide modes set
+-- the same grid and transform properties with more specific selectors.
+narrowCss :: Css
+narrowCss = do
+    "html.leksah-narrow .leksah" ? do
+        "grid-template-rows" -: "36px 1fr var(--bar-row) !important"
+        "grid-template-columns" -: "100% !important"
+        "grid-template-areas" -: "\"toolbar\" \"main\" \"bar\" !important"
+        "--wide1-row" -: "0px"
+    "html.leksah-narrow .leksah :is(.area-tall, .area-wide0, .area-wide1, .wide0-anchor)" ? do
+        "grid-area" -: "main !important"
+        "position" -: "relative !important"
+        "transform" -: "none !important"
+        "top" -: "auto !important"
+        "bottom" -: "auto !important"
+        "height" -: "auto !important"
+        "width" -: "auto !important"
+        "padding-left" -: "0 !important"
+    "html.leksah-narrow .leksah .tab.area-tall > *" ? ("width" -: "auto !important")
+    "html.leksah-narrow .leksah :is(.tab-buttons, .statusbar, .tall-divider, .wide1-divider, .tall-sensor)" ?
+        ("display" -: "none !important")
+    -- No tab strip above the panes, so no room left for one (".tab" keeps a
+    -- 20px top margin for it), and no active-pane highlight: there is only
+    -- ever one pane on screen, so the ring and glow would mark nothing.
+    "html.leksah-narrow .leksah .tab" ? ("margin-top" -: "0 !important")
+    "html.leksah-narrow .leksah :is(.leksah-pane-glow, .leksah-pane-left-line)" ?
+        ("display" -: "none !important")
+    -- A leksah window split into several leaves (the browser demo's showcase,
+    -- or a window that was split before the window got narrow) shows only its
+    -- FOCUSED leaf, filling the window; the others keep their size and go
+    -- invisible, like the hidden areas below.  The flipper (and its pop-out
+    -- prompt) is how to get at them.
+    "html.leksah-narrow .terminal-cc:has(> .terminal-cc-leaf ~ .terminal-cc-leaf) > .terminal-cc-leaf:has(.pane-chrome.active, .terminal-cc-hl.active)" ? do
+        "left" -: "0 !important"
+        "top" -: "0 !important"
+        "width" -: "100% !important"
+        "height" -: "100% !important"
+        "z-index" -: "2"
+    "html.leksah-narrow .terminal-cc:has(> .terminal-cc-leaf ~ .terminal-cc-leaf) > .terminal-cc-leaf:not(:has(.pane-chrome.active, .terminal-cc-hl.active)), html.leksah-narrow .terminal-cc:has(> .terminal-cc-leaf ~ .terminal-cc-leaf) > .terminal-cc-leaf:not(:has(.pane-chrome.active, .terminal-cc-hl.active)) *" ? do
+        "visibility" -: "hidden !important"
+        "pointer-events" -: "none !important"
+    "html.leksah-narrow .terminal-cc-native-divider" ? ("display" -: "none !important")
+    -- Only the shown area: on top, and taking the pointer.
+    "html.leksah-narrow.narrow-show-tall .leksah .tab.area-tall, html.leksah-narrow.narrow-show-wide0 .leksah .tab.area-wide0, html.leksah-narrow.narrow-show-wide1 .leksah .tab.area-wide1" ?
+        ("z-index" -: "3")
+    "html.leksah-narrow:not(.narrow-show-tall) .leksah .tab.area-tall, html.leksah-narrow:not(.narrow-show-tall) .leksah .tab.area-tall *, html.leksah-narrow:not(.narrow-show-wide0) .leksah .tab.area-wide0, html.leksah-narrow:not(.narrow-show-wide0) .leksah .tab.area-wide0 *, html.leksah-narrow:not(.narrow-show-wide1) .leksah .tab.area-wide1, html.leksah-narrow:not(.narrow-show-wide1) .leksah .tab.area-wide1 *" ? do
+        "visibility" -: "hidden !important"
+        "pointer-events" -: "none !important"

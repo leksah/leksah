@@ -216,6 +216,11 @@ void leksah_set_pick_path_callback(void (*pick_path)(int, const char *))
 static const CGFloat kLeksahTitlebarHeight = 28.0;
 static double  gToolbarMinX = 1.0e9;   // left edge of the first toolbar button
 static double  gToolbarMaxX = -1.0e9;  // right edge of the last toolbar button
+// Per OS window (keyed by windowNumber), the measured "lo,hi,tlo,thi": the
+// visible toolbar controls' x-range and the active-pane details' (title's)
+// x-range.  Each window is measured on its own: the title's width differs
+// per window, and a narrow window lays the bar out differently.
+static NSMutableDictionary *gToolbarRects = nil;
 static NSWindow *gLeksahWindow = nil;
 // Every leksah OS window, keyed by its WindowId (@(wid)) → NSWindow.  wid 0 is
 // the first window (created by jsaddle-wkwebview); further windows come from
@@ -683,10 +688,20 @@ int leksah_snapshot_rect(const char *cpath, int wid, int x, int y, int w, int h)
 
 // Ask the page for the x-range covered by the toolbar buttons, so a click there
 // isn't turned into a window drag.  Async; the result updates the cached range.
+static void leksah_measure_toolbar_of(NSWindow *win);
 static void leksah_measure_toolbar(void) {
-    if (gLeksahWindow == nil) return;
-    id web = leksah_find_webview([gLeksahWindow contentView]);
+    if (gToolbarRects == nil) gToolbarRects = [[NSMutableDictionary alloc] init];  // retained: no ARC here
+    NSMutableArray *ws = [NSMutableArray array];
+    if (gLeksahWindow != nil) [ws addObject:gLeksahWindow];
+    for (NSWindow *w in [gWindows allValues])
+        if (![ws containsObject:w]) [ws addObject:w];
+    for (NSWindow *w in ws) leksah_measure_toolbar_of(w);
+}
+
+static void leksah_measure_toolbar_of(NSWindow *win) {
+    id web = leksah_find_webview([win contentView]);
     if (web == nil) return;
+    NSNumber *key = @([win windowNumber]);
     // Only the VISIBLE controls: the always-present buttons (direct children)
     // plus the collapsible wrapper's own clipped box — children of the hidden
     // wrapper keep their laid-out rects (overflow:hidden only clips paint), so
@@ -699,15 +714,18 @@ static void leksah_measure_toolbar(void) {
         @"var add=function(r){if(r.width>0){lo=Math.min(lo,r.left);hi=Math.max(hi,r.right);}};"
         @"document.querySelectorAll('.toolbar > .toolbar-item').forEach(function(e){add(e.getBoundingClientRect());});"
         @"var w=document.querySelector('.toolbar-items');if(w)add(w.getBoundingClientRect());"
-        @"return hi<lo?'':lo+','+hi;})()";
+        @"var t=document.querySelector('.toolbar-active-pane'),tr=t?t.getBoundingClientRect():null;"
+        @"var ts=(tr&&tr.width>0)?(tr.left+','+tr.right):'1e9,-1e9';"
+        @"return hi<lo?'':lo+','+hi+','+ts;})()";
     void (^handler)(id, id) = ^(id result, id error) {
         (void)error;
         if ([result isKindOfClass:[NSString class]] && [(NSString *)result length] > 0) {
             NSArray<NSString *> *parts = [(NSString *)result componentsSeparatedByString:@","];
-            if ([parts count] == 2) {
+            if ([parts count] >= 2 && win == gLeksahWindow) {
                 gToolbarMinX = [parts[0] doubleValue];
                 gToolbarMaxX = [parts[1] doubleValue];
             }
+            if ([parts count] >= 4) gToolbarRects[key] = parts;
         }
     };
     SEL sel = @selector(evaluateJavaScript:completionHandler:);
@@ -802,7 +820,36 @@ static void leksah_install_titlebar_drag(void) {
             CGFloat yFromTop = NSHeight([content bounds]) - p.y;
             if (yFromTop < 0 || yFromTop > kLeksahTitlebarHeight) return e;  // below the title bar
             if (leksah_on_window_button(w, p)) return e;            // a traffic-light button
-            if (p.x >= gToolbarMinX && p.x <= gToolbarMaxX) return e;  // a toolbar button
+            double tbLo = gToolbarMinX, tbHi = gToolbarMaxX;
+            double tLo = 1.0e9, tHi = -1.0e9;
+            NSArray<NSString *> *r = gToolbarRects[@([w windowNumber])];
+            if ([r count] >= 4) {
+                tbLo = [r[0] doubleValue]; tbHi = [r[1] doubleValue];
+                tLo  = [r[2] doubleValue]; tHi  = [r[3] doubleValue];
+            }
+            if (p.x >= tbLo && p.x <= tbHi) return e;  // a toolbar button
+            // The active-pane details: a CLICK there is the page's (it opens
+            // the tab flipper); a drag still moves the window.  Watch the
+            // mouse until it either travels a few points (drag) or comes up
+            // (click — hand the mouse-down on to the web view, and the
+            // mouse-up that follows completes the click there).
+            if (p.x >= tLo && p.x <= tHi && [e clickCount] < 2) {
+                NSPoint start = [NSEvent mouseLocation];
+                for (;;) {
+                    NSEvent *n = [NSApp nextEventMatchingMask:(NSEventMaskLeftMouseUp | NSEventMaskLeftMouseDragged)
+                                                    untilDate:[NSDate distantFuture]
+                                                       inMode:NSEventTrackingRunLoopMode
+                                                      dequeue:NO];
+                    if (n == nil || [n type] == NSEventTypeLeftMouseUp) return e;   // a click
+                    NSPoint now = [NSEvent mouseLocation];
+                    if (fabs(now.x - start.x) > 3 || fabs(now.y - start.y) > 3) break;  // a drag
+                    // A small jitter: drop it and keep watching.
+                    (void)[NSApp nextEventMatchingMask:NSEventMaskLeftMouseDragged
+                                             untilDate:[NSDate distantPast]
+                                                inMode:NSEventTrackingRunLoopMode
+                                               dequeue:YES];
+                }
+            }
             // Double-click in the title-bar strip: what a native title bar
             // does, honouring the System Settings choice (zoom by default).
             if ([e clickCount] >= 2) {

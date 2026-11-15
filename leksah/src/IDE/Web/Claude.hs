@@ -45,7 +45,9 @@ module IDE.Web.Claude
   , claudeFindTranscript
   , activateMruClaude
   , showLiveSession
+  , showLiveSessionHere
   , showTmuxPane
+  , showTmuxPaneWith
   , paneForSession
   , sessionForPaneId
   , sessionOwningPid
@@ -118,7 +120,7 @@ import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
         liveRunPanes, livePanePids, livePaneTitles, tmuxCmd, sendKeysTo, findRunPane,
         newSessionWindow, freshSessionName)
-import IDE.Web.RemoteTermRequest (requestLocalTerm)
+import IDE.Web.RemoteTermRequest (requestLocalTerm, requestBringTerm)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.SplitLayout (windowOwner)
 
@@ -1097,11 +1099,16 @@ activateMruClaude dir = do
 -- stayed hidden one tab over.  Falling back to @s@ covers the window no leksah
 -- window owns yet (the reconcile mints one within a poll tick).
 showTmuxPane :: Text -> Text -> Text -> IO ()
-showTmuxPane s w p = do
+showTmuxPane = showTmuxPaneWith False
+
+-- | 'showTmuxPane', or with @True@: bring the tab to the active OS window
+-- ('requestBringTerm') instead of raising the window that holds it.
+showTmuxPaneWith :: Bool -> Text -> Text -> Text -> IO ()
+showTmuxPaneWith here s w p = do
   tmuxCmd ["select-window", "-t", T.unpack w]
   tmuxCmd ["select-pane", "-t", T.unpack p]
   mlw <- lwForTmuxWindow w
-  requestLocalTerm (fromMaybe s mlw)
+  (if here then requestBringTerm else requestLocalTerm) (fromMaybe s mlw)
 
 -- | The leksah window (wide0 tab) holding tmux window @w@, if one does.
 lwForTmuxWindow :: Text -> IO (Maybe Text)
@@ -1124,15 +1131,23 @@ lwForTmuxWindow w = getGlobalApp >>= \case
 showLiveSession :: Text -> IO Bool
 -- (The browser demo has no claude processes; 'demoShowAgent' finds a canned
 -- agent's pane by name there, and is 'Nothing' natively.)
-showLiveSession sid = demoShowAgent sid >>= \case
-  Just shown -> return shown
-  Nothing -> nativeShowLiveSession sid
+showLiveSession = showLiveSessionWith False
 
-nativeShowLiveSession :: Text -> IO Bool
-nativeShowLiveSession sid = paneForSession sid >>= \case
-    Just (s, w, p) -> showTmuxPane s w p >> return True
+-- | 'showLiveSession', bringing the pane's tab to the active OS window (the
+-- one clicked in) rather than raising the window that holds it.
+showLiveSessionHere :: Text -> IO Bool
+showLiveSessionHere = showLiveSessionWith True
+
+showLiveSessionWith :: Bool -> Text -> IO Bool
+showLiveSessionWith here sid = demoShowAgent sid >>= \case
+  Just shown -> return shown
+  Nothing -> nativeShowLiveSession here sid
+
+nativeShowLiveSession :: Bool -> Text -> IO Bool
+nativeShowLiveSession here sid = paneForSession sid >>= \case
+    Just (s, w, p) -> showTmuxPaneWith here s w p >> return True
     Nothing -> claudeLiveBySession >>= \live -> case M.lookup sid live of
-      Just l | not (null (clDir l)) -> mruClaudeUnclaimed sid (clDir l)
+      Just l | not (null (clDir l)) -> mruClaudeUnclaimed here sid (clDir l)
       _                             -> return False
 
 -- | The directory-MRU fallback of 'showLiveSession', but never someone ELSE's
@@ -1146,15 +1161,15 @@ nativeShowLiveSession sid = paneForSession sid >>= \case
 -- A pane running no live session we can name is still fair game: that is the
 -- case the fallback exists for (no @ps@, so 'paneForSession' can identify
 -- nothing at all, and the run key is the only evidence there is).
-mruClaudeUnclaimed :: Text -> FilePath -> IO Bool
-mruClaudeUnclaimed sid dir = do
+mruClaudeUnclaimed :: Bool -> Text -> FilePath -> IO Bool
+mruClaudeUnclaimed here sid dir = do
   let base = T.pack (dropTrailingPathSeparator dir) <> "#claude"
   panes <- filter (\(k, _, _, _) -> claudeKeyFor base k) <$> liveRunPanes
   case panes of
     [] -> return False
     ((_, s, w, p) : _) -> sessionForPaneId p >>= \case
       Just other | other /= sid -> return False
-      _                         -> showTmuxPane s w p >> return True
+      _                         -> showTmuxPaneWith here s w p >> return True
 
 -- | The tmux @(session id, window id, pane id)@ whose process tree owns LIVE
 -- session @sid@ — the exact identification 'showLiveSession' documents, factored

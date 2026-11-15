@@ -98,6 +98,9 @@
     }
     .demo .demobar .fsbtn:hover { border-color: var(--muted); }
     .demo iframe { display: block; width: 100%; height: min(78vh, 760px); border: 0; background: var(--bg); }
+    .demo .demo-slot { height: min(78vh, 760px); }
+    .demo .demo-small { text-align: center; padding: 8px 0 4px; }
+    .demo .demo-small p { color: var(--muted); margin: 14px 0 0; }
     .demo .frame:fullscreen { display: flex; flex-direction: column; }
     .demo .frame:fullscreen iframe,
     .demo .frame:fullscreen video { flex: 1; height: auto; min-height: 0; object-fit: contain; }
@@ -190,13 +193,20 @@
   </div>
 
   <div class="demo">
+    <!-- Shown instead of the embedded demo when the window is too small to
+         show it without scroll bars (see the script at the bottom); the
+         full-page demo adapts to small screens. -->
+    <div class="demo-small" id="demoSmall" hidden>
+      <a class="btn primary" href="/try/">▶&nbsp; Open the demo</a>
+      <p>Leksah itself, compiled to JavaScript and running in your browser.</p>
+    </div>
     <div class="frame" id="demoFrame">
       <div class="demobar">
         <span class="badge">DEMO</span>
         <span>The real IDE compiled to JavaScript — a canned sample, not a full IDE in your browser</span>
         <button class="fsbtn" id="demoFullscreen" type="button" title="Full screen">⛶ Full screen</button>
       </div>
-      <iframe src="/try/" title="Leksah running in your browser" loading="lazy"></iframe>
+      <div class="demo-slot" id="demoSlot"></div>
     </div>
     <div class="below">
       This is a <b>canned demo</b>: Leksah itself, built with GHC's JavaScript
@@ -381,30 +391,43 @@
 </div>
 
 <script>
-  // The live in-browser IDE is embedded directly (loading="lazy", so the
-  // browser still defers leksah.js — which is large — until the frame nears
-  // the viewport).  `embed()` survives for the fullscreen button and for the
-  // old placeholder path: it is a no-op once an iframe is in place.
+  // The live in-browser IDE is embedded once the frame nears the viewport
+  // (leksah.js is large) — but only when the window can show it without
+  // scroll bars.  A smaller window (a phone) gets an "Open the demo" button
+  // to the full-page demo instead, which adapts to small screens, and never
+  // downloads the demo here.  Re-checked on resize until it is embedded.
   (function () {
     var frame = document.getElementById('demoFrame');
+    var small = document.getElementById('demoSmall');
+    function fits() { return window.innerWidth >= 800 && window.innerHeight >= 600; }
     function embed() {
-      var video = frame.querySelector('video');
-      if (!video) return;   // already embedded
+      var slot = document.getElementById('demoSlot');
+      if (!slot) return;   // already embedded
       var iframe = document.createElement('iframe');
       iframe.src = '/try/';
       iframe.title = 'Leksah running in your browser';
-      video.replaceWith(iframe);
+      slot.replaceWith(iframe);
     }
-    if ('IntersectionObserver' in window) {
-      new IntersectionObserver(function (entries, obs) {
-        if (entries.some(function (e) { return e.isIntersecting; })) {
-          obs.disconnect();
-          embed();
-        }
-      }, { rootMargin: '200px' }).observe(frame);
-    } else {
-      embed();
+    var watching = false;
+    function update() {
+      var ok = fits() || !document.getElementById('demoSlot');
+      frame.hidden = !ok;
+      small.hidden = ok;
+      if (!ok || watching) return;
+      watching = true;
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries, obs) {
+          if (entries.some(function (e) { return e.isIntersecting; })) {
+            obs.disconnect();
+            embed();
+          }
+        }, { rootMargin: '200px' }).observe(frame);
+      } else {
+        embed();
+      }
     }
+    update();
+    window.addEventListener('resize', update);
     document.getElementById('demoFullscreen').addEventListener('click', function () {
       embed();
       var req = frame.requestFullscreen || frame.webkitRequestFullscreen;
