@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -18,19 +19,24 @@ module IDE.Web.WakeOnLan
   ) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (SomeException, bracket, catch, try)
-import Control.Monad (forM_, replicateM_)
-import qualified Data.ByteString as BS
+import Control.Exception (SomeException, catch, try)
 import Data.Char (isHexDigit, digitToInt, toLower)
 import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Word (Word8)
+-- No sockets on the JavaScript backend (the in-browser demo): there the
+-- packet is never sent (see 'sendMagicPacket').
+#if !defined(ghcjs_HOST_OS)
+import Control.Exception (bracket)
+import Control.Monad (forM_, replicateM_)
+import qualified Data.ByteString as BS
 import Network.Socket
        (AddrInfo(..), SocketOption(Broadcast), SocketType(Datagram),
         defaultHints, getAddrInfo, setSocketOption, socket, close)
 import Network.Socket.ByteString (sendTo)
+#endif
 import System.Exit (ExitCode(..))
 import System.Process (readProcessWithExitCode)
 
@@ -54,6 +60,9 @@ parseMac t =
 sendMagicPacket :: Text -> Maybe Text -> IO (Either Text ())
 sendMagicPacket macT mbcast = case parseMac macT of
   Nothing -> return (Left ("Not a MAC address: " <> macT))
+#if defined(ghcjs_HOST_OS)
+  Just _ -> return (Left "Wake-on-LAN is not available in the browser")
+#else
   Just mac -> do
     let payload = BS.pack (replicate 6 0xff ++ concat (replicate 16 mac))
         bcast   = maybe "255.255.255.255" T.unpack mbcast
@@ -68,6 +77,7 @@ sendMagicPacket macT mbcast = case parseMac macT of
     return $ case r of
       Left (e :: SomeException) -> Left (T.pack (show e))
       Right ()                  -> Right ()
+#endif
 
 -- | The Wake-on-LAN entry for @host@, if it has one.
 wakeFor :: Text -> IO (Maybe WakeOnLan)
