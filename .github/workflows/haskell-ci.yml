@@ -236,6 +236,9 @@ jobs:
 
           package reflex-dom-core
             tests: False
+
+          package jsaddle-dom
+            ghc-options: +RTS -M10G -RTS
           EOF
           $HCPKG list --simple-output --names-only | perl -ne 'for (split /\s+/) { print "constraints: any.$_ installed\n" unless /^(breakout|leksah|lsp-types-client)$/; }' >> cabal.project.local
           cat cabal.project

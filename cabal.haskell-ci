@@ -30,6 +30,10 @@ raw-project
     tests: False
   package reflex-dom-core
     tests: False
+  -- jsaddle-dom's generated modules outgrow haskell-ci's default per-GHC
+  -- heap cap (+RTS -M3G, in program-default-options); a later -M wins.
+  package jsaddle-dom
+    ghc-options: +RTS -M10G -RTS
 
 -- First get the build green; tighten these once it is.
 error-unused-packages: False
