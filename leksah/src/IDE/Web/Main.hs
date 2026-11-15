@@ -74,7 +74,7 @@ import qualified Data.Set as S
        (Set, fromList, delete, null, singleton, empty, insert, member, intersection, toList)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace)
+import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace, concatMap, singleton)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
@@ -370,7 +370,7 @@ import IDE.Web.Widget.Terminals
        (terminalsCss, terminalsWidget, sessionAlert, windowIconSrc,
         windowTabLabel, paneIconSrc, stripIdxPrefix)
 import IDE.Web.Widget.TerminalCC (terminalCCWidget)
-import IDE.Web.Widget.LwView (sessionlessLwWidget)
+import IDE.Web.Widget.LwView (sessionlessLwWidget, lwGeom)
 #if defined(ghcjs_HOST_OS)
 import IDE.Web.Widget.LwView (modifyLeksahWindow)  -- the demo's ⌘D
 #endif
@@ -1592,6 +1592,13 @@ flipOwnerWindow lws tree wins fi =
           Nothing -> TerminalKey s
             : [ LeksahWinKey i | (i, lw) <- M.toAscList lws, lwSession lw == Just s ]
   in listToMaybe [ w | (w, ww) <- M.toList wins, any (`elem` _wwWide0 ww) ks ]
+
+-- | A Text as a single-quoted JS string literal.
+jsQuote :: Text -> Text
+jsQuote t = "'" <> T.concatMap esc t <> "'"
+  where esc c | c == '\'' || c == '\\' = T.pack ['\\', c]
+              | c == '\n'              = "\\n"
+              | otherwise              = T.singleton c
 
 -- | Sessions shown by a terminal VIEW leaf of some leksah window (the browser
 -- demo's showcase agent beside the game).  Such a session is OWNED by that
@@ -4999,16 +5006,48 @@ leafDragJs = T.unlines
   -- Losing the window mid-gesture means the mouseup is never coming; forget it
   -- rather than stay armed (an armed gesture makes the NEXT ⌘-drag a no-op).
   , "  window.addEventListener('blur', function(){ cancel(); });"
+  -- A leksah window's TAB is a handle too, with no ⌘: a window of ONE pane is
+  -- picked up by its tab, a window of several by the pane's icon in the tab
+  -- (the icons carry data-drag-lw/-leaf/-pane; see 'paneIconsD').  Gated on
+  -- the window's published geometry, like the ⌘-drag from the pane itself;
+  -- below the drag threshold it stays an ordinary tab click.  The drag
+  -- preview starts on the pane when it is on screen, else on the tab.
+  , "  function lwTabSource(e){"
+  , "    var t = e.target; if (!t || !t.closest) return null;"
+  , "    var wrap = t.closest('.tab-buttons.area-wide0 .tab-wrap[data-tabkey]');"
+  , "    var m = wrap && /^LeksahWinKey \"(.*)\"$/.exec(wrap.getAttribute('data-tabkey') || '');"
+  , "    if (!m) return null;"
+  , "    var lw = m[1], leaf, pane = null;"
+  , "    var icon = t.closest('img.tab-pane-icon[data-drag-lw]');"
+  , "    if (icon){"
+  , "      lw = icon.getAttribute('data-drag-lw');"
+  , "      leaf = parseInt(icon.getAttribute('data-drag-leaf'), 10);"
+  , "      pane = icon.getAttribute('data-drag-pane');"
+  , "    } else {"
+  , "      if (wrap.querySelector('img.tab-pane-icon')) return null;"
+  , "      var si = (window.__leksahLwSrc||{})[lw];"
+  , "      if (!si || si.leaves.length !== 1) return null;"
+  , "      leaf = si.leaves[0]; }"
+  , "    if (!(window.__leksahLwSrc||{})[lw] || isNaN(leaf)) return null;"
+  , "    var cc = document.querySelector('.terminal-cc[data-lw=\"' + lw + '\"]');"
+  , "    var le = cc && cc.querySelector('.terminal-cc-leaf[data-leaf=\"' + leaf + '\"]');"
+  , "    var pe = pane && le && le.querySelector('.terminal-cc-hl[data-pane=\"' + pane + '\"]');"
+  , "    function shown(x){ if (!x) return false; var r = x.getBoundingClientRect();"
+  , "      return r.width > 2 || r.height > 2; }"
+  , "    var el = pane ? (shown(pe) ? pe : wrap) : (shown(le) ? le : wrap);"
+  , "    return pane ? {kind:'tmux', lw:lw, leaf:leaf, pane:pane, el:el}"
+  , "                : {kind:'pane', lw:lw, leaf:leaf, el:el}; }"
   , "  document.addEventListener('mousedown', function(e){"
-  , "    if (e.button !== 0 || !e[MOD]) return;"
+  , "    var tabSrc = e.button === 0 ? lwTabSource(e) : null;"
+  , "    if (e.button !== 0 || (!e[MOD] && !tabSrc)) return;"
   -- Arming state that outlived its gesture (a native drag that slipped past
   -- both guards, a missed mouseup) must not deafen every later drag.
   , "    if (st) cancel();"
   , "    if (!e.target || !e.target.closest) return;"
   -- A divider owns its own drag; never contest it.
   , "    if (e.target.closest('.terminal-cc-divider, .terminal-cc-native-divider, .tall-divider, .wide1-divider')) return;"
-  , "    var src = null;"
-  , "    var leaf = e.target.closest('.terminal-cc-leaf[data-leaf]');"
+  , "    var src = tabSrc;"
+  , "    var leaf = tabSrc ? null : e.target.closest('.terminal-cc-leaf[data-leaf]');"
   , "    var cc = leaf && leaf.closest('.terminal-cc[data-lw]');"
   , "    if (leaf && cc && (window.__leksahLwGeom||{})[cc.getAttribute('data-lw')]){"
   , "      src = {kind:'pane', lw: cc.getAttribute('data-lw'),"
@@ -5050,7 +5089,7 @@ leafDragJs = T.unlines
   , "          src = {kind:'tab', tab:k, el:tb}; }"
   , "    }"
   , "    if (!src) return;"
-  , "    var g0 = src.lw && (window.__leksahLwGeom||{})[src.lw];"
+  , "    var g0 = src.lw && ((window.__leksahLwGeom||{})[src.lw] || (window.__leksahLwSrc||{})[src.lw]);"
   , "    src.srv = g0 ? g0.srv : null;"
   , "    src.isTmux = src.kind==='tmux' || src.kind==='rtmux'"
   , "                 || (src.kind==='pane' && g0 && (g0.tmux||[]).indexOf(src.leaf) >= 0);"
@@ -6632,7 +6671,7 @@ main showMenubar macTitlebar wid ctx = mdo
               -- does) and its view leaves, in flipper (MRU) order — each with
               -- the flipper's icon and label.
               paneIconsD = (\items lws tree names ->
-                  [ (src, lbl)
+                  [ (src, lbl, dragAttrs lws tree fi)
                   | (_, fi) <- items
                   , case fi of
                       FlipPane s w _ -> paneOwnerLw lws tree s w == Just n
@@ -6644,6 +6683,21 @@ main showMenubar macTitlebar wid ctx = mdo
                           FlipView n' l  -> maybe "" (`tabLabelText` names) (viewKeyOf lws n' l)
                           FlipTab t      -> tabLabelText t names ])
                 <$> flipLiveD <*> leksahWindowsD' <*> allTreeD <*> terminalNamesD
+              -- Which pane an icon stands for, for 'leafDragJs': dragging the
+              -- icon picks that pane up (no ⌘ needed) — its leaf, or the one
+              -- tmux pane when its tmux window holds several.
+              dragAttrs lws tree fi = case fi of
+                FlipView n' l -> "data-drag-lw" =: n' <> "data-drag-leaf" =: T.pack (show l)
+                FlipPane s w p -> case flipPaneLeaf lws tree s w of
+                  Just (lwi, LeafId l) ->
+                    let panes = maybe [] twPanes
+                          (M.lookup s tree >>= find ((== w) . twIndex) . snd)
+                        pid = [ tpId pn | length panes > 1
+                                        , pn <- panes, tpIndex pn == p ]
+                    in "data-drag-lw" =: lwi <> "data-drag-leaf" =: T.pack (show l)
+                       <> mconcat [ "data-drag-pane" =: x | x <- take 1 pid ]
+                  Nothing -> mempty
+                FlipTab _ -> mempty
               -- One pane: its icon and the window's name.  Several: just the
               -- panes' icons — the same ones, in the same order, as the
               -- flipper shows — each naming its pane on hover.
@@ -6658,8 +6712,9 @@ main showMenubar macTitlebar wid ctx = mdo
                       dynText labelD
                     True -> void $ simpleList paneIconsD' $ \pD ->
                       elDynAttr "img"
-                        ((\(src, lbl) -> "class" =: "tab-icon tab-pane-icon term-alert-icon"
-                                       <> "src" =: src <> "title" =: lbl) <$> pD)
+                        ((\(src, lbl, drag) -> "class" =: "tab-icon tab-pane-icon term-alert-icon"
+                                       <> "src" =: src <> "title" =: lbl
+                                       <> "draggable" =: "false" <> drag) <$> pD)
                         (pure ())
               orderStyleD = buttonOrderStyleD ident baseOrderD
               badgeD = M.lookup ident <$> badgeNumsD
@@ -7339,6 +7394,20 @@ main showMenubar macTitlebar wid ctx = mdo
           , gate (current (not <$> flipperVisibleD)) (updated flipLiveD) ])
     -- The shared leksah-window map, for pane→owning-tab resolution here.
     leksahWindowsD' <- holdUniqDyn ((^. leksahWindows) <$> ide)
+    -- What 'leafDragJs' needs to pick a pane up by its window's TAB, for
+    -- every leksah window — not just the ones whose body is built (tab bodies
+    -- are lazy, and only a built window publishes its '__leksahLwGeom').
+    -- Source identification only: drop targets still come from the live
+    -- geometry of what is on screen.
+    lwSrcPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [ updated leksahWindowsD'
+                                   , tag (current leksahWindowsD') lwSrcPb ]) $ \lws ->
+      liftJSM . void . eval $ "window.__leksahLwSrc = {" <> T.intercalate ","
+        [ jsQuote i <> ":{leaves:[" <> T.intercalate "," [ T.pack (show l) | LeafId l <- treeLeafIds (lwTree lw) ]
+          <> "],tmux:[" <> T.intercalate "," (map (T.pack . show) tmuxLeaves)
+          <> "],srv:" <> maybe "null" jsQuote srv <> "}"
+        | (i, lw) <- M.toList lws
+        , let (_, _, srv, tmuxLeaves) = lwGeom lw ] <> "};"
     -- The pane→owning-leksah-window resolver over the live maps, threaded to
     -- everything that maps flip items to buttons/tabs ('paneOwnerLw').
     let ownerOfD = paneOwnerLw <$> leksahWindowsD' <*> allTreeD
