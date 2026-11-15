@@ -11,8 +11,10 @@ distribution: noble
 
 -- exe:leksah on Linux is the GTK4 / WebKitGTK 6.0 front end (gi-gtk4,
 -- gi-webkit via jsaddle-webkitgtk); the gi-* packages need the libraries'
--- headers and their GObject-introspection data at build time.
-apt: libgtk-4-dev libwebkitgtk-6.0-dev libgirepository1.0-dev pkg-config
+-- headers and their GObject-introspection data at build time — including
+-- ATK, which gi-webkit 6.0.5 still depends on although GTK4 itself does not
+-- (so the GTK/WebKit dev packages don't bring it in).
+apt: libgtk-4-dev libwebkitgtk-6.0-dev libjavascriptcoregtk-6.0-dev libsoup-3.0-dev libatk1.0-dev libgraphene-1.0-dev libharfbuzz-dev libgirepository1.0-dev pkg-config
 
 haddock: False
 benchmarks: False

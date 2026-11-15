@@ -41,7 +41,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common
-          apt-get install -y libgirepository1.0-dev libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
+          apt-get install -y libatk1.0-dev libgirepository1.0-dev libgraphene-1.0-dev libgtk-4-dev libharfbuzz-dev libjavascriptcoregtk-6.0-dev libsoup-3.0-dev libwebkitgtk-6.0-dev pkg-config
       - name: Install GHCup
         run: |
           mkdir -p "$HOME/.ghcup/bin"
