@@ -29,6 +29,13 @@ data-files:
     linux/applications/leksah.xml
     linux/icons/hicolor/48x48/apps/leksah.png
 extra-source-files:
+    -- exe:leksah's per-OS front ends all have main-is: Main.hs, each in its
+    -- own hs-source-dirs; sdist resolves that main-is once (for one OS) and
+    -- leaves the others out, so CI's sdist-based Linux build found no Main.
+    main/wkwebview/Main.hs
+    main/webkitgtk/Main.hs
+    main/webview2/Main.hs
+    main/ghcjs/Main.hs
 
 source-repository head
     type: git
