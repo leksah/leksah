@@ -215,6 +215,7 @@ import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
 import IDE.Web.Instance (leksahPort)
+import IDE.Web.ModifierProbe (cmdHeldNow)
 import IDE.Web.Handoff
        (handoffEnabled, isHandoffSuccessor, requestHandoff, handingOff, signalHandoffReady,
         registerSessionFlush, signalSessionFlushDone)
@@ -1277,14 +1278,14 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             demoTabs = map LeksahWinKey (M.keys lws0)
             dfltWin  = WebWindowSession demoTabs (listToMaybe demoTabs)
                                         TallShow TallShow Nothing
-#else
             -- Both showcase leaves in the flipper order from the start, so its
             -- tab shows them as pane icons (the game and the agent's face),
             -- as any window with several panes does.
             dfltFlip = [ FlipView (lwIdText 0) l | l <- [0, 1] ]
+#else
             dfltWin  = WebWindowSession [] Nothing TallShow TallShow Nothing
-#endif
             dfltFlip = []
+#endif
             wwsList  = case mbSession of
                          Just s | not (null (wsWindows s)) -> wsWindows s
                          _                                 -> [dfltWin]
@@ -1592,7 +1593,6 @@ flipOwnerWindow lws tree wins fi =
             : [ LeksahWinKey i | (i, lw) <- M.toAscList lws, lwSession lw == Just s ]
   in listToMaybe [ w | (w, ww) <- M.toList wins, any (`elem` _wwWide0 ww) ks ]
 
--- | The view 'TabKey' a 'FlipView' item points at — the lw's leaf must still
 -- | Sessions shown by a terminal VIEW leaf of some leksah window (the browser
 -- demo's showcase agent beside the game).  Such a session is OWNED by that
 -- leaf: the reconcile must not wrap its tmux window in a leksah window (and
@@ -1602,6 +1602,7 @@ viewLeafSessions lws = S.fromList
   [ s | lw <- M.elems lws
       , PaneContent (PaneView (TerminalKey s)) _ <- M.elems (lwPanes lw) ]
 
+-- | The view 'TabKey' a 'FlipView' item points at — the lw's leaf must still
 -- hold a native view ('Nothing' once either is gone).
 viewKeyOf :: Map Text LeksahWindow -> Text -> Int -> Maybe TabKey
 viewKeyOf lws n l = do
@@ -6762,12 +6763,12 @@ main showMenubar macTitlebar wid ctx = mdo
             mon <- useMonaco <$> sample (current prefsD)
             void $ reviewWidget mon d
           BrowserKey n -> void $ browserWidget n focusE focD
-          _ -> return ()
 #if defined(ghcjs_HOST_OS)
           -- The demo showcase's agent: a canned terminal as a view leaf (no
           -- tmux in the browser to give it a pane of its own).
           TerminalKey sid -> void $ terminalWidget ctx sid focusE
 #endif
+          _ -> return ()
         -- Mark convertible tab bodies (editor / git-log) so the ⌘-held
         -- navigation hints (hintsJs) can drop their yellow ⌘D / ⌘⇧D chips on
         -- them — here the keys move the tab into a session tab's native split
@@ -7372,11 +7373,70 @@ main showMenubar macTitlebar wid ctx = mdo
           elDynAttr "img" (flipTypeIconAttr <$> leksahWindowsD' <*> allTreeD <*> fiD) (pure ())
           dynText $ flipItemLabel <$> leksahWindowsD' <*> terminalNamesD <*> allTreeD <*> fiD
     winCountD <- holdUniqDyn (M.size <$> webWindowsD)
-    -- The tab flipper: always opens already-advanced (⌘` = the previous tab), and
-    -- has no dismiss key — hence 'never' for both of those inputs.
+    -- The flipper commits on the ⌘ keyup — which never arrives when the user
+    -- leaves the app mid-flip (⌘` then, still holding ⌘, Tab to another app):
+    -- the release goes to the other app and the flipper would stay up.  So
+    -- when this window loses focus, dismiss it WITHOUT committing (the active
+    -- pane stays as it was).  "Lost focus" = the page no longer has focus
+    -- after the blur settles: focus moving into one of the page's own iframes
+    -- (a browser pane) also fires blur, but document.hasFocus() stays true.
+    (flipBlurE, fireFlipBlur) <- newTriggerEvent
+    flipBlurPb <- getPostBuild
+    performEvent_ $ ffor flipBlurPb $ \_ -> liftJSM $ do
+        _ <- jsg ("window" :: Text) ^. jss ("leksahFlipBlurred" :: Text)
+                (fun $ \_ _ _ -> liftIO (fireFlipBlur ()))
+        void $ eval ("(function(){ if (window.__leksahFlipBlurHooked) return;"
+                     <> " window.__leksahFlipBlurHooked = true;"
+                     <> " window.addEventListener('blur', function(){ setTimeout(function(){"
+                     <> "   if (!document.hasFocus() && window.leksahFlipBlurred) window.leksahFlipBlurred();"
+                     <> " }, 0); }); })()" :: Text)
+        -- …and when the window GAINS focus: back from the app switcher,
+        -- including ⌘-Tab landing on leksah itself, where no blur reaches the
+        -- page (the switcher keeps the ⌘ keyup too).  Focus coming back out
+        -- of one of the page's own iframes (a browser pane) also fires
+        -- 'focus' — and the flip-step code does exactly that when a flip
+        -- starts inside a browser pane — so this separate listener notes when
+        -- a blur only moved focus INTO an iframe, and ignores the focus that
+        -- returns from it.
+        void $ eval ("(function(){ if (window.__leksahFlipFocusHooked) return;"
+                     <> " window.__leksahFlipFocusHooked = true;"
+                     <> " var intoFrame = false;"
+                     <> " window.addEventListener('blur', function(){ setTimeout(function(){"
+                     <> "   var ae = document.activeElement;"
+                     <> "   intoFrame = document.hasFocus() && !!ae && ae.tagName === 'IFRAME';"
+                     <> " }, 0); });"
+                     <> " window.addEventListener('focus', function(){"
+                     <> "   if (intoFrame) { intoFrame = false; return; }"
+                     <> "   if (window.leksahFlipBlurred) window.leksahFlipBlurred();"
+                     <> " }); })()" :: Text)
+    -- The tab flipper: always opens already-advanced (⌘` = the previous tab), so
+    -- it takes no open-at-0 input ('never'); it is dismissed without a commit
+    -- when the window loses or regains focus (flipBlurE, above).
     (flipperVisibleD, flipperSelD, flipSelIndexD, flipRawE) <-
         flipperWidget flipItemsD flipStepE rawFlipDoneE selfSelectedD
-                      never never flipLabel
+                      never flipBlurE flipLabel
+    -- …and when ⌘-Tab takes the ⌘ keyup but leaves leksah in front (the
+    -- app switcher, Escaped or landing back on leksah): no blur, no focus,
+    -- no keyup reaches the page.  So while the flipper is up — and only then
+    -- — poll whether ⌘ is still physically held ('cmdHeldNow'; macOS only,
+    -- 'Nothing' elsewhere stops the poll at once).  Two consecutive "not
+    -- held" readings dismiss it without committing: one would race a normal
+    -- release, whose keyup commits through 'rawFlipDoneE' a moment later.
+    -- A generation number retires the previous poll thread whenever the
+    -- flipper opens again, so there is never more than one.
+    flipPollGen <- liftIO (newIORef (0 :: Int))
+    performEvent_ $ ffor (updated flipperVisibleD) $ \vis -> liftIO $ do
+        gen <- atomicModifyIORef' flipPollGen (\g -> (g + 1, g + 1))
+        when vis . void . forkIO $
+          let poll ups = do
+                threadDelay 100000
+                current' <- readIORef flipPollGen
+                when (current' == gen) $ cmdHeldNow >>= \case
+                  Nothing    -> return ()
+                  Just True  -> poll (0 :: Int)
+                  Just False | ups >= 1  -> fireFlipBlur ()
+                             | otherwise -> poll (ups + 1)
+          in poll 0
     -- The AI-session picker, in the same overlay slot (only one is ever up).  It
     -- opens ON entry 0 — the active pane's default session — so a bare chord tap
     -- commits the default, and Escape dismisses it.

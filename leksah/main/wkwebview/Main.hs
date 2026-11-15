@@ -11,7 +11,8 @@ import IDE.Web.Instance (assetPort)
 import IDE.Web.Keybindings (loadKeybindings)
 import IDE.Web.Main (newIDE, startJSaddle)
 import IDE.Web.MacMenu (installMacMenu, setupMacTitlebar)
-import IDE.Web.MacGlue (takeFirstLaunch, resumeApp)
+import IDE.Web.MacGlue (takeFirstLaunch, resumeApp, cmdKeyHeld)
+import IDE.Web.ModifierProbe (setCmdHeldProbe)
 import IDE.Web.GhciMode (ghciMode, phaseLog)
 import IDE.Web.NewWindowRequest (requestOpenWindow)
 import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
@@ -28,6 +29,8 @@ main = do
   -- Build the native macOS menu bar (its install is scheduled onto the main
   -- thread, so calling it before the app's run loop starts is fine).
   installMacMenu
+  -- Let the library ask whether ⌘ is held (the tab flipper's ⌘-Tab check).
+  setCmdHeldProbe cmdKeyHeld
   -- Make the web toolbar sit in the window's title bar (transparent title bar +
   -- full-size content view).  Like the menu, this is scheduled onto the main
   -- thread and retries until the window exists, so calling it now is fine.

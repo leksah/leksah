@@ -126,7 +126,7 @@ flipperWidget
   -> Event t ()     -- ^ commit (Command released)
   -> Dynamic t Bool -- ^ highlighted item is owned by this window (thick border)
   -> Event t ()     -- ^ open highlighting entry 0 (no step); ignored when already up
-  -> Event t ()     -- ^ dismiss WITHOUT committing (Escape); 'never' for the flipper
+  -> Event t ()     -- ^ dismiss WITHOUT committing (Escape; the flipper: its window losing focus)
   -> (Dynamic t k -> m ())
   -> m ( Dynamic t Bool                -- ^ overlay visible?
        , Dynamic t (Maybe (Text, k))   -- ^ the item currently highlighted in the flipper

@@ -29,6 +29,7 @@ module IDE.Web.MacGlue
   , closeAllWindows
   , disableAutoTerminate
   , takeFirstLaunch
+  , cmdKeyHeld
     -- * The native API of leksah-mac-menu.m
   , c_menuBegin
   , c_menuAddMenu
@@ -65,6 +66,10 @@ module IDE.Web.MacGlue
 
 import Foreign.C.String (CString)
 import Foreign.C.Types (CInt(..))
+#ifdef darwin_HOST_OS
+import Data.Bits ((.&.))
+import Data.Word (Word64)
+#endif
 import Foreign.Ptr (Ptr)
 #ifdef darwin_HOST_OS
 import Foreign.C.String (peekCString)
@@ -98,6 +103,22 @@ takeFirstLaunch = atomicModifyIORef' firstLaunchRef (\f -> (False, f))
 {-# NOINLINE firstLaunchRef #-}
 firstLaunchRef :: IORef Bool
 firstLaunchRef = unsafePerformIO (newIORef True)
+#endif
+
+-- | Is the Command key physically held right now?  Asked of the window
+-- server (@CGEventSourceFlagsState@, combined session state), so it needs no
+-- event — the ⌘ keyup that ⌘-Tab swallows included.  A cheap C call; leksah
+-- polls it only while the tab flipper is up.  'False' off macOS.
+cmdKeyHeld :: IO Bool
+#ifdef darwin_HOST_OS
+cmdKeyHeld = (\f -> f .&. 0x00100000 /= 0) <$> c_cgEventSourceFlagsState 0
+
+-- kCGEventSourceStateCombinedSessionState = 0; kCGEventFlagMaskCommand =
+-- 0x00100000.  (ApplicationServices, linked by this sublibrary.)
+foreign import ccall unsafe "CGEventSourceFlagsState"
+  c_cgEventSourceFlagsState :: CInt -> IO Word64
+#else
+cmdKeyHeld = return False
 #endif
 
 -- | Everything Objective-C calls back into leksah with.  Registered once at
