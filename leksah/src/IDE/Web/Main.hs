@@ -4001,7 +4001,34 @@ terminalWriteJs = T.unlines
   , "  window.__leksahMonoFamily = window.__leksahMonoFamily || 'Menlo, Monaco, \"Courier New\", monospace';"
   , "  window.__leksahMonoSize = window.__leksahMonoSize || 13;"
   , "  function register(id, term){ byId[id] = term;"
+  , "    fixMouseUp(term);"
   , "    try { if (window.__leksahXtermActive) term.options.theme = window.__leksahXtermActive; } catch (e) {} }"
+  -- xterm.js bug (6.1.0-beta.336): MouseService._handleMouseDown attaches the
+  -- document mouseup/mousemove listeners for mouse reporting by assigning to a
+  -- MutableDisposable — which ADDS the new listener first and then disposes
+  -- the old one.  Both are the SAME handler function, so if the previous
+  -- press's listeners were still attached (one release that never reached
+  -- the document), the add is a no-op duplicate and the dispose removes the
+  -- only registration.  xterm then believes a listener is attached when none
+  -- is, and every later press repeats it: no drag or release reports reach
+  -- the program (Claude Code's full-screen selection stops working) until a
+  -- mouse-mode change clears the state, minutes later.  Clear the old
+  -- listeners before each press instead.  Patched once, on the prototype
+  -- shared by every terminal; a no-op if xterm's internals change shape.
+  , "  function fixMouseUp(term){"
+  , "    try {"
+  , "      var ms = term._core && term._core._mouseService;"
+  , "      var proto = ms && Object.getPrototypeOf(ms);"
+  , "      if (!proto || proto.__leksahMouseUpFix || typeof proto._handleMouseDown !== 'function') return;"
+  , "      var orig = proto._handleMouseDown;"
+  , "      proto._handleMouseDown = function(c, e){"
+  , "        try { if (c && c.mouseupListener) c.mouseupListener.clear();"
+  , "              if (c && c.mousedragListener) c.mousedragListener.clear(); } catch (_) {}"
+  , "        return orig.call(this, c, e);"
+  , "      };"
+  , "      proto.__leksahMouseUpFix = true;"
+  , "    } catch (_) {}"
+  , "  }"
   , "  function unregister(id){ delete byId[id];"
   , "    try { window.LeksahKitty.drop(id); } catch (e) {} }"
   -- owner: the xterm the writing widget created; a widget whose pane moved to
