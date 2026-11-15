@@ -6494,8 +6494,16 @@ main showMenubar macTitlebar wid ctx = mdo
             <> ManagerKey   =: ("wide1", Just ())
             <> TerminalsKey =: ("tall", Just ())
             <> AgentsKey    =: ("tall", Just ())
+        -- Which side- and bottom-bar pane each window starts on (not saved
+        -- in the session: every window starts here).  The browser demo
+        -- starts the side bar on Agents, beside its showcase of the game and
+        -- the agent working on it.
         initialVisibleTabs =
+#if defined(ghcjs_HOST_OS)
+               "tall" =: AgentsKey
+#else
                "tall" =: WorkspaceKey
+#endif
             <> "wide1" =: LogKey
 
     -- Clicking a leksah-window tab promotes ITS focused pane in the flip MRU

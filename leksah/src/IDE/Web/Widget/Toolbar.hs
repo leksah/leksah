@@ -84,6 +84,12 @@ toolbarCss = do
         width (px 16)
         height (px 16)
         "vertical-align" -: "middle"
+        -- 'middle' centres on the lowercase letters (baseline + half the
+        -- x-height), which sits a 16px icon visibly low beside 12px text —
+        -- an agent's face hung ~2px below the label's capitals.  Lift it so
+        -- it centres on the text as a whole.
+        "position" -: "relative"
+        "top" -: "-2px"
         "margin-right" -: "5px"
     ".toolbar-active-pane .toolbar-pane-path" ? do
         opacity dimOpacity
