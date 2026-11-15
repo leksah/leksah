@@ -60,8 +60,8 @@ import Text.Read (readMaybe)
 
 import Clay ((?), (-:), Css)
 
-import GHCJS.DOM.Element (setAttribute)
-import Language.Javascript.JSaddle (eval, liftJSM, valToText)
+import Language.Javascript.JSaddle (JSM, call, eval, liftJSM, valToText)
+import GHCJS.DOM.Types (Element, pToJSVal)
 
 import Reflex
        (Dynamic, Event, never, constDyn, current, gate, leftmost, ffilter,
@@ -520,7 +520,7 @@ iframeBrowserWidget bid selectedE focusOnCreateD = elClass "div" "browser" $ do
   -- explanation page instead, and don't persist the refused URL (so a
   -- restored pane can't reintroduce it either).
   performEvent_ $ ffor (leftmost [loadE, restoreLoadE]) $ \u ->
-      liftJSM $ setAttribute (_element_raw frameEl) ("src" :: Text)
+      liftJSM $ frameLoad (_element_raw frameEl)
                   (if isOwnUrl u then ownUrlBlockedPage else u)
   performEvent_ $ ffor (ffilter (not . isOwnUrl) loadE) $ liftIO . rememberUrl bid
   -- Sites that refuse framing (X-Frame-Options / CSP frame-ancestors) block
@@ -549,8 +549,7 @@ iframeBrowserWidget bid selectedE focusOnCreateD = elClass "div" "browser" $ do
         (\cur (u, r) -> if cur == u then Just (u, r) else Nothing)
         (current curUrlD) blockedE
   performEvent_ $ ffor staleGuardedE $ \(u, r) ->
-      liftJSM $ setAttribute (_element_raw frameEl) ("src" :: Text)
-                  (frameBlockedPage u r)
+      liftJSM $ frameLoad (_element_raw frameEl) (frameBlockedPage u r)
   -- ↗ button: this page in the system's default browser.
   performEvent_ $ ffor (tag (current curUrlD) extE) $ liftIO . openExternal
   -- Selecting the pane puts keyboard focus in it: the caret in an EMPTY
@@ -571,6 +570,20 @@ iframeBrowserWidget bid selectedE focusOnCreateD = elClass "div" "browser" $ do
       <> " var f=i.closest('.browser'); f=f&&f.querySelector('.browser-frame');"
       <> " if(f) f.focus();},0)"
   return never
+
+-- | Load a URL into the pane's iframe WITHOUT adding to the hosting page's
+-- session history.  Setting an iframe's @src@ after it is in the document is
+-- a navigation that pushes a history entry onto the whole tab's joint history
+-- — the in-browser demo's game pane did, so the visitor's Back button, after
+-- following any link, landed on that entry and (Safari) loaded the game's URL
+-- as the top-level page.  The pane keeps its own back\/forward zipper, so it
+-- needs none of the tab's: @location.replace@ navigates in place.  Falls back
+-- to @src@ when the frame has no window to navigate yet.
+frameLoad :: Element -> Text -> JSM ()
+frameLoad el u = do
+  f <- eval ("(function(f, u){ try { f.contentWindow.location.replace(u); }"
+             <> " catch (e) { f.setAttribute('src', u); } })" :: Text)
+  void $ call f f (pToJSVal el, u)
 
 navButton :: MonadWidget t m => Dynamic t Bool -> Text -> Text -> m (Event t ())
 navButton enabledD src tip = do
