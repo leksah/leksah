@@ -8423,10 +8423,15 @@ main showMenubar macTitlebar wid ctx = mdo
                   else return never)
     -- Refresh the holes on the tick, when the holed/snapped sets change, and when
     -- the flipper overlay shows/hides (so transparency clears while it's up).
-    let refreshHolesE = leftmost [() <$ holeTick, () <$ updated holedTermsD
-                                 , () <$ updated snappedPanesD, () <$ updated flipperVisibleD
-                                 , () <$ updated activeTermD]
-    holeGeomE <- performEvent $ ffor (tag ((,,) <$> current holedTermsD <*> current snappedPanesD <*> current activeTermD) refreshHolesE) $ \(holed, snapped, mVis) ->
+    -- A change to the holed/snapped sets or the visible terminal must refresh
+    -- with the NEW value: `tag (current …) (updated …)` samples the value from
+    -- BEFORE the update, which re-cut a just-removed hole — and with nothing
+    -- holed any more the tick stops, so the stale hole stayed forever.
+    let holeStateD = (,,) <$> holedTermsD <*> snappedPanesD <*> activeTermD
+        refreshHolesE = leftmost [ updated holeStateD
+                                 , tag (current holeStateD)
+                                       (leftmost [() <$ holeTick, () <$ updated flipperVisibleD]) ]
+    holeGeomE <- performEvent $ ffor refreshHolesE $ \(holed, snapped, mVis) ->
         -- Only cut holes for panes of the *visible* terminal; a hidden terminal's
         -- panes are still laid out (over the visible tab) and would otherwise punch
         -- through it.  Snapped windows of hidden terminals keep their binding (see
