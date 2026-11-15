@@ -291,7 +291,7 @@
   <section>
     <h2>One codebase, every platform</h2>
     <p class="lead">
-      The whole UI is a single <a href="https://reflex-frp.org/">reflex-dom</a>
+      The whole UI is a single <a href="https://reflex-frp.org/">reflex</a>
       program. Each platform just gives it a different home:
     </p>
     <div class="platforms">
@@ -335,23 +335,36 @@
     <h2>Written in Haskell, since 2007</h2>
     <div class="haskell">
       <p>
-        Leksah isn't just <i>for</i> Haskell — it's one of the larger open-source
-        applications <b>written in</b> it. The UI is functional-reactive
-        programming end to end: the same Haskell renders through a native
-        WebView via <a href="https://github.com/ghcjs/jsaddle">jsaddle</a>,
-        over a websocket to your browser, or compiled to JavaScript outright
-        — the <a href="/try/">demo above</a> is the IDE itself, built with
-        GHC's JS backend. Its DOM bindings,
-        <a href="https://hackage.haskell.org/package/ghcjs-dom">ghcjs-dom</a>
-        and <a href="https://hackage.haskell.org/package/jsaddle-dom">jsaddle-dom</a>
-        0.10, are regenerated from today's web standards.
+        Leksah started as a traditional IDE written in Haskell, for Haskell.
+        Its user interface was built with GTK — and that classic Gtk UI is
+        still available, as
+        <a href="https://github.com/leksah/leksah/tree/master/leksah-classic"><code>leksah-classic</code></a>.
       </p>
       <p>
-        It's also self-hosting in the most literal sense: Leksah is developed
-        in Leksah, and a running instance rebuilds itself, in place, with its
-        own build system. If you want to see what a substantial, long-lived
-        Haskell codebase looks like — or hack on one —
-        <a href="https://github.com/leksah/leksah">the source is right here</a>.
+        Turning Leksah into a web app was a long-term goal.  In 2019 work was
+        still underway on a web-based user interface built with
+        <a href="https://reflex-frp.org/">reflex</a> when work on Leksah
+        slowed.  It has since
+        been picked up again and carried forward with the help of AI.  The result is
+        one Haskell codebase that renders through a native
+        WebView via <a href="https://github.com/ghcjs/jsaddle">jsaddle</a>,
+        over a websocket to your browser, or compiled to JavaScript outright —
+        the <a href="/try/">demo above</a> is the IDE itself, built with GHC's
+        JS backend.
+      </p>
+      <p>
+        Being built alongside AI agents has shaped what Leksah does.  Many of
+        its newest features exist to make developing with AI easier: Claude
+        Code sessions get names and faces and live in ordinary panes; they can
+        start one another beside you and report back; the Agents pane shows
+        what each is doing right now — its tool, its edits, its branch, PR and
+        worktrees — and a manager agent can coordinate the rest.  Agents a
+        restart interrupted are offered back, and the selection, the current
+        error or a screenshot region is one menu item away from the AI pane.
+      </p>
+      <p>
+        It is also self-hosting in the most literal sense: Leksah is developed
+        in Leksah.
       </p>
     </div>
   </section>
