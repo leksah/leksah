@@ -1192,30 +1192,45 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
 #if defined(ghcjs_HOST_OS)
         -- Browser demo: the canned sessions from the page (see
         -- IDE.Web.DemoTerminals) stand in for live tmux sessions.  Seed the
-        -- leksah windows directly: a SESSIONLESS showcase window (the game's
-        -- editor beside a browser pane running the compiled game — rendered
-        -- by the shared 'sessionlessLwWidget', draggable with ⌘-drag), plus
-        -- one single-pane window per canned session.  Owning the canned
-        -- sessions here also keeps the reconcile's stray-adoption pass from
-        -- minting a SECOND window (and tab) for each of them.
-        liveTerms <- demoTerminals
-        let showcase = LeksahWindow
-              { lwSession = Nothing
-              , lwTree    = SplitNode SplitH
-                              [ (0.55, SplitLeaf (LeafId 0))
-                              , (0.45, SplitLeaf (LeafId 1)) ]
-              , lwPanes   = M.fromList
-                  [ (LeafId 0, PaneContent
-                      (PaneView (EditorKey "/demo/breakout/app/Main.hs")) Nothing)
-                  , (LeafId 1, PaneContent (PaneView (BrowserKey 1)) Nothing) ]
-              , lwFocused = Just (LeafId 0)
-              , lwZoomed  = Nothing
-              , lwNext    = 2 }
-            termLws  = [ (lwIdText (i + 1), singlePaneWindow (Just sid)
+        -- leksah windows directly, all SESSIONLESS where they hold views
+        -- (rendered by the shared 'sessionlessLwWidget', draggable with
+        -- ⌘-drag):
+        --
+        --   * the showcase, first and active: a browser pane running the
+        --     compiled game, with the canned agent working on it (Otter, a
+        --     transcript 34 columns, narrow enough for the home page's embedded demo)
+        --     in a terminal leaf beside it;
+        --   * the game's source, in a window of its own;
+        --   * one single-pane window per remaining canned session.
+        --
+        -- Owning the canned sessions here also keeps the reconcile's
+        -- stray-adoption pass from minting a SECOND window (and tab) for each
+        -- of them; the showcase's agent is owned by its terminal VIEW leaf
+        -- (see 'viewLeafSessions').
+        allTerms <- demoTerminals
+        let agentSid = fst <$> find ((== "Otter") . snd) allTerms
+            liveTerms = [ t | t@(sid, _) <- allTerms, Just sid /= agentSid ]
+        let showcase = case agentSid of
+              Nothing -> singlePaneWindow Nothing
+                           (PaneContent (PaneView (BrowserKey 1)) Nothing)
+              Just sid -> LeksahWindow
+                { lwSession = Nothing
+                , lwTree    = SplitNode SplitH
+                                [ (0.55, SplitLeaf (LeafId 0))
+                                , (0.45, SplitLeaf (LeafId 1)) ]
+                , lwPanes   = M.fromList
+                    [ (LeafId 0, PaneContent (PaneView (BrowserKey 1)) Nothing)
+                    , (LeafId 1, PaneContent (PaneView (TerminalKey sid)) Nothing) ]
+                , lwFocused = Just (LeafId 0)
+                , lwZoomed  = Nothing
+                , lwNext    = 2 }
+            source = singlePaneWindow Nothing
+              (PaneContent (PaneView (EditorKey "/demo/breakout/app/Main.hs")) Nothing)
+            termLws  = [ (lwIdText (i + 2), singlePaneWindow (Just sid)
                             (PaneContent (PaneTmux ("@" <> sid)) Nothing))
                        | (i, (sid, _)) <- zip [0 ..] liveTerms ]
-            lws0     = M.fromList ((lwIdText 0, showcase) : termLws)
-            nextSeed = 1 + length liveTerms
+            lws0     = M.fromList ((lwIdText 0, showcase) : (lwIdText 1, source) : termLws)
+            nextSeed = 2 + length liveTerms
 #else
         -- Leksah windows live ON their backing tmux sessions
         -- (@leksah_layout v2, one option per session); read them all in one
@@ -1258,16 +1273,18 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
               _              -> [k]
 #if defined(ghcjs_HOST_OS)
             -- One tab per seeded leksah window, the showcase window first and
-            -- active (there is no saved web session in the browser).  The
-            -- page's auto-open of the game's Main.hs resolves to the showcase
-            -- window's editor leaf (the file-lives-as-a-leaf intercept), so
-            -- it focuses this tab rather than opening a duplicate editor.
+            -- active (there is no saved web session in the browser).
             demoTabs = map LeksahWinKey (M.keys lws0)
             dfltWin  = WebWindowSession demoTabs (listToMaybe demoTabs)
                                         TallShow TallShow Nothing
 #else
+            -- Both showcase leaves in the flipper order from the start, so its
+            -- tab shows them as pane icons (the game and the agent's face),
+            -- as any window with several panes does.
+            dfltFlip = [ FlipView (lwIdText 0) l | l <- [0, 1] ]
             dfltWin  = WebWindowSession [] Nothing TallShow TallShow Nothing
 #endif
+            dfltFlip = []
             wwsList  = case mbSession of
                          Just s | not (null (wsWindows s)) -> wsWindows s
                          _                                 -> [dfltWin]
@@ -1289,7 +1306,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
             & nextLeksahWin .~ nextSeed
             -- Restore the flipper MRU (buildFlipItems filters out any entries
             -- whose tab/pane no longer exists, so stale ones are harmless).
-            & flipMru .~ fromMaybe [] (mbSession >>= wsFlipMru)
+            & flipMru .~ fromMaybe dfltFlip (mbSession >>= wsFlipMru)
             -- Restore the per-pane AI-session bindings.  Entries for panes that
             -- are gone are pruned as panes close; entries naming a session that
             -- has since exited are KEPT (they get resumed on next use).
@@ -1576,6 +1593,15 @@ flipOwnerWindow lws tree wins fi =
   in listToMaybe [ w | (w, ww) <- M.toList wins, any (`elem` _wwWide0 ww) ks ]
 
 -- | The view 'TabKey' a 'FlipView' item points at — the lw's leaf must still
+-- | Sessions shown by a terminal VIEW leaf of some leksah window (the browser
+-- demo's showcase agent beside the game).  Such a session is OWNED by that
+-- leaf: the reconcile must not wrap its tmux window in a leksah window (and
+-- tab) of its own as a stray.
+viewLeafSessions :: Map Text LeksahWindow -> S.Set Text
+viewLeafSessions lws = S.fromList
+  [ s | lw <- M.elems lws
+      , PaneContent (PaneView (TerminalKey s)) _ <- M.elems (lwPanes lw) ]
+
 -- hold a native view ('Nothing' once either is gone).
 viewKeyOf :: Map Text LeksahWindow -> Text -> Int -> Maybe TabKey
 viewKeyOf lws n l = do
@@ -2461,7 +2487,11 @@ flipIconSrc lws tree fi = case fi of
         FlipPane n w p          -> Just (paneIcon n w p)
         FlipTab (TerminalKey n) -> Just (winIcon n (activeWinIdx n))
         FlipTab k               -> tabIconSrc k
-        FlipView n l            -> viewKeyOf lws n l >>= tabIconSrc
+        FlipView n l            -> case viewKeyOf lws n l of
+          -- A terminal shown as a VIEW leaf (the browser demo's showcase
+          -- agent): its session's pane icon — the agent's face.
+          Just (TerminalKey s) -> Just (paneIcon s (activeWinIdx s) 0)
+          mk                   -> mk >>= tabIconSrc
   where
     winIcon n w = case M.lookup n tree >>= find ((== w) . twIndex) . snd of
         Just win -> windowIconSrc win
@@ -6733,6 +6763,11 @@ main showMenubar macTitlebar wid ctx = mdo
             void $ reviewWidget mon d
           BrowserKey n -> void $ browserWidget n focusE focD
           _ -> return ()
+#if defined(ghcjs_HOST_OS)
+          -- The demo showcase's agent: a canned terminal as a view leaf (no
+          -- tmux in the browser to give it a pane of its own).
+          TerminalKey sid -> void $ terminalWidget ctx sid focusE
+#endif
         -- Mark convertible tab bodies (editor / git-log) so the ⌘-held
         -- navigation hints (hintsJs) can drop their yellow ⌘D / ⌘⇧D chips on
         -- them — here the keys move the tab into a session tab's native split
@@ -10324,10 +10359,12 @@ main showMenubar macTitlebar wid ctx = mdo
     -- recomputes from the live IDE inside 'modifyIDE_', so a racing layout
     -- edit can't be clobbered.
     let applyReconcile fresh tree i =
-          let liveBySession = M.fromList
+          let viewOwned = viewLeafSessions (i ^. leksahWindows)
+              liveBySession = M.fromList
                 [ (sid, map twId wins)
                 | (sid, (_, wins)) <- M.toList tree
-                , not ("ssh://" `T.isPrefixOf` sid) ]
+                , not ("ssh://" `T.isPrefixOf` sid)
+                , not (sid `S.member` viewOwned) ]
               hiddenIds = S.fromList
                 [ twId w
                 | (sid, (_, wins)) <- M.toList tree

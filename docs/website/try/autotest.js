@@ -67,18 +67,19 @@
         + (window.leksahDemoTerminals || []).length
         + '; hover files in page: '
         + Object.keys(window.leksahDemoHovers || {}).length);
-    // Activate the claude tab first.  The demo now opens on the showcase
-    // window (editor beside the breakout browser pane), and tab bodies build
+    // Activate the Kiwi tab first (the canned Claude Code session, named
+    // like any agent).  The demo opens on the showcase window (the breakout
+    // browser pane with Otter beside it), and tab bodies build
     // lazily — a terminal in a background tab has no xterm at all, so
     // LeksahTerm.byId would stay empty however long we waited.
     var tabs = document.querySelectorAll('.area-wide0 .tab-wrap button');
     for (var ti = 0; ti < tabs.length; ti++) {
-      if (tabs[ti].textContent.trim().indexOf('claude') !== -1) {
+      if (tabs[ti].textContent.trim().indexOf('Kiwi') !== -1) {
         tabs[ti].click();
         break;
       }
     }
-    // The claude terminal tab should exist and have rendered the canned dump.
+    // The Kiwi terminal tab should exist and have rendered the canned dump.
     var t0 = Date.now(), n = 0;
     var timer2 = setInterval(function () {
       var reg = window.LeksahTerm && window.LeksahTerm.byId;
@@ -92,7 +93,7 @@
         }
         if (txt.indexOf('Update(src/IDE/Web/Instance.hs)') !== -1) {
           clearInterval(timer2);
-          log('claude terminal rendered with Update(Instance.hs) block');
+          log('Kiwi terminal rendered with Update(Instance.hs) block');
           checkHover();
           return;
         }

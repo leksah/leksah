@@ -99,6 +99,7 @@ library
         IDE.Web.CmdServer
         IDE.Web.CloseRequest
         IDE.Web.DemoHovers
+        IDE.Web.DemoAgents
         IDE.Web.DemoTerminals
         IDE.Web.SaveRequest
         IDE.Web.FindRequest

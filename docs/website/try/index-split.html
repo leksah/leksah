@@ -38,18 +38,5 @@
   <script src="/jsaddle.js"></script>
   <!-- The ghcjs frontend half. -->
   <script src="/try/leksah.js"></script>
-  <script>
-    (function () {
-      var tries = 0;
-      var t = setInterval(function () {
-        if (typeof window.leksahOpenFile === 'function') {
-          clearInterval(t);
-          window.leksahOpenFile('/demo/breakout/app/Main.hs');
-        } else if (++tries > 100) {
-          clearInterval(t);
-        }
-      }, 200);
-    })();
-  </script>
 </body>
 </html>

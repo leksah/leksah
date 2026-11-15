@@ -133,6 +133,9 @@ import Reflex
 import Reflex.Dom.Core
        (elAttr, elAttr', dyn, (=:),
         _element_raw)
+#if defined(ghcjs_HOST_OS)
+import Reflex.Dom.Core (text)
+#endif
 
 import IDE.Web.Widget.ResizeObserver (resizeObserverWithAttrs)
 
@@ -149,6 +152,7 @@ import IDE.Web.NoPty
        (dummyPty, writePty, resizePty)
 import IDE.Web.DemoTerminals
        (demoTerminals, demoTerminalB64, demoCreateSession, demoCreatedSessions,
+        demoAgentInfo,
         demoKillSession)
 #else
 import System.Posix.Pty
@@ -689,8 +693,27 @@ terminalWidget ctx termId selectedE = do
   -- lingering with a dead "[exited]" screen.
   (exitedE, triggerExited) <- newTriggerEvent
 
+#if defined(ghcjs_HOST_OS)
+  -- The browser demo's terminals are canned (recorded or mocked up): a label
+  -- in the bottom-right corner says so, and that they keep the size they
+  -- were made at.  It ignores the mouse, so hovering and selecting the
+  -- recorded text underneath still work.
+  (resizeE, el) <- resizeObserverWithAttrs
+      ("style" =: "height:100%;width:100%;position:relative") $ do
+      e <- fst <$> elAttr' "div" ("class" =: "terminal") (pure ())
+      elAttr "div" ("class" =: "terminal-demo-label"
+                    <> "style" =: ("position:absolute;right:8px;bottom:6px;z-index:5"
+                         <> ";pointer-events:none;max-width:calc(100% - 16px)"
+                         <> ";padding:3px 8px;border-radius:4px"
+                         <> ";font:11px/1.35 system-ui,-apple-system,sans-serif"
+                         <> ";color:#ddd;background:rgba(40,40,40,0.85)"
+                         <> ";border:1px solid rgba(255,255,255,0.15)")) $
+        text "Mock terminal: not real, and it won't resize with the window"
+      return e
+#else
   (resizeE, el) <- resizeObserverWithAttrs ("style" =: "height:100%;width:100%") $
       fst <$> elAttr' "div" ("class" =: "terminal") (pure ())
+#endif
   -- pToJSVal, not toJSVal/MakeArgs marshalling: under the GHC JS backend the
   -- Element instance diverges (undefined closure entered in the args map) —
   -- same fix as ContextMenu/Menubar's `contains` calls.
@@ -990,7 +1013,7 @@ demoNoticeB64 = decodeUtf8 (B64.encode (encodeUtf8 notice))
       , "  processes, no tmux, no operating system \8212 so a new terminal has"
       , "  nothing to talk to."
       , ""
-      , "  The \ESC[36mclaude\ESC[0m and \ESC[36mbuild\ESC[0m tabs are \ESC[1mrecordings\ESC[0m of real terminals,"
+      , "  The other terminals are \ESC[1mmock-ups\ESC[0m: \ESC[36mKiwi\ESC[0m and \ESC[36mbuild\ESC[0m are recordings,"
       , "  captured from a real session, so you can see how they look and hover"
       , "  the code in them."
       , ""
@@ -1283,12 +1306,21 @@ listTerminalTree :: IO (Map Text (Text, [TmuxWindow]))
 -- catch-everything tmux helpers, which no-op in the browser.  Both the canned
 -- sessions and the ones the visitor created are listed — the latter must appear
 -- here or the reconcile would prune the leksah window their tab lives in.
+--
+-- A canned session named after one of the page's canned agents (Kiwi,
+-- Otter…) is that agent's pane, so its tab and flipper entry lead with the
+-- agent's name and face, as a live Claude pane's do.
 listTerminalTree = do
     ts      <- demoTerminals
     created <- demoCreatedSessions
+    agents  <- demoAgentInfo
+    let pane sid name = case M.lookup name agents of
+          Just (title, st) ->
+            TmuxPane 0 ("%" <> sid) name 0 True "" "" (Just title) (Just st) (Just name)
+          Nothing -> TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing Nothing
     return $ M.fromListWith (\_ old -> old)
         [ (sid, (name, [ TmuxWindow 0 ("@" <> sid) name True False False False ""
-                             [ TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing Nothing ] ]))
+                             [ pane sid name ] ]))
         | (sid, name) <- ts ++ created ]
 #else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $ do

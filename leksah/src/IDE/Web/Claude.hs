@@ -110,6 +110,7 @@ import Text.Read (readMaybe)
 import IDE.App (appUi, getGlobalApp)
 import IDE.Reactive (readCell)
 import IDE.Web.Instance (tmuxServerSocket)
+import IDE.Web.DemoAgents (demoShowAgent)
 import IDE.Web.Model (WebUi(_leksahWindows))
 import IDE.Web.AgentNames
        (adoptContinuation, agentContinuations, agentNameFor, sessionOfRunKey)
@@ -1121,7 +1122,14 @@ lwForTmuxWindow w = getGlobalApp >>= \case
 -- pane can't be identified (no @ps@; a session running on a remote host or in a
 -- terminal outside leksah), and returns 'False' when there is nothing to show.
 showLiveSession :: Text -> IO Bool
-showLiveSession sid = paneForSession sid >>= \case
+-- (The browser demo has no claude processes; 'demoShowAgent' finds a canned
+-- agent's pane by name there, and is 'Nothing' natively.)
+showLiveSession sid = demoShowAgent sid >>= \case
+  Just shown -> return shown
+  Nothing -> nativeShowLiveSession sid
+
+nativeShowLiveSession :: Text -> IO Bool
+nativeShowLiveSession sid = paneForSession sid >>= \case
     Just (s, w, p) -> showTmuxPane s w p >> return True
     Nothing -> claudeLiveBySession >>= \live -> case M.lookup sid live of
       Just l | not (null (clDir l)) -> mruClaudeUnclaimed sid (clDir l)

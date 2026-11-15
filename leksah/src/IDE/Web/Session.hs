@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -169,6 +170,11 @@ viewLeafAllowed EditorKey{}  = True
 viewLeafAllowed GitLogKey{}  = True
 viewLeafAllowed ReviewKey{}  = True
 viewLeafAllowed BrowserKey{} = True
+#if defined(ghcjs_HOST_OS)
+-- The browser demo's showcase holds a canned terminal (its agent, beside the
+-- game) as a view leaf; natively a terminal is always a tmux pane.
+viewLeafAllowed TerminalKey{} = True
+#endif
 viewLeafAllowed _            = False
 
 instance ToJSON SplitTree where

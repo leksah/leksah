@@ -14,7 +14,7 @@ window.leksahDemoAgents = [
     name: "Otter",
     title: "Add power-ups to breakout",
     state: "busy",
-    activity: "Editing src/PowerUp.hs",
+    activity: "Editing app/Main.hs",
     detail: "Working — implementing falling power-up bricks",
     dir: "/demo/breakout",
     branch: "feature/power-ups",
@@ -46,5 +46,19 @@ window.leksahDemoAgents = [
     dir: "/demo/breakout",
     desc: "Sketching a text format for level layouts. " +
           "Waiting for approval to add the <code>levels/</code> directory.",
-    bio: "Designs file formats and tools; prefers plain text you can diff." }
+    bio: "Designs file formats and tools; prefers plain text you can diff." },
+  // The canned Claude Code session in the demo's Kiwi terminal tab
+  // (terminals/10-Kiwi.ans): a canned terminal named after an agent here
+  // is that agent's pane, so its tab wears this name, face and title.
+  { session: "d3adbeef-0004-4a5b-8c6d-leksahweb4",
+    name: "Kiwi",
+    title: "Static terminals for the web demo",
+    state: "busy",
+    activity: "Polishing the hosting page",
+    detail: "Working — Phase D: hosting page & asset bundle",
+    dir: "/demo/leksah",
+    branch: "web-demo",
+    desc: "Canned terminal sessions and LSP hovers for the in-browser demo; " +
+          "the leksah you are looking at.",
+    bio: "Builds the web demo. Keeps public pages free of local paths." }
 ];

@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
--- | Compose the demo's Claude Code terminal window (10-claude.ans).
+-- | Compose the demo's Claude Code terminal window (10-Kiwi.ans).
 --
 -- Takes the committed raw-claude-capture.ans — a live `tmux capture-pane -e`
 -- of a real Claude Code session working on this repo, taken at 100 columns —
@@ -30,7 +30,7 @@ import Text.Printf (printf)
 rawFile, fixtureFile, outFile :: FilePath
 rawFile = "raw-claude-capture.ans"
 fixtureFile = "../../../development/lsp-hover-terminal-sample.txt"
-outFile = "10-claude.ans"
+outFile = "10-Kiwi.ans"
 
 -- Ports of the CSI/OSC strip regexes (self-contained, like the Python was):
 --   CSI: \x1b\[[0-9;:?]*[ -/]*[@-~]     OSC: \x1b\][^\x07\x1b]*(\x07|\x1b\\)

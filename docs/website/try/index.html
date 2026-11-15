@@ -73,21 +73,8 @@
        It builds the whole UI into document.body through jsaddle, exactly as
        the native front ends do through their WebViews. -->
   <script src="leksah.js"></script>
-  <!-- Land with the sample file already open: leksah registers
-       window.leksahOpenFile (the same bridge as the native Open dialogs)
-       once the reflex network is up, so poll briefly and open it once. -->
-  <script>
-    (function () {
-      var tries = 0;
-      var t = setInterval(function () {
-        if (typeof window.leksahOpenFile === 'function') {
-          clearInterval(t);
-          window.leksahOpenFile('/demo/breakout/app/Main.hs');
-        } else if (++tries > 100) {
-          clearInterval(t);
-        }
-      }, 200);
-    })();
-  </script>
+  <!-- No auto-open: the demo seeds the game's source in a window of its
+       own (IDE.Web.Main's ghcjs seed), and lands on the showcase window,
+       the game with its agent beside it. -->
 </body>
 </html>

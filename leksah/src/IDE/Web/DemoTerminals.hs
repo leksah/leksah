@@ -24,14 +24,19 @@ module IDE.Web.DemoTerminals
   , demoCreateSession
   , demoCreatedSessions
   , demoKillSession
+  , demoAgentInfo
+  , demoAgentName
   ) where
 
+import Data.Map (Map)
 import Data.Text (Text)
 
 #if defined(ghcjs_HOST_OS)
 
 import Data.Aeson
-       (FromJSON(..), eitherDecodeStrict, withObject, (.:))
+       (FromJSON(..), eitherDecodeStrict, withObject, (.:), (.:?))
+import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
 import Data.IORef
        (IORef, newIORef, readIORef, atomicWriteIORef, atomicModifyIORef')
 import qualified Data.Text as T
@@ -103,6 +108,46 @@ demoKillSession ident =
     (filter ((/= sid) . fst) ss, ())
   where sid = if T.isPrefixOf "$" ident then ident else T.drop 1 ident
 
+-- One row of @window.leksahDemoAgents@, children included; only what a
+-- terminal pane needs.
+data DemoAgentRow = DemoAgentRow Text (Maybe Text) Text Text [DemoAgentRow]
+
+instance FromJSON DemoAgentRow where
+  parseJSON = withObject "DemoAgentRow" $ \o -> DemoAgentRow
+    <$> o .: "session" <*> o .:? "name" <*> o .: "title" <*> o .: "state"
+    <*> (fromMaybe [] <$> o .:? "children")
+
+-- | (name -> (title, state), session -> name)
+{-# NOINLINE agentInfoState #-}
+agentInfoState :: IORef (Maybe (Map Text (Text, Text), Map Text Text))
+agentInfoState = unsafePerformIO (newIORef Nothing)
+
+demoAgents :: IO (Map Text (Text, Text), Map Text Text)
+demoAgents = readIORef agentInfoState >>= \case
+  Just m -> return m
+  Nothing -> do
+    txt <- valToText =<< eval ("JSON.stringify(window.leksahDemoAgents || [])" :: Text)
+    let flat (DemoAgentRow s n t st kids) =
+          [ (s, nm, t, st) | Just nm <- [n] ] ++ concatMap flat kids
+    rows <- case eitherDecodeStrict (encodeUtf8 txt) of
+      Left err -> [] <$ putStrLn ("leksahDemoAgents did not decode: " <> err)
+      Right (rs :: [DemoAgentRow]) -> return (concatMap flat rs)
+    let m = ( M.fromList [ (nm, (t, st)) | (_, nm, t, st) <- rows ]
+            , M.fromList [ (s, nm) | (s, nm, _, _) <- rows ] )
+    atomicWriteIORef agentInfoState (Just m)
+    return m
+
+-- | The page's canned agents (@window.leksahDemoAgents@, the Agents pane's
+-- data) by name: their title and state.  A canned terminal NAMED after one
+-- of them is that agent's pane, so its tab wears the agent's name and face.
+demoAgentInfo :: IO (Map Text (Text, Text))
+demoAgentInfo = fst <$> demoAgents
+
+-- | The name of the canned agent with this session id (the Agents pane's
+-- rows carry session ids; their panes are found by name).
+demoAgentName :: Text -> IO (Maybe Text)
+demoAgentName sid = M.lookup sid . snd <$> demoAgents
+
 #else
 
 demoTerminals :: IO [(Text, Text)]
@@ -119,5 +164,11 @@ demoCreatedSessions = return []
 
 demoKillSession :: Text -> IO ()
 demoKillSession _ = return ()
+
+demoAgentInfo :: IO (Map Text (Text, Text))
+demoAgentInfo = return mempty
+
+demoAgentName :: Text -> IO (Maybe Text)
+demoAgentName _ = return Nothing
 
 #endif
