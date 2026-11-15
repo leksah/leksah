@@ -74,7 +74,7 @@ import IDE.Workspace (WorkspaceService(..), activeProject, prDir)
 import IDE.Web.Agent
        (ForkRequest(..), agentLastSaid, agentManagerStart, agentRefresh,
         agentManagerTriage, agentResume, agentResumeAll, agentSuspend, emptyForkRequest, forkAgent,
-        renameAgentEverywhere, showAgentPane)
+        renameAgentEverywhere, showAgentPane, showAgentPaneHere)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.AgentInfo
        (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
@@ -98,7 +98,8 @@ agentCardActions :: (Text -> IO ()) -> IO () -> CardActions
 agentCardActions toast refresh = CardActions
   { caOpen = \n ->
       if anLive n || anState n == "starting"
-        then showAgentPane (anSession n) >>= \found -> if found then return ()
+        -- Into THIS OS window (the one clicked in), not raising its own.
+        then showAgentPaneHere (anSession n) >>= \found -> if found then return ()
           else toast $ displayName n <> " is running, but not in a terminal \
                                         \here — there is no pane to bring up."
         -- Resumed as it was launched (its parent, role, manager brief); an

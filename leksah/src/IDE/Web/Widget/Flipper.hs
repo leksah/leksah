@@ -19,7 +19,7 @@ import Clay
         fontSize, borderStyle, textDecoration, margin, middle, start,
         padding, px, borderRadius, inlineBlock,
         overflowY, pointerEvents, textAlign, width, height, pct, top,
-        zIndex, absolute, position, borderColor, borderWidth, solid,
+        zIndex, absolute, position, (-:), borderColor, borderWidth, solid,
         (?), Css, Auto(..), None(..),
         Center(..), Color(..), Background(..), VerticalAlign(..))
 import qualified Clay (display)
@@ -89,6 +89,23 @@ flipperCss = do
     color fgColor
   ".flipper-content button.selected" ?
     background selectionColor
+  -- Narrow mode (phones; see "IDE.Web.Layout"): opened by tapping the title,
+  -- it fills the main region below the top bar, one full-width row per pane,
+  -- tall enough to tap.
+  "html.leksah-narrow .flipper" ? do
+    "top" -: "36px"
+    "height" -: "calc(100% - 36px)"
+  "html.leksah-narrow .flipper-scroll" ? do
+    "display" -: "block"
+  "html.leksah-narrow .flipper-content" ? do
+    "margin" -: "6px"
+    "border-width" -: "3px"
+  "html.leksah-narrow .flipper-content button" ? do
+    "display" -: "block"
+    "width" -: "100%"
+    "text-align" -: "start"
+    "font-size" -: "16px"
+    "padding" -: "10px 12px"
   -- Per-entry window icon: a small square coloured by the owning window (filled
   -- via inline background-color; a hollow grey box for shared side/bottom panes).
   ".flip-win-icon" ? do
@@ -131,15 +148,17 @@ flipperWidget
   -> m ( Dynamic t Bool                -- ^ overlay visible?
        , Dynamic t (Maybe (Text, k))   -- ^ the item currently highlighted in the flipper
        , Dynamic t Int                 -- ^ the highlighted item's index (for the mirror)
-       , Event t (Map Text k) )        -- ^ committed tab selection
+       , Event t (Map Text k)          -- ^ committed tab selection
+       , Event t (Map Text k) )        -- ^ …the subset made by CLICKING an item
+                                       --   (fires alongside the one above)
 flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE label = do
   let flipdown = () <$ ffilter id  flipStep
       flipup   = () <$ ffilter not flipStep
 
   numberOfTabsD <- holdUniqDyn $ length <$> recentTabs
   visibleD <- holdUniqDyn =<< holdDyn False
-    (leftmost [ True <$ flipdown, True <$ flipup, True <$ openAt0
-              , False <$ flipdone, False <$ cancelE ])
+   (leftmost [ True <$ flipdown, True <$ flipup, True <$ openAt0
+             , False <$ flipdone, False <$ cancelE ])
   selectionIndexD <- foldDyn ($) (0::Int) $ leftmost
     [ (\n x -> let n' = max 1 n; x' = succ x in if x' >= n' then 0 else x') <$> tag (current numberOfTabsD) flipdown
     , (\n x -> let n' = max 1 n; x' = pred x in if x' < 0 then n' - 1 else x')  <$> tag (current numberOfTabsD) flipup
@@ -162,4 +181,5 @@ flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE label = do
   return ( visibleD
          , selectionD
          , selectionIndexD
-         , leftmost [ clickE, uncurry M.singleton <$> fmapMaybe id (tag (current selectionD) (gate (current visibleD) flipdone)) ] )
+         , leftmost [ clickE, uncurry M.singleton <$> fmapMaybe id (tag (current selectionD) (gate (current visibleD) flipdone)) ]
+         , clickE )

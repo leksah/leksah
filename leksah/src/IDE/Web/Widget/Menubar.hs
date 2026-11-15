@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Traversable (forM)
 
 import Clay
-       (vGradient, backgroundImage, cursorDefault, nowrap, relative,
+       ((-:), vGradient, backgroundImage, cursorDefault, nowrap, relative,
         whiteSpace, padding, hover, (#), fontSize, nil, inlineBlock,
         margin, px, pct, position, absolute, top, left, zIndex, block,
         borderRadius, boxShadow, bsColor, shadowWithSpread,
@@ -76,6 +76,35 @@ menubarCss = do
         padding (px 2) (px 8) (px 2) (px 8)
     ".menubar ul li" # hover ?
         background selectionColor
+    -- No in-page menu bar where the native one exists (its grid row is gone
+    -- too) — except in narrow mode, where ☰ opens it as a drop-down.
+    ".leksah.no-menubar .menubar" ? ("display" -: "none")
+    -- Narrow mode (phones; see "IDE.Web.Layout"): the menus become a vertical
+    -- drop-down under the ☰ button, shown while html.narrow-menu-open is set;
+    -- a menu's items open inline below its name instead of to the side.
+    "html.leksah-narrow .leksah .menubar" ? ("display" -: "none")
+    "html.leksah-narrow.narrow-menu-open .leksah .menubar" ? do
+        "display" -: "block"
+        "position" -: "absolute"
+        "top" -: "36px"
+        "left" -: "0"
+        "z-index" -: "1000"
+        "min-width" -: "240px"
+        "max-width" -: "100%"
+        "max-height" -: "calc(100% - 36px)"
+        "overflow-y" -: "auto"
+        "white-space" -: "normal"
+        background menuTopColor
+        boxShadow (pure $ bsColor dropShadowColor $ shadowWithSpread (px 0) (px 0) (px 10) (px 3))
+    "html.leksah-narrow .leksah .menubar ul" ? ("display" -: "block")
+    "html.leksah-narrow .leksah .menubar ul li" ? do
+        "display" -: "block"
+        "font-size" -: "16px"
+        "padding" -: "8px 14px"
+    "html.leksah-narrow .leksah .menubar .menu" ? do
+        "position" -: "static"
+        "box-shadow" -: "none"
+        "margin" -: "6px 0 0 0"
 
 -- | Rebuilt whenever the keybindings table changes, so a rebind's new key
 -- equivalent shows in the dropdown hints immediately.

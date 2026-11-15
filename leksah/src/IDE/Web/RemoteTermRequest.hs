@@ -26,6 +26,7 @@
 module IDE.Web.RemoteTermRequest
   ( requestRemoteTerm
   , requestLocalTerm
+  , requestBringTerm
   , dupTermRequests
   , nextTermRequest
   ) where
@@ -39,23 +40,30 @@ import System.IO.Unsafe (unsafePerformIO)
 -- if you try): 'dupTermRequests' gives each window its own reading copy, and
 -- anything written while no window has duped is dropped rather than piling up.
 {-# NOINLINE termRequestChan #-}
-termRequestChan :: TChan Text
+termRequestChan :: TChan (Bool, Text)
 termRequestChan = unsafePerformIO newBroadcastTChanIO
 
 -- | Ask for a remote control-mode terminal for this ssh @HOST[#TARGET]@.
 requestRemoteTerm :: Text -> IO ()
-requestRemoteTerm host = atomically $ writeTChan termRequestChan ("ssh://" <> host)
+requestRemoteTerm host = atomically $ writeTChan termRequestChan (False, "ssh://" <> host)
 
 -- | Ask for (or bring up) the terminal tab of a local tmux session, by its
 -- stable session id — or of a leksah window, by its id.
 requestLocalTerm :: Text -> IO ()
-requestLocalTerm = atomically . writeTChan termRequestChan
+requestLocalTerm k = atomically $ writeTChan termRequestChan (False, k)
+
+-- | Like 'requestLocalTerm', but the tab comes to the ACTIVE (key) OS window —
+-- the one the user just clicked in — moving it there from whichever window
+-- holds it, instead of raising that window.  For a click on an agent card.
+requestBringTerm :: Text -> IO ()
+requestBringTerm k = atomically $ writeTChan termRequestChan (True, k)
 
 -- | One window's reading copy of the broadcast.  Call once per window, at
 -- attach; requests written before the call are not seen by it.
-dupTermRequests :: IO (TChan Text)
+dupTermRequests :: IO (TChan (Bool, Text))
 dupTermRequests = atomically (dupTChan termRequestChan)
 
--- | Block until the next requested tab key arrives on this window's copy.
-nextTermRequest :: TChan Text -> IO Text
+-- | Block until the next request arrives on this window's copy: whether it
+-- brings the tab to the key window ('requestBringTerm'), and the tab key.
+nextTermRequest :: TChan (Bool, Text) -> IO (Bool, Text)
 nextTermRequest = atomically . readTChan

@@ -65,6 +65,7 @@ module IDE.Web.Agent
   , agentManagerStart
   , newAgentSessionId
   , showAgentPane
+  , showAgentPaneHere
   ) where
 
 import Control.Applicative ((<|>))
@@ -115,7 +116,7 @@ import IDE.Web.Claude
         claudeCommandLine, claudeLiveBySession,
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
-        showLiveSession, showTmuxPane, claudeProcessOf, nameNote, agentNote,
+        showLiveSession, showLiveSessionHere, showTmuxPane, showTmuxPaneWith, claudeProcessOf, nameNote, agentNote,
         managerNote, describeToolUse, claudePaneSessions)
 import IDE.Web.AgentEvents
        (SessionEvents(..), editedRecently, eventsFor, sessionEvents, recordCwd, recordEdit, recordFailure, recordPermission,
@@ -415,13 +416,22 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
 -- @starting@) has a pane but no session for 'showLiveSession' to find, and that
 -- pane is exactly where someone needs to look.
 showAgentPane :: Text -> IO Bool
-showAgentPane sid = showLiveSession sid >>= \case
+showAgentPane = showAgentPaneWith False
+
+-- | 'showAgentPane', bringing the pane's tab to the active OS window — the one
+-- clicked in (an agent card) — instead of raising the window that holds it.
+showAgentPaneHere :: Text -> IO Bool
+showAgentPaneHere = showAgentPaneWith True
+
+showAgentPaneWith :: Bool -> Text -> IO Bool
+showAgentPaneWith here sid = showLiveSessionWith' sid >>= \case
   True  -> return True
   False -> do
     panes <- liveRunPanes
     case [ (s, w, p) | (k, s, w, p) <- panes, ("#claude#" <> sid) `T.isSuffixOf` k ] of
-      ((s, w, p) : _) -> showTmuxPane s w p >> return True
+      ((s, w, p) : _) -> showTmuxPaneWith here s w p >> return True
       [] -> return False
+  where showLiveSessionWith' = if here then showLiveSessionHere else showLiveSession
 
 -- | Type @txt@ into a live session's composer, optionally pressing Enter to
 -- submit it as a turn.

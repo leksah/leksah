@@ -23,7 +23,7 @@ import Reflex
        (constDyn, current, getPostBuild, holdDyn, holdUniqDyn, leftmost,
         ffor, tag, Dynamic)
 import Reflex.Dom.Core
-       (elDynAttr, elDynAttr', text, dynText, (=:), elAttr, divClass,
+       (elDynAttr, elDynAttr', elAttr', elClass', elClass, text, dynText, (=:), elAttr, divClass,
         Event, domEvent, EventName(..))
 
 import IDE.Web.Theme (selectionColor, selectionColorFaint, dimOpacity, surfaceHiColor, accentHoverColor)
@@ -65,6 +65,43 @@ toolbarCss = do
         "transition" -: "max-width 0.25s ease"
     ".toolbar-items.toolbar-items-hidden" ?
         ("max-width" -: "0")
+    -- Narrow mode (phones; the html.leksah-narrow class, see "IDE.Web.Layout"):
+    -- the strip is [☰ menu][what this window shows].  The side/bottom pane
+    -- toggles and the build-button row have nothing to act on there (every
+    -- pane shares the one main region), so they go; the title becomes a tap
+    -- target that opens the flipper.
+    -- (More specific than ".toolbar-item", which sets inline-block later on.)
+    ".toolbar .toolbar-item.toolbar-menu" ? ("display" -: "none")
+    "html.leksah-narrow .toolbar .toolbar-item.toolbar-menu" ? do
+        "display" -: "inline-flex"
+        "align-items" -: "center"
+        "vertical-align" -: "top"
+        "height" -: "36px"
+        "padding" -: "0 10px"
+        "cursor" -: "pointer"
+    -- Three bars drawn in CSS, centred exactly on the 36px row (the "☰"
+    -- character sat low: its ink is not centred in the font's line box).
+    ".toolbar-menu-glyph" ? do
+        "display" -: "block"
+        "width" -: "18px"
+        "height" -: "2px"
+        "border-radius" -: "1px"
+        "background" -: "currentColor"
+        "box-shadow" -: "0 -6px 0 currentColor, 0 6px 0 currentColor"
+    "html.leksah-narrow .toolbar .toolbar-item:not(.toolbar-menu)" ? ("display" -: "none")
+    "html.leksah-narrow .toolbar .toolbar-items" ? ("display" -: "none")
+    "html.leksah-narrow .toolbar-active-pane" ? do
+        "height" -: "36px"
+        "line-height" -: "36px"
+        "margin-left" -: "4px"
+        "font-size" -: "15px"
+        "cursor" -: "pointer"
+        "max-width" -: "calc(100% - 56px)"
+        "text-overflow" -: "ellipsis"
+    "html.leksah-narrow .toolbar-active-pane .toolbar-pane-path" ? ("display" -: "none")
+    "html.leksah-narrow .toolbar-active-pane::after" ? do
+        "content" -: "' ▾'"
+        "opacity" -: "0.6"
     -- What the window is showing (active tab: icon, label, dim path), inline
     -- after the toggle / buttons.  Its own overflow-hidden so a long path
     -- never wraps the 28px strip.
@@ -227,6 +264,12 @@ toolbarWidget
   -> m (Event t ToolbarEvents)
 toolbarWidget ctx tallVisD wide1VisD detailsW =
   divClass "toolbar" $ do
+    -- Narrow mode (phones; see "IDE.Web.Layout"): a ☰ button that opens the
+    -- in-page menus, shown only there — where the side/bottom toggles and the
+    -- button row below are hidden instead.
+    (menuEl, _) <- elAttr' "div" ("class" =: "toolbar-item toolbar-menu"
+                                   <> "title" =: "Menu") $
+        elClass "span" "toolbar-menu-glyph" (pure ())
     -- Always present, ahead of the toggle: the side/bottom pane visibility
     -- buttons — layout controls the user reaches for constantly, not build
     -- commands, so they never hide with the rest.
@@ -281,5 +324,10 @@ toolbarWidget ctx tallVisD wide1VisD detailsW =
         , commandToggleShowHidden
         , commandClaudeNew
         ]
-    divClass "toolbar-active-pane" detailsW
-    return $ leftmost (tallE : wide1E : evs)
+    -- In narrow mode the title is the way to every other pane: tapping it
+    -- opens the flipper (ignored elsewhere — see IDE.Web.Main).
+    (titleEl, _) <- elClass' "div" "toolbar-active-pane" detailsW
+    return $ leftmost
+      ( (ToolbarMenuClick <$ domEvent Click menuEl)
+      : (ToolbarTitleClick <$ domEvent Click titleEl)
+      : tallE : wide1E : evs )
