@@ -7,7 +7,7 @@ copyright: 2007-2026 Hamish Mackenzie
 maintainer: Hamish.K.Mackenzie@gmail.com
 author: Hamish Mackenzie
 stability: provisional
-tested-with: ghc ==9.6.7 ghc ==9.8.4 ghc ==9.10.1 ghc ==9.12.2 ghc ==9.14.1
+tested-with: ghc ==9.14.1
 homepage: https://leksah.github.io
 bug-reports: https://github.com/leksah/leksah/issues
 synopsis: An IDE written in Haskell

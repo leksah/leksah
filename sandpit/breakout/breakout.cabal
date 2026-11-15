@@ -1,6 +1,7 @@
 cabal-version:      3.4
 name:               breakout
 version:            0.1.0.0
+tested-with:        ghc ==9.14.1
 license:            MIT
 license-file:       LICENSE
 author:             Hamish Mackenzie

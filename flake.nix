@@ -27,6 +27,11 @@
   # base < 4.22).  Consumed as a tool `src` in nix/hix.nix.
   inputs.hls-github.url = "github:haskell/haskell-language-server";
   inputs.hls-github.flake = false;
+  # haskell-ci from its GitHub master (0.19.20261010): Hackage's newest
+  # (0.18.1) does not know GHC 9.14.  Built by nix/haskell-ci.nix; regenerate
+  # the CI workflow with `nix run .#haskell-ci -- regenerate`.
+  inputs.haskell-ci-src.url = "github:haskell-CI/haskell-ci/941ebb39e9";
+  inputs.haskell-ci-src.flake = false;
   outputs = { self, nixpkgs, flake-utils, haskellNix, ... }@inputs:
     let
       supportedSystems = [
@@ -130,6 +135,11 @@
           # ghcjs cross builds of leksah and the sandpit breakout game),
           # assembled by a Haskell program compiled inside the derivation
           # (see nix/website.nix).  Mirror the output to leksah.github.io.
+          # The CI workflow generator (see nix/haskell-ci.nix).
+          haskell-ci = import ./nix/haskell-ci.nix {
+            inherit pkgs;
+            src = inputs.haskell-ci-src;
+          };
           leksah-website = import ./nix/website.nix {
             inherit pkgs;
             src = ./.;

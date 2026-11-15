@@ -1,6 +1,7 @@
 cabal-version:      2.4
 name:               lsp-types-client
 version:            0.1.0.0
+tested-with:        ghc ==9.14.1
 synopsis:           A small Language Server Protocol client for editors
 description:
   A minimal, dependency-light client for the Language Server Protocol,
