@@ -74,7 +74,7 @@ import qualified Data.Set as S
        (Set, fromList, delete, null, singleton, empty, insert, member, intersection, toList)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Text (Text)
-import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace, concatMap, singleton)
+import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace, concatMap, singleton, dropWhile)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.Lazy as LT (Text)
 import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
@@ -4852,11 +4852,34 @@ leafDragJs = T.unlines
   -- window that reported a candidate", resolved at the commit.
   , "    if (e.clientX < 0 || e.clientY < 0"
   , "        || e.clientX > window.innerWidth || e.clientY > window.innerHeight){"
+  , "      if (st.srcKind==='treepane'){ clearPeekHl(); srcBox(); st.lastDst = {kind:'none'}; return; }"
   , "      clearPeekHl(); srcBox(); st.lastDst = {kind:'foreign'};"
   , "      publishMove(e); return; }"
   , "    publishMove(null);"
   , "    var t = document.elementFromPoint(e.clientX, e.clientY) || e.target;"
   , "    if (!t || !t.closest) { srcBox(); st.lastDst = {kind:'none'}; return; }"
+  -- The Tmux tree: hovering a window or pane row brings up the leksah window
+  -- showing it (as hovering its tab does).  A WINDOW row is also a drop target
+  -- for a drag that started in the tree: the tmux pane moves into that tmux
+  -- window (same host only) — the tree's long-standing pane move.
+  , "    var trow = t.closest('.terminals [data-win-dst], .terminals [data-pane-src]');"
+  , "    if (trow){"
+  , "      var rows = window.__leksahTmuxRows || {panes:{}, wins:{}};"
+  , "      var ws = trow.getAttribute('data-win-dst'), ps = trow.getAttribute('data-pane-src');"
+  , "      var plw = ws ? rows.wins[ws] : (rows.panes[ps] || {}).lw;"
+  , "      if (st.peekEl !== trow){ clearPeekHl();"
+  , "        st.peekEl = trow; trow.classList.add('leksah-drag-peek');"
+  , "        if (plw){ var pkey = 'LeksahWinKey \"' + plw + '\"';"
+  , "          st.peekTimer = setTimeout(function(){"
+  , "            if (window.leksahLeafPeek) window.leksahLeafPeek(pkey); }, 150); } }"
+  , "      if (ws && st.srcSpec && ws.split('|')[0] === st.srcSpec.split('|')[0]){"
+  , "        var wr = trow.getBoundingClientRect();"
+  , "        shadowTo(wr.left, wr.top, wr.width, wr.height);"
+  , "        st.lastDst = {kind:'treewin', spec: ws};"
+  , "      } else { srcBox(); st.lastDst = {kind:'none'}; }"
+  , "      return; }"
+  -- A pane no leksah window shows can only go to a tree window row.
+  , "    if (st.srcKind==='treepane'){ clearPeekHl(); srcBox(); st.lastDst = {kind:'none'}; return; }"
   -- The wide0 tab ROW, anywhere on it: a drop there makes the pane a window
   -- (tab) of its own.  Hovering a tab still peeks it (dwell 150ms), so the
   -- user can drag on down into its body to drop beside its panes instead.
@@ -4951,6 +4974,11 @@ leafDragJs = T.unlines
   -- The trailing click (dispatched between mouseup and this timeout) is
   -- swallowed; then the guard goes away so the NEXT click is real.
   , "    setTimeout(function(){ document.removeEventListener('click', swallow, true); }, 0);"
+  , "    if (dst && dst.kind==='treewin'){"
+  , "      var tspec = st.srcSpec, troot = st.treeRoot; st = null;"
+  , "      if (troot && troot.__leksahMovePane) troot.__leksahMovePane(tspec, dst.spec);"
+  , "      return; }"
+  , "    if (st.srcKind==='treepane'){ st = null; return; }"
   , "    if (st.srcKind==='rtmux'){"
   , "      var rf = (window.__leksahRemoteDrop||{})[st.srcLw], rs = st.srcPane;"
   , "      st = null;"
@@ -5061,8 +5089,29 @@ leafDragJs = T.unlines
   , "    var el = info.pane ? (shown(pe) ? pe : card) : (shown(le) ? le : card);"
   , "    return info.pane ? {kind:'tmux', lw:info.lw, leaf:info.leaf, pane:info.pane, el:el}"
   , "                     : {kind:'pane', lw:info.lw, leaf:info.leaf, el:el}; }"
+  -- A pane row in the Tmux tree picks up that pane (no ⌘): its leaf, or the
+  -- tmux pane when it shares its window.  A pane no leksah window shows can
+  -- still be dragged onto a tree window row ('treepane').  Below the
+  -- threshold it is the row's ordinary click.
+  , "  function treeSource(e){"
+  , "    var t = e.target; if (!t || !t.closest) return null;"
+  , "    var row = t.closest('.terminals [data-pane-src]');"
+  , "    if (!row || t.closest('button, input')) return null;"
+  , "    var spec = row.getAttribute('data-pane-src'), root = row.closest('.terminals');"
+  , "    var info = ((window.__leksahTmuxRows||{}).panes||{})[spec];"
+  , "    if (!info || !(window.__leksahLwSrc||{})[info.lw])"
+  , "      return {kind:'treepane', spec:spec, root:root, el:row};"
+  , "    var pane = info.multi ? spec.split('|')[1] : null;"
+  , "    var cc = document.querySelector('.terminal-cc[data-lw=\"' + info.lw + '\"]');"
+  , "    var le = cc && cc.querySelector('.terminal-cc-leaf[data-leaf=\"' + info.leaf + '\"]');"
+  , "    var pe = pane && le && le.querySelector('.terminal-cc-hl[data-pane=\"' + pane + '\"]');"
+  , "    function shown(x){ if (!x) return false; var r = x.getBoundingClientRect();"
+  , "      return r.width > 2 || r.height > 2; }"
+  , "    var el = pane ? (shown(pe) ? pe : row) : (shown(le) ? le : row);"
+  , "    return pane ? {kind:'tmux', lw:info.lw, leaf:info.leaf, pane:pane, el:el, spec:spec, root:root}"
+  , "                : {kind:'pane', lw:info.lw, leaf:info.leaf, el:el, spec:spec, root:root}; }"
   , "  document.addEventListener('mousedown', function(e){"
-  , "    var tabSrc = e.button === 0 ? (lwTabSource(e) || agentCardSource(e)) : null;"
+  , "    var tabSrc = e.button === 0 ? (lwTabSource(e) || agentCardSource(e) || treeSource(e)) : null;"
   , "    if (e.button !== 0 || (!e[MOD] && !tabSrc)) return;"
   -- Arming state that outlived its gesture (a native drag that slipped past
   -- both guards, a missed mouseup) must not deafen every later drag.
@@ -5121,7 +5170,7 @@ leafDragJs = T.unlines
   -- ⌘-click for whatever the pane content does with it.
   , "    st = { srcKind:src.kind, srcLw:src.lw, srcLeaf:src.leaf, srcTab:src.tab,"
   , "           srcPane:src.pane, srcEl:src.el, sx:e.clientX, sy:e.clientY,"
-  , "           srcSrv:src.srv, srcIsTmux:src.isTmux,"
+  , "           srcSrv:src.srv, srcIsTmux:src.isTmux, srcSpec:src.spec, treeRoot:src.root,"
   , "           engaged:false, peekEl:null, peekTimer:null, lastDst:{kind:'none'} };"
   , "    document.addEventListener('mousemove', mv, true);"
   , "    document.addEventListener('pointermove', pm, true);"
@@ -7450,6 +7499,36 @@ main showMenubar macTitlebar wid ctx = mdo
           , Just (_, wins) <- [M.lookup s tree], w <- wins, pn <- twPanes w
           , Just a <- [tpAgentName pn] ])
         <$> leksahWindowsD' <*> allTreeD
+    -- The Tmux tree's rows, keyed exactly as the rows are ("host|%id" for a
+    -- pane, "host|session|index" for a window; host empty = leksah's own
+    -- tmux), for 'leafDragJs': a pane row picks its pane up (its leaf, or the
+    -- tmux pane when it shares its window), and hovering a row during a drag
+    -- brings up the leksah window showing it.
+    tmuxRowsD <- holdUniqDyn $ (\lws tree ->
+        let split k = case T.stripPrefix "ssh://" k of
+              Just rest -> (T.takeWhile (/= '#') rest, T.drop 1 (T.dropWhile (/= '#') rest))
+              Nothing   -> ("", k)
+            rows = [ (host <> "|" <> sid, key, w)
+                   | (key, (_, wins)) <- M.toList tree, let (host, sid) = split key
+                   , w <- wins ]
+        in ( M.fromList
+               [ (fst (split key) <> "|" <> tpId pn, (lwi, l, length (twPanes w) > 1))
+               | (_, key, w) <- rows, pn <- twPanes w
+               , Just (lwi, LeafId l) <- [flipPaneLeaf lws tree key (twIndex w)] ]
+           , M.fromList
+               [ (hs <> "|" <> T.pack (show (twIndex w)), lwi)
+               | (hs, key, w) <- rows
+               , Just lwi <- [paneOwnerLw lws tree key (twIndex w)] ] ))
+        <$> leksahWindowsD' <*> allTreeD
+    tmuxRowsPb <- getPostBuild
+    performEvent_ $ ffor (leftmost [ updated tmuxRowsD, tag (current tmuxRowsD) tmuxRowsPb ]) $
+      \(panes, wins) -> liftJSM . void . eval $
+        "window.__leksahTmuxRows = {panes:{" <> T.intercalate ","
+          [ jsQuote k <> ":{lw:" <> jsQuote lwi <> ",leaf:" <> T.pack (show l)
+            <> ",multi:" <> (if multi then "true" else "false") <> "}"
+          | (k, (lwi, l, multi)) <- M.toList panes ]
+        <> "},wins:{" <> T.intercalate "," [ jsQuote k <> ":" <> jsQuote v | (k, v) <- M.toList wins ]
+        <> "}};"
     agentPanesPb <- getPostBuild
     performEvent_ $ ffor (leftmost [ updated agentPanesD
                                    , tag (current agentPanesD) agentPanesPb ]) $ \m ->

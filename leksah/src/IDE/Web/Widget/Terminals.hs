@@ -592,7 +592,6 @@ remotePanesTree host sid nameD widx panesD =
         let attrs = ffor pD $ \p ->
               "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
               -- Drag source within this host: "host|paneId".
-              <> "draggable" =: "true"
               <> "data-pane-src" =: (host <> "|" <> tpId p)
         (e, _) <- elDynAttr' "span" attrs $ do
               termIcon "tree-pane.svg"
@@ -844,7 +843,6 @@ panesTree n widx panesD =
               "class" =: ("terminals-label leksah-nav-item" <> if tpActive p then " terminals-current" else "")
               -- Drag source: "host|paneId" (host empty = local); drop onto a
               -- window row to move the pane there (see 'paneDragJs').
-              <> "draggable" =: "true"
               <> "data-pane-src" =: ("|" <> tpId p)
         (e, _) <- elDynAttr' "span" attrs $ do
               termIcon "tree-pane.svg"
