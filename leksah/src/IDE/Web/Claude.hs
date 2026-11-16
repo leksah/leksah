@@ -26,6 +26,8 @@ module IDE.Web.Claude
   , claudeLiveBySession
   , ClaudeBackground(..)
   , claudeBackgroundSessions
+  , backgroundNeedsYou
+  , backgroundStaleAge
   , claudeRemoveBackground
   , claudeLiveOwners
   , ClaudeCmd(..)
@@ -75,14 +77,14 @@ import qualified Data.Set as S
 import Data.List (intercalate, sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (mapMaybe, listToMaybe, fromMaybe)
+import Data.Maybe (isNothing, mapMaybe, listToMaybe, fromMaybe)
 import Data.Ord (Down(..))
 import Data.String (fromString)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
        (UTCTime, NominalDiffTime, getCurrentTime, diffUTCTime)
-import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Time.Clock.POSIX (getPOSIXTime, posixSecondsToUTCTime)
 
 import Data.Aeson
        (Object, Value(..), decodeStrict', withObject, (.:), (.:?), object, (.=),
@@ -111,7 +113,7 @@ import IDE.Utils.RemotePath (isRemotePath)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Exit (ExitCode(..))
 import System.Process
-       (CreateProcess(..), StdStream(..), createProcess, proc, readProcess,
+       (CreateProcess(std_in, std_out, std_err), StdStream(..), createProcess, proc, readProcess,
         readProcessWithExitCode, terminateProcess, waitForProcess)
 import System.Timeout (timeout)
 import Text.Read (readMaybe)
@@ -294,27 +296,70 @@ data ClaudeBackground = ClaudeBackground
   , cbDir     :: FilePath
   , cbStarted :: Maybe Double    -- ^ POSIX seconds
   , cbPid     :: Maybe Int       -- ^ while its process is alive
+  , cbLastActive :: Maybe UTCTime -- ^ when it last did anything: its transcript's
+                                 --   mtime, else when it started
   } deriving (Eq, Show)
 
+-- | A blocked background session that is waiting for YOU: no process, and it
+-- blocked recently.  One left blocked for longer than 'backgroundStaleAge' was
+-- most likely abandoned; it still shows in the Agents pane (Forget removes
+-- it) but no longer counts as needing you — in the pane's sort order, or on
+-- the status dot and menu-bar item.
+backgroundNeedsYou :: UTCTime -> ClaudeBackground -> Bool
+backgroundNeedsYou now b =
+  cbState b == "blocked" && isNothing (cbPid b)
+    && maybe True (\t -> realToFrac (diffUTCTime now t) <= backgroundStaleAge) (cbLastActive b)
+
+-- | How long a blocked background session counts as needing you: a day.
+backgroundStaleAge :: Double
+backgroundStaleAge = 24 * 3600
+
 -- | The background sessions, from @claude agents --json@ — CACHED: the CLI
--- takes a few hundred ms, and the Agents pane polls every 2s.  Returns what
--- the last run found at once, and starts a fresh run in the background when
--- that is older than 'backgroundTtl' (one at a time); so the first call after
--- start-up returns @[]@ and the list fills in on the next poll.  Never throws:
--- no @claude@, a failed run or unparsable output keep the previous list.
+-- takes a few hundred ms, and the status poll and the Agents pane call this
+-- every few seconds.  Returns what the last run found at once, and starts a
+-- fresh run in the background (one at a time) when something may have
+-- changed — so the first call after start-up returns @[]@ and the list fills
+-- in on the next poll.  Never throws: no @claude@, a failed run or unparsable
+-- output keep the previous list.
+--
+-- "May have changed": a background session's state lives in
+-- @~\/.claude\/jobs\/\<id\>\/state.json@, rewritten on every change.  Those
+-- files are only WATCHED here — their mtimes, never their contents (the
+-- format is undocumented; @claude agents --json@ is the interface) — and the
+-- CLI is run again when any of them (or the set of jobs) changes, at most
+-- every 'backgroundTtl'; with nothing changing, every 'backgroundBackstop'.
 claudeBackgroundSessions :: IO [ClaudeBackground]
 claudeBackgroundSessions = do
   now <- realToFrac <$> getPOSIXTime
-  start <- atomicModifyIORef' backgroundRef $ \(at, running, xs) ->
-    if not running && now - at > backgroundTtl
-      then ((at, True, xs), True) else ((at, running, xs), False)
+  fp <- jobsFingerprint
+  start <- atomicModifyIORef' backgroundRef $ \(at, running, seen, xs) ->
+    let due = now - at > backgroundBackstop || (fp /= seen && now - at > backgroundTtl)
+    in if not running && due
+         then ((at, True, seen, xs), True) else ((at, running, seen, xs), False)
   when start . void . forkIO $ do
-    fresh <- (Just <$> runAgentsJson) `catch` \(_ :: SomeException) -> return Nothing
+    fresh <- (Just <$> (runAgentsJson >>= mapM withLastActive))
+               `catch` \(_ :: SomeException) -> return Nothing
     done <- realToFrac <$> getPOSIXTime
-    atomicModifyIORef' backgroundRef $ \(_, _, xs) ->
-      ((done, False, fromMaybe xs fresh), ())
-  (\(_, _, xs) -> xs) <$> readIORef backgroundRef
+    atomicModifyIORef' backgroundRef $ \(_, _, _, xs) ->
+      ((done, False, fp, fromMaybe xs fresh), ())
+  (\(_, _, _, xs) -> xs) <$> readIORef backgroundRef
  where
+  jobsFingerprint = (`catch` \(_ :: SomeException) -> return []) $ do
+    home <- getHomeDirectory
+    let jobs = home </> ".claude" </> "jobs"
+    ex <- doesDirectoryExist jobs
+    if not ex then return [] else do
+      ids <- listDirectory jobs
+      fmap concat . forM ids $ \i -> do
+        let f = jobs </> i </> "state.json"
+        e <- doesFileExist f
+        if e then (\t -> [(i, t)]) <$> getModificationTime f else return [(i, posixSecondsToUTCTime 0)]
+  withLastActive b = do
+    t <- (`catch` \(_ :: SomeException) -> return Nothing) $ do
+      p <- claudeTranscriptPath (cbDir b) (cbSession b)
+      e <- doesFileExist p
+      if e then Just <$> getModificationTime p else return Nothing
+    return b { cbLastActive = t <|> (posixSecondsToUTCTime . realToFrac <$> cbStarted b) }
   -- The output is read as BYTES (it is UTF-8 JSON; a String round trip
   -- through the locale would mangle any non-ASCII name or path), and under a
   -- timeout: a CLI stuck on a prompt or a network stall must not wedge the
@@ -344,7 +389,8 @@ claudeBackgroundSessions = do
         , cbState   = fromMaybe "working" (objField "state" v)
         , cbDir     = maybe "" (dropTrailingPathSeparator . T.unpack) (objField "cwd" v)
         , cbStarted = (/ 1000) . fromInteger <$> objField "startedAt" v
-        , cbPid     = objField "pid" v }
+        , cbPid     = objField "pid" v
+        , cbLastActive = Nothing }
 
 -- | Remove background session @jobId@ from Claude Code's list (@claude rm@:
 -- it keeps the conversation, and deletes the session's worktree only when
@@ -357,20 +403,27 @@ claudeRemoveBackground jobId = (`catch` \(e :: SomeException) -> return (T.pack 
     Nothing  -> return "claude is not on PATH"
     Just exe -> do
       r <- timeout 30000000 (readProcessWithExitCode exe ["rm", T.unpack jobId] "")
-      atomicModifyIORef' backgroundRef (\(_, running, xs) ->
-        ((0, running, filter ((/= jobId) . cbId) xs), ()))
+      atomicModifyIORef' backgroundRef (\(_, running, seen, xs) ->
+        ((0, running, seen, filter ((/= jobId) . cbId) xs), ()))
       return $ case r of
         Nothing -> "claude rm " <> jobId <> " timed out"
         Just (_, out, err) -> T.strip (T.pack (out <> err))
 
--- | (when the last run finished, whether one is running now, what it found)
+-- | (when the last run finished, whether one is running now, the jobs'
+-- state-file mtimes it ran for, what it found)
 {-# NOINLINE backgroundRef #-}
-backgroundRef :: IORef (Double, Bool, [ClaudeBackground])
-backgroundRef = unsafePerformIO (newIORef (0, False, []))
+backgroundRef :: IORef (Double, Bool, [(FilePath, UTCTime)], [ClaudeBackground])
+backgroundRef = unsafePerformIO (newIORef (0, False, [], []))
 
--- | How old the cached @claude agents --json@ may get before a poll refreshes it.
+-- | The least time between two runs of @claude agents --json@, however much
+-- changes.
 backgroundTtl :: Double
 backgroundTtl = 10
+
+-- | The most time between two runs while nothing seems to change (a change
+-- the jobs' state files don't show — a session removed from elsewhere).
+backgroundBackstop :: Double
+backgroundBackstop = 300
 
 -- | Live sessions keyed by session id, with dead leftovers dropped: a session
 -- file can outlive its process (@kill -9@, a crash), so the pids are checked
@@ -1249,7 +1302,16 @@ nativeShowLiveSession here sid = paneForSession sid >>= \case
     Just (s, w, p) -> showTmuxPaneWith here s w p >> return True
     Nothing -> claudeLiveBySession >>= \live -> case M.lookup sid live of
       Just l | not (null (clDir l)) -> mruClaudeUnclaimed here sid (clDir l)
-      _                             -> return False
+      _                             -> background
+  where
+    -- A Claude Code background session with no process (blocked, say: the
+    -- status dot and menu-bar item list it as needing you) has no pane to
+    -- show: take it up in one — `claude --resume` resumes a background
+    -- session in the foreground.
+    background = claudeBackgroundSessions >>= \bgs ->
+      case [ b | b <- bgs, cbSession b == sid, isNothing (cbPid b), not (null (cbDir b)) ] of
+        (b : _) -> runClaudeCmd (ClaudeResume (cbDir b) sid) >> return True
+        []      -> return False
 
 -- | The directory-MRU fallback of 'showLiveSession', but never someone ELSE's
 -- pane.  The MRU pane for a directory says nothing about WHICH of that
