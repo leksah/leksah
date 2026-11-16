@@ -26,6 +26,10 @@ module IDE.Web.Claude
   , claudeLiveBySession
   , ClaudeBackground(..)
   , claudeBackgroundSessions
+  , leksahPluginInstall
+  , leksahPluginUninstall
+  , leksahPluginStatus
+  , leksahPluginWrite
   , backgroundNeedsYou
   , backgroundStaleAge
   , claudeRemoveBackground
@@ -101,7 +105,8 @@ import Numeric (showHex)
 
 import System.Directory
        (findExecutable, getHomeDirectory, doesDirectoryExist, doesFileExist,
-        listDirectory, getModificationTime, removeFile)
+        listDirectory, getModificationTime, removeFile, createDirectoryIfMissing,
+        removeDirectoryRecursive)
 import System.FilePath
        ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator, replaceExtension)
@@ -1003,13 +1008,11 @@ claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
     Just exe -> do
       home <- getHomeDirectory
       let path = home </> ".leksah" </> "mcp.json"
-      BL.writeFile path . encode $ object
-        [ "mcpServers" .= object
-            [ "leksah" .= object
-                [ "type"    .= ("stdio" :: Text)
-                , "command" .= exe
-                , "args"    .= (["mcp"] :: [Text]) ] ] ]
-      return (" --mcp-config " <> T.pack path)
+      BL.writeFile path . encode $ object [ "mcpServers" .= leksahMcpServers exe ]
+      -- (The installed leksah plugin brings this server to every session:
+      -- a second copy would double every tool.)
+      installed <- leksahPluginInstalled
+      return (if installed then "" else " --mcp-config " <> T.pack path)
 
 -- | The @--settings@ flag wiring a leksah-launched session to the worktree
 -- PostToolUse hook: every @git worktree add@\/@remove@ \/ @git switch@ a session
@@ -1022,70 +1025,222 @@ claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
 -- loads ADDITIONAL settings, so the user's own hooks keep working.
 claudeHooksFlag :: IO Text
 claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
-  findExecutable "leksah-cmd" >>= \case
-    Nothing  -> return ""
-    Just exe -> do
-      (ec, _, _) <- readProcessWithExitCode exe ["hooks", "write-script"] ""
-      case ec of
-        ExitSuccess -> do
-          home <- getHomeDirectory
-          let path   = home </> ".leksah" </> "hooks.json"
-              script = home </> ".leksah" </> "worktree-hook.sh"
-          userStatusLine <- claudeUserStatusLine
-          -- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
-          -- SessionStart keeps an agent's identity across /clear and /branch,
-          -- re-briefs it on a resume, registers the worktree it started in,
-          -- and (with UserPromptSubmit) gives it the title it gave itself;
-          -- UserPromptSubmit, Stop, Notification and SessionEnd make the
-          -- status surfaces update at once rather than at the next poll.  Each is `leksah-cmd agent hook EVENT`, which always
-          -- exits 0 quickly, so a hook can never hold up or fail a session.
-          --
-          -- The rest only REPORT, so they run async — they never hold a
-          -- session up: the tool call running now (PreToolUse /
-          -- PostToolUse[Failure]) and the files it edited, the approval a
-          -- session waits for (PermissionRequest), a turn that ended on an
-          -- API error (StopFailure), and where its shell went (CwdChanged).
-          -- PreToolUse above all: a synchronous hook there delays EVERY tool
-          -- call by the hook's run time.  A PostToolUse answer (another agent
-          -- edited the same file) reaches the session on its next turn.
-          -- (Async hooks can arrive out of order; 'recordToolStart' copes.)
-          let hookGroup :: Bool -> Text -> Value
-              hookGroup async ev = object [ "hooks" .=
-                [ object ([ "type"    .= ("command" :: Text)
-                          , "command" .= (shq (T.pack exe) <> " agent hook " <> ev)
-                          , "timeout" .= (5 :: Int) ]
-                          <> [ "async" .= True | async ]) ] ]
-              hookOn :: Bool -> Text -> Pair
-              hookOn async ev = Key.fromText ev .= [hookGroup async ev]
-              lifecycle = hookOn False
-              reporter  = hookGroup True
-          BL.writeFile path . encode $ object
-            [ "hooks" .= object
-                ([ "PostToolUse" .=
-                    [ object
-                        [ "matcher" .= ("Bash|EnterWorktree|ExitWorktree" :: Text)
-                        , "hooks" .=
-                            [ object [ "type"    .= ("command" :: Text)
-                                     , "command" .= script
-                                     , "timeout" .= (10 :: Int) ] ] ]
-                    , reporter "PostToolUse" ] ]
-                 -- (UserPromptSubmit is synchronous because its answer can
-                 -- carry the session's title.)
-                 <> map lifecycle [ "SessionStart", "UserPromptSubmit", "Stop"
-                                  , "Notification", "SessionEnd" ]
-                 <> map (hookOn True)
-                      -- (PostToolUse is registered above, with the
-                      -- worktree hook.)
-                      (filter (/= "PostToolUse") perToolHookEvents
-                       <> [ "PermissionRequest", "StopFailure", "CwdChanged"
-                          -- Its subagents, and a compaction in progress, for
-                          -- the activity line.  PreCompact MUST stay async:
-                          -- a synchronous PreCompact hook's stdout becomes
-                          -- instructions for the compaction summary.
-                          , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ]))
-            , "statusLine" .= leksahStatusLine exe userStatusLine ]
-          return (" --settings " <> T.pack path)
-        _ -> return ""
+  leksahHookTools >>= \case
+    Nothing -> return ""
+    Just (exe, script) -> do
+      home <- getHomeDirectory
+      let path = home </> ".leksah" </> "hooks.json"
+      userStatusLine <- claudeUserStatusLine
+      -- With the leksah plugin installed (`leksah-cmd plugin install`) every
+      -- session — leksah's included — already has the hooks: keep that copy
+      -- fresh, and leave them out here, or each event would arrive twice.
+      -- The status line is not something a plugin can carry, so it stays.
+      installed <- leksahPluginInstalled
+      when installed $ do
+        dir <- leksahPluginInstallDir
+        writeLeksahPlugin dir exe script
+      BL.writeFile path . encode . object $
+        [ "hooks" .= leksahHooks exe script | not installed ]
+        <> [ "statusLine" .= leksahStatusLine exe userStatusLine ]
+      return (" --settings " <> T.pack path)
+
+-- | The two programs the hooks run: @leksah-cmd@ (its path), and the worktree
+-- PostToolUse script, which @leksah-cmd hooks write-script@ (re)writes.
+-- 'Nothing' without @leksah-cmd@ on PATH, or when the script can't be written.
+leksahHookTools :: IO (Maybe (FilePath, FilePath))
+leksahHookTools = findExecutable "leksah-cmd" >>= \case
+  Nothing  -> return Nothing
+  Just exe -> do
+    (ec, _, _) <- readProcessWithExitCode exe ["hooks", "write-script"] ""
+    home <- getHomeDirectory
+    return $ case ec of
+      ExitSuccess -> Just (exe, home </> ".leksah" </> "worktree-hook.sh")
+      _           -> Nothing
+
+-- | Every Claude Code hook leksah uses — for the @--settings@ file of the
+-- sessions it launches, and for the leksah plugin ('writeLeksahPlugin'), which
+-- carries the same table to sessions started anywhere.
+--
+-- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
+-- SessionStart keeps an agent's identity across /clear and /branch, re-briefs
+-- it on a resume, registers the worktree it started in, and (with
+-- UserPromptSubmit) gives it the title it gave itself; UserPromptSubmit, Stop,
+-- Notification and SessionEnd make the status surfaces update at once rather
+-- than at the next poll.  Each is `leksah-cmd agent hook EVENT`, which always
+-- exits 0 quickly, so a hook can never hold up or fail a session — also when
+-- leksah is not running.
+--
+-- The rest only REPORT, so they run async — they never hold a session up: the
+-- tool call running now (PreToolUse / PostToolUse[Failure]) and the files it
+-- edited, the approval a session waits for (PermissionRequest), a turn that
+-- ended on an API error (StopFailure), and where its shell went (CwdChanged).
+-- PreToolUse above all: a synchronous hook there delays EVERY tool call by the
+-- hook's run time.  A PostToolUse answer (another agent edited the same file)
+-- reaches the session on its next turn.  (Async hooks can arrive out of order;
+-- 'recordToolStart' copes.)
+--
+-- And the worktree PostToolUse hook (@script@): every @git worktree
+-- add@\/@remove@ \/ @git switch@ a session runs in Bash, and every worktree it
+-- enters or removes with Claude Code's own worktree tools, lands in the
+-- worktree registry.
+leksahHooks :: FilePath -> FilePath -> Value
+leksahHooks exe script = object $
+  [ "PostToolUse" .=
+      [ object
+          [ "matcher" .= ("Bash|EnterWorktree|ExitWorktree" :: Text)
+          , "hooks" .=
+              [ object [ "type"    .= ("command" :: Text)
+                       , "command" .= script
+                       , "timeout" .= (10 :: Int) ] ] ]
+      , reporter "PostToolUse" ] ]
+  -- (UserPromptSubmit is synchronous because its answer can carry the
+  -- session's title.)
+  <> map lifecycle [ "SessionStart", "UserPromptSubmit", "Stop"
+                   , "Notification", "SessionEnd" ]
+  <> map (hookOn True)
+       -- (PostToolUse is registered above, with the worktree hook.)
+       (filter (/= "PostToolUse") perToolHookEvents
+        <> [ "PermissionRequest", "StopFailure", "CwdChanged"
+           -- Its subagents, and a compaction in progress, for the activity
+           -- line.  PreCompact MUST stay async: a synchronous PreCompact
+           -- hook's stdout becomes instructions for the compaction summary.
+           , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ])
+  where
+    hookGroup :: Bool -> Text -> Value
+    hookGroup async ev = object [ "hooks" .=
+      [ object ([ "type"    .= ("command" :: Text)
+                , "command" .= (shq (T.pack exe) <> " agent hook " <> ev)
+                , "timeout" .= (5 :: Int) ]
+                <> [ "async" .= True | async ]) ] ]
+    hookOn :: Bool -> Text -> Pair
+    hookOn async ev = Key.fromText ev .= [hookGroup async ev]
+    lifecycle = hookOn False
+    reporter  = hookGroup True
+
+-- | Leksah's MCP server (@leksah-cmd mcp@ — IDE tools: diagnostics, open_file,
+-- build, hover, screenshot, the agent tools), as an @mcpServers@ object.
+leksahMcpServers :: FilePath -> Value
+leksahMcpServers exe = object
+  [ "leksah" .= object
+      [ "type"    .= ("stdio" :: Text)
+      , "command" .= exe
+      , "args"    .= (["mcp"] :: [Text]) ] ]
+
+--------------------------------------------------------------------------------
+-- The leksah plugin
+
+-- | Write the leksah Claude Code plugin into @dir@: the manifest, every hook
+-- ('leksahHooks'), and the MCP server ('leksahMcpServers').  Installed
+-- (`leksah-cmd plugin install`) as a skills-directory plugin, it gives EVERY
+-- session the same hooks and tools a leksah-launched one gets — `claude` in a
+-- plain terminal, the resume picker, a background session — so they all show
+-- up, and report, in leksah.  A marker file says leksah wrote it, so leksah
+-- only ever rewrites or removes its own.
+writeLeksahPlugin :: FilePath -> FilePath -> FilePath -> IO ()
+writeLeksahPlugin dir exe script = do
+  createDirectoryIfMissing True (dir </> ".claude-plugin")
+  createDirectoryIfMissing True (dir </> "hooks")
+  BL.writeFile (dir </> ".claude-plugin" </> "plugin.json") . encode $ object
+    [ "name"        .= ("leksah" :: Text)
+    , "version"     .= ("1.0.0" :: Text)
+    , "description" .= ("Leksah IDE integration: reports every session's state, \
+                        \tools, edits, subagents and worktrees to Leksah, and \
+                        \gives it Leksah's MCP tools (diagnostics, build, \
+                        \open file, agents)." :: Text) ]
+  BL.writeFile (dir </> "hooks" </> "hooks.json") . encode $
+    object [ "hooks" .= leksahHooks exe script ]
+  BL.writeFile (dir </> ".mcp.json") . encode $
+    object [ "mcpServers" .= leksahMcpServers exe ]
+  writeFile (dir </> leksahPluginMarker)
+    "Written by Leksah (leksah-cmd plugin install); rewritten at every leksah \
+    \launch of a Claude session.  Remove with: leksah-cmd plugin uninstall\n"
+
+-- | Where the installed plugin lives: Claude Code's skills directory, where a
+-- plugin loads in every new session as @leksah\@skills-dir@ — no marketplace.
+leksahPluginInstallDir :: IO FilePath
+leksahPluginInstallDir = do
+  conf <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
+    Just d | not (null d) -> return d
+    _ -> (</> ".claude") <$> getHomeDirectory
+  return (conf </> "skills" </> "leksah")
+
+leksahPluginMarker :: FilePath
+leksahPluginMarker = ".leksah-generated"
+
+-- | Is the leksah plugin installed (leksah's own, by its marker) and not
+-- turned off (@enabledPlugins: {"leksah\@skills-dir": false}@ in the user's
+-- settings)?
+leksahPluginInstalled :: IO Bool
+leksahPluginInstalled = (`catch` \(_ :: SomeException) -> return False) $ do
+  dir <- leksahPluginInstallDir
+  ours <- doesFileExist (dir </> leksahPluginMarker)
+  if not ours then return False else do
+    let conf = takeDirectory (takeDirectory dir)
+    let f = conf </> "settings.json"
+    ex <- doesFileExist f
+    disabled <- if not ex then return False else do
+      v <- decodeStrict' <$> BS.readFile f
+      return $ (v >>= parseMaybe (withObject "settings" $ \o -> o .: "enabledPlugins"
+                    >>= withObject "enabledPlugins" (.: "leksah@skills-dir")))
+               == Just False
+    return (not disabled)
+
+-- | @leksah-cmd plugin install@: write the plugin into Claude Code's skills
+-- directory.  It loads in sessions started from now on.
+leksahPluginInstall :: IO Text
+leksahPluginInstall = (`catch` \(e :: SomeException) -> return (T.pack (show e) <> "\n")) $
+  leksahHookTools >>= \case
+    Nothing -> return "leksah-cmd is not on leksah's PATH, so there is nothing for the plugin's hooks to run.\n"
+    Just (exe, script) -> do
+      dir <- leksahPluginInstallDir
+      ex <- doesDirectoryExist dir
+      ours <- doesFileExist (dir </> leksahPluginMarker)
+      if ex && not ours
+        then return $ T.pack dir <> " exists and is not leksah's: not touching it.\n"
+        else do
+          writeLeksahPlugin dir exe script
+          return $ "Installed the leksah plugin in " <> T.pack dir <> ".\n\
+            \Claude Code sessions started from now on — in any terminal — report to \
+            \leksah and have its MCP tools (sessions already running are unchanged).\n\
+            \Turn it off with `/plugin` (leksah@skills-dir), or remove it with \
+            \`leksah-cmd plugin uninstall`.\n"
+
+-- | @leksah-cmd plugin write DIR@: write the plugin to @DIR@ without installing
+-- it — for @claude --plugin-dir DIR@ (one session only), or to look at.
+leksahPluginWrite :: FilePath -> IO Text
+leksahPluginWrite dir = (`catch` \(e :: SomeException) -> return (T.pack (show e) <> "\n")) $
+  leksahHookTools >>= \case
+    Nothing -> return "leksah-cmd is not on leksah's PATH.\n"
+    Just (exe, script) -> do
+      writeLeksahPlugin dir exe script
+      return $ "Wrote the leksah plugin to " <> T.pack dir
+               <> " (use it for one session with: claude --plugin-dir " <> T.pack dir <> ").\n"
+
+-- | @leksah-cmd plugin uninstall@: remove the plugin leksah installed (and
+-- nothing else).
+leksahPluginUninstall :: IO Text
+leksahPluginUninstall = (`catch` \(e :: SomeException) -> return (T.pack (show e) <> "\n")) $ do
+  dir <- leksahPluginInstallDir
+  ours <- doesFileExist (dir </> leksahPluginMarker)
+  if not ours
+    then return "The leksah plugin is not installed.\n"
+    else do
+      removeDirectoryRecursive dir
+      return $ "Removed " <> T.pack dir <> ".  Sessions started from now on no \
+               \longer load it; leksah-launched ones get leksah's hooks again \
+               \from leksah itself.\n"
+
+-- | @leksah-cmd plugin status@.
+leksahPluginStatus :: IO Text
+leksahPluginStatus = do
+  dir <- leksahPluginInstallDir
+  ours <- doesFileExist (dir </> leksahPluginMarker)
+  on <- leksahPluginInstalled
+  return $ case (ours, on) of
+    (False, _)    -> "not installed (leksah-cmd plugin install)\n"
+    (True, True)  -> "installed and enabled: " <> T.pack dir <> "\n"
+    (True, False) -> "installed but turned off (enabledPlugins: leksah@skills-dir = false): "
+                     <> T.pack dir <> "\n"
 
 -- | The @statusLine@ setting for the sessions leksah launches: @leksah-cmd
 -- statusline@, which hands the status-line JSON (context use, cost, rate
