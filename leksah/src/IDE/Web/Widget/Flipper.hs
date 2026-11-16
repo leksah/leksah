@@ -89,6 +89,22 @@ flipperCss = do
     color fgColor
   ".flipper-content button.selected" ?
     background selectionColor
+  -- Opened by clicking the title: drop it down from where the click was
+  -- (the --flip-at-* vars, set by 'flipAtTitleJs' as it opens) rather than
+  -- the middle of the window, so the item you pick next is a short move
+  -- away.  Fixed, so the coordinates are the viewport's.
+  ".flipper.at-title" ? do
+    "position" -: "fixed"
+    "top" -: "var(--flip-at-top, 30px)"
+    "left" -: "var(--flip-at-left, 0px)"
+    "width" -: "auto"
+    "height" -: "auto"
+    "max-width" -: "calc(100vw - var(--flip-at-left, 0px))"
+  ".flipper.at-title .flipper-scroll" ? do
+    "height" -: "auto"
+    "max-height" -: "calc(100vh - var(--flip-at-top, 30px) - 16px)"
+  ".flipper.at-title .flipper-content" ?
+    ("margin" -: "2px 8px 8px 0")
   -- Narrow mode (phones; see "IDE.Web.Layout"): opened by tapping the title,
   -- it fills the main region below the top bar, one full-width row per pane,
   -- tall enough to tap.
@@ -136,6 +152,12 @@ flipperCss = do
 -- sitting on entry 0 instead, for a list whose first entry is the one you
 -- usually want (the active pane's default AI session); stepping from there
 -- walks down as usual.
+--
+-- Two ways to pick, besides clicking: releasing the modifier (@flipdone@),
+-- and @enterE@ (Enter / ⌘Enter), which commits the highlight AS IF CLICKED —
+-- it shows up in the clicked-subset output too, so callers that treat a
+-- click differently (the cross-window flipper moves a clicked tab into its
+-- own window) treat Enter the same way.
 flipperWidget
   :: (MonadWidget t m, Ord k, Show k)
   => Dynamic t [(Text, k)]
@@ -144,6 +166,8 @@ flipperWidget
   -> Dynamic t Bool -- ^ highlighted item is owned by this window (thick border)
   -> Event t ()     -- ^ open highlighting entry 0 (no step); ignored when already up
   -> Event t ()     -- ^ dismiss WITHOUT committing (Escape; the flipper: its window losing focus)
+  -> Event t ()     -- ^ commit the highlight as if it had been clicked (Enter)
+  -> Dynamic t Bool -- ^ drop down from the title ('flipAtTitleJs' placed it) instead of centring
   -> (Dynamic t k -> m ())
   -> m ( Dynamic t Bool                -- ^ overlay visible?
        , Dynamic t (Maybe (Text, k))   -- ^ the item currently highlighted in the flipper
@@ -151,24 +175,27 @@ flipperWidget
        , Event t (Map Text k)          -- ^ committed tab selection
        , Event t (Map Text k) )        -- ^ …the subset made by CLICKING an item
                                        --   (fires alongside the one above)
-flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE label = do
+flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE enterE atTitleD label = do
   let flipdown = () <$ ffilter id  flipStep
       flipup   = () <$ ffilter not flipStep
 
   numberOfTabsD <- holdUniqDyn $ length <$> recentTabs
   visibleD <- holdUniqDyn =<< holdDyn False
    (leftmost [ True <$ flipdown, True <$ flipup, True <$ openAt0
-             , False <$ flipdone, False <$ cancelE ])
+             , False <$ flipdone, False <$ cancelE, False <$ enterE ])
   selectionIndexD <- foldDyn ($) (0::Int) $ leftmost
     [ (\n x -> let n' = max 1 n; x' = succ x in if x' >= n' then 0 else x') <$> tag (current numberOfTabsD) flipdown
     , (\n x -> let n' = max 1 n; x' = pred x in if x' < 0 then n' - 1 else x')  <$> tag (current numberOfTabsD) flipup
     , const 0 <$ flipdone
     , const 0 <$ openAt0
     , const 0 <$ cancelE
+    , const 0 <$ enterE
     ]
   let selectionD = listToMaybe <$> (drop <$> selectionIndexD <*> recentTabs)
   clickE <- fmap (fmap (mconcat . (^.. traverse))) $
-    elDynAttr "div" ((("class" =: "flipper") <>) . bool ("style" =: "display:none") mempty <$> visibleD) $
+    elDynAttr "div" ((\vis atTitle -> ("class" =: ("flipper" <> bool "" " at-title" atTitle))
+                                     <> bool ("style" =: "display:none") mempty vis)
+                       <$> visibleD <*> atTitleD) $
       divClass "flipper-scroll" $
         elDynAttr "div" (("class" =:) . ("flipper-content" <>) . bool "" " self-selected" <$> selfSelD) $
           selectViewListWithKey selectionIndexD (M.fromList . zip [0..] <$> recentTabs) $ \_ x s -> do
@@ -178,8 +205,12 @@ flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE label = do
   -- Only commit a selection when the flipper was actually up (visibleD, set by
   -- flipdown/flipup) — otherwise a lone ⌘ would re-select the most-recent tab,
   -- which now focuses that pane and pops its auto-hide bar open.
+  -- Enter: the highlight, committed as a click would commit it.
+  let enterPickE = uncurry M.singleton <$>
+        fmapMaybe id (tag (current selectionD) (gate (current visibleD) enterE))
+      pickedE = leftmost [clickE, enterPickE]
   return ( visibleD
          , selectionD
          , selectionIndexD
-         , leftmost [ clickE, uncurry M.singleton <$> fmapMaybe id (tag (current selectionD) (gate (current visibleD) flipdone)) ]
-         , clickE )
+         , leftmost [ pickedE, uncurry M.singleton <$> fmapMaybe id (tag (current selectionD) (gate (current visibleD) flipdone)) ]
+         , pickedE )
