@@ -1050,24 +1050,47 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- child shows one window of a session that has others.  Ask tmux
             -- for the focused window's active pane and highlight that (only
             -- the highlight: the keyboard is the focus reconciler's business).
+            --
+            -- The focused leaf as the shared model holds it NOW (not a
+            -- frame-start sample): what a control-channel answer is checked
+            -- against when it lands, and what the focus reconciler's pulse
+            -- arms read (see there).
+            let readFocusedContent = getGlobalApp >>= \case
+                    Nothing  -> pure Nothing
+                    Just app -> do
+                        lws <- (^. leksahWindows) <$> readCell (appUi app)
+                        pure $ do
+                            lw <- M.lookup lwId lws
+                            l  <- lwFocused lw
+                            pc <- M.lookup l (lwPanes lw)
+                            pure (l, pcKind pc)
+            -- The answer is applied only if its leaf is still the focused
+            -- one.  A click on another leaf fires this re-sync in the same
+            -- frame as the model write, sampling the leaf focused BEFORE the
+            -- click; its round trip then landed after the reconcile's and put
+            -- the ring (and 'activePaneRef', so the next click's select-pane
+            -- echo check too) back on the previous pane — every click
+            -- appeared to activate the pane clicked before it.
             (ringPaneE, fireRingPane) <- newTriggerEvent
-            performEvent_ $ ffor ringPaneE $ \p -> do
+            performEvent_ $ ffor ringPaneE $ \(lid, p) -> do
+              cur <- liftIO readFocusedContent
+              when (fmap fst cur == Just lid) $ do
                 liftIO $ writeIORef activePaneRef (Just p)
                 liftJSM applyActive
             ringSettledE <- delay 1.0 pbSync
             performEvent_ $ ffor (attachWithMaybe
                     (\(off, mc) _ -> case mc of
-                        Just (_, PaneTmux w) | not off -> Just w
-                        _                              -> Nothing)
+                        Just (lid, PaneTmux w) | not off -> Just (lid, w)
+                        _                                -> Nothing)
                     ((,) <$> current ringOffD <*> current focusedContentD)
                     (leftmost [ () <$ ffilter not (updated ringOffD), ringSettledE
                               -- (the panes' highlight segments exist only once
                               -- the layout has arrived and they mounted)
-                              , () <$ updated allPanesD ])) $ \w ->
+                              , () <$ updated allPanesD ])) $ \(lid, w) ->
                 liftIO . void . forkIO $ do
                     r <- ccCommand cc ("display-message -p -t " <> unqual w <> " -F '#{pane_id}'")
                     case r of
-                      Right (ln : _) | p <- T.strip ln, not (T.null p) -> fireRingPane p
+                      Right (ln : _) | p <- T.strip ln, not (T.null p) -> fireRingPane (lid, p)
                       _ -> return ()
             (paneResolvedE, firePaneResolved) <- newTriggerEvent
             selectedSettledE <- delay 0 selectedE
@@ -1086,16 +1109,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             -- same frame, and the stale sample made this focus the OLD
             -- leaf, whose async focusin then raced (and sometimes beat)
             -- the flip's write: the flipper landed on the previous pane.
-            let readFocusedContent = getGlobalApp >>= \case
-                    Nothing  -> pure Nothing
-                    Just app -> do
-                        lws <- (^. leksahWindows) <$> readCell (appUi app)
-                        pure $ do
-                            lw <- M.lookup lwId lws
-                            l  <- lwFocused lw
-                            pc <- M.lookup l (lwPanes lw)
-                            pure (l, pcKind pc)
-                reconcileFocusE = leftmost
+            let reconcileFocusE = leftmost
                   [ fmap ((,) False . Just) (fmapMaybe id (updated focusedContentD))
                   , (True, Nothing)  <$ selectedSettledE
                   , (False, Nothing) <$ leftmost [focusReqSettledE, pbSync]
