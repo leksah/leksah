@@ -4,6 +4,7 @@
 module IDE.Web.Widget.Flipper
   ( flipperCss
   , flipperWidget
+  , overlayKeysJs
   ) where
 
 import Control.Lens ((^..))
@@ -13,6 +14,7 @@ import Data.Map (Map)
 import qualified Data.Map as M (singleton, fromList)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
+import qualified Data.Text as T (unlines)
 
 import Clay
        (shadowWithSpread, bsColor, boxShadow, color,
@@ -92,17 +94,19 @@ flipperCss = do
   -- Opened by clicking the title: drop it down from where the click was
   -- (the --flip-at-* vars, set by 'flipAtTitleJs' as it opens) rather than
   -- the middle of the window, so the item you pick next is a short move
-  -- away.  Fixed, so the coordinates are the viewport's.
+  -- away.  Fixed, so the coordinates are the viewport's (written as page-local
+  -- lengths, so they hold at any page zoom).  Never in narrow mode, whose
+  -- full-width list it would undo.
   ".flipper.at-title" ? do
     "position" -: "fixed"
     "top" -: "var(--flip-at-top, 30px)"
     "left" -: "var(--flip-at-left, 0px)"
     "width" -: "auto"
     "height" -: "auto"
-    "max-width" -: "calc(100vw - var(--flip-at-left, 0px))"
+    "max-width" -: "var(--flip-at-maxw, 100%)"
   ".flipper.at-title .flipper-scroll" ? do
     "height" -: "auto"
-    "max-height" -: "calc(100vh - var(--flip-at-top, 30px) - 16px)"
+    "max-height" -: "var(--flip-at-maxh, 80vh)"
   ".flipper.at-title .flipper-content" ?
     ("margin" -: "2px 8px 8px 0")
   -- Narrow mode (phones; see "IDE.Web.Layout"): opened by tapping the title,
@@ -143,6 +147,50 @@ flipperCss = do
     height (px 14)
     verticalAlign middle
     margin (px 0) (px 6) (px 2) (px 0)
+
+-- | Keyboard for an overlay list (the tab flipper, the AI picker), in JS.
+--
+-- It has to be JS and it has to be capture-phase.  These overlays are often
+-- open while a tmux pane has DOM focus, so Enter would otherwise ALSO reach
+-- xterm.js and submit a newline into the shell; and a Haskell handler can't
+-- prevent that, because jsaddle-wkwebview dispatches events asynchronously,
+-- so its @preventDefault@ lands too late.  Capture-phase on the document also
+-- runs it before the keymap's own (bubbling) listener.
+--
+-- @window[armFn](open)@ arms and disarms it (the flag @window[flag]@); it
+-- reports @'up'@ / @'down'@ / @'enter'@ / @'cancel'@ through
+-- @window[reportFn](action)@.  ↑ ↓ Enter Escape, alone or with ONE of ⌘ / ⌃
+-- held (the flipper is driven with ⌘ down — ⌃ when browser-hosted); any
+-- other chord — ⌘⇧Enter, ⌘⌃↓, ⌥… — is someone else's shortcut and passes
+-- through.  With @tabSteps@, Tab / ⇧Tab step too.  Enter and Escape disarm it
+-- at once (the overlay is closing; the Haskell side catches up a round trip
+-- later), and every install starts disarmed, so a rebuilt page never inherits
+-- an armed flag nobody will clear.
+overlayKeysJs :: Text -> Text -> Text -> Bool -> Text
+overlayKeysJs flag armFn reportFn tabSteps = T.unlines
+  [ "window." <> flag <> " = false;"
+  , "window." <> armFn <> " = function(open){ window." <> flag <> " = !!open; };"
+  , "if (!window.__lkKeys_" <> flag <> ") { window.__lkKeys_" <> flag <> " = true;"
+  , "  document.addEventListener('keydown', function(e){"
+  , "    if (!window." <> flag <> " || e.isComposing) return;"
+  , "    var a = null;"
+  , "    if (e.key === 'Tab') {"
+  , "      if (" <> (if tabSteps then "true" else "false")
+      <> " && !e.metaKey && !e.ctrlKey && !e.altKey) a = e.shiftKey ? 'up' : 'down';"
+  , "    } else if (!e.altKey && !e.shiftKey && !(e.metaKey && e.ctrlKey)) {"
+  , "      switch (e.key) {"
+  , "        case 'Enter':     a = 'enter';  break;"
+  , "        case 'Escape':    a = 'cancel'; break;"
+  , "        case 'ArrowDown': a = 'down';   break;"
+  , "        case 'ArrowUp':   a = 'up';     break;"
+  , "      }"
+  , "    }"
+  , "    if (!a) return;"
+  , "    e.preventDefault(); e.stopPropagation();"
+  , "    if (a === 'enter' || a === 'cancel') window." <> flag <> " = false;"
+  , "    if (window." <> reportFn <> ") window." <> reportFn <> "(a);"
+  , "  }, true);"
+  , "}" ]
 
 -- | The flipper overlay, also used for the AI-session picker (hence the
 -- caller-supplied item type, label renderer and @openAt0@ input).

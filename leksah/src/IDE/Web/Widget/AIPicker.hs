@@ -34,6 +34,7 @@ import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AISession (AIChoice(..), AIRow(..))
 import IDE.Web.Theme (dimColor)
 import IDE.Web.Frame (MonadWidget)
+import IDE.Web.Widget.Flipper (overlayKeysJs)
 
 -- The same three status colours every other Claude surface uses (the in-page
 -- traffic light's @statusLightJs@ and the workspace tree's badges) — kept
@@ -133,32 +134,8 @@ aiChoiceLabel choiceD = do
     starFor (AISessionChoice r) | arDefault r = "★"
     starFor _                                 = ""
 
--- | Keyboard handling for the picker, in JS.
---
--- It has to be JS and it has to be capture-phase.  The picker is often opened
--- while a tmux pane has DOM focus, so Enter would otherwise ALSO reach xterm.js
--- and submit a newline into the shell; and a Haskell handler can't prevent that,
--- because jsaddle-wkwebview dispatches events asynchronously, so its
--- @preventDefault@ lands too late.
---
--- Installed once; @window.leksahAIPicker(open)@ arms and disarms it, and it
--- reports the user's intent back through @window.leksahAIPickerKey(action)@.
+-- | Keyboard handling for the picker ('overlayKeysJs': ↑/↓ and Tab/⇧Tab
+-- step, Enter commits, Escape cancels).  @window.leksahAIPicker(open)@ arms
+-- and disarms it; it reports through @window.leksahAIPickerKey(action)@.
 aiPickerKeysJs :: Text
-aiPickerKeysJs = T.unlines
-  [ "window.__lkAiOpen = false;"
-  , "window.leksahAIPicker = function(open){ window.__lkAiOpen = !!open; };"
-  , "document.addEventListener('keydown', function(e){"
-  , "  if (!window.__lkAiOpen) return;"
-  , "  var a = null;"
-  , "  switch (e.key) {"
-  , "    case 'Enter':      a = 'commit'; break;"
-  , "    case 'Escape':     a = 'cancel'; break;"
-  , "    case 'ArrowDown':  a = 'down';   break;"
-  , "    case 'ArrowUp':    a = 'up';     break;"
-  , "    case 'Tab':        a = e.shiftKey ? 'up' : 'down'; break;"
-  , "  }"
-  , "  if (!a) return;"
-  , "  e.preventDefault(); e.stopPropagation();"
-  , "  if (window.leksahAIPickerKey) window.leksahAIPickerKey(a);"
-  , "}, true);"
-  ]
+aiPickerKeysJs = overlayKeysJs "__lkAiOpen" "leksahAIPicker" "leksahAIPickerKey" True

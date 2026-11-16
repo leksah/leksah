@@ -342,7 +342,7 @@ import IDE.Web.ProjectRecents
        (addRecentEntry, emptyProjectRecents, setProjectRecents)
 import IDE.Web.Widget.AddServer (addServerDialog)
 import IDE.Web.Widget.RemoteSettings (remoteSettingsDialog)
-import IDE.Web.Widget.Flipper (flipperCss, flipperWidget)
+import IDE.Web.Widget.Flipper (flipperCss, flipperWidget, overlayKeysJs)
 import IDE.Web.Widget.AIPicker (aiPickerCss, aiChoiceLabel, aiPickerKeysJs)
 import IDE.Web.Widget.Grep (grepCss, grepWidget, runGrep)
 import IDE.Web.Widget.Keymap (keymapWidget)
@@ -3290,6 +3290,68 @@ barFocusJs = T.unlines
   , "})();"
   ]
 
+-- | The tab flipper's extras over 'overlayKeysJs' (installed alongside it,
+-- see 'flipperKeysJs'): a click on the title remembers where it was, for
+-- 'flipAtTitleJs', and arms the flipper's keys AT ONCE — the flipper opens a
+-- Haskell round trip later, and a key pressed in between would otherwise
+-- reach the focused terminal.  If it doesn't open after all, the arming lapses
+-- by itself.  A click on an item disarms them at once, as Enter and Escape do.
+-- Not in narrow mode, where the title tap opens the flipper full-width.
+flipperTitleJs :: Text
+flipperTitleJs = T.unlines
+  [ "(function(){ if (window.__lkFlipTitleHooked) return;"
+  , "  window.__lkFlipTitleHooked = true;"
+  , "  document.addEventListener('mousedown', function(e){"
+  , "    var t = e.target;"
+  , "    if (!t.closest) return;"
+  , "    if (t.closest('.flipper-content button')) {"
+  , "      if (window.leksahFlipperKeys) window.leksahFlipperKeys(false); return; }"
+  , "    if (!t.closest('.toolbar-active-pane')) return;"
+  , "    if (document.documentElement.classList.contains('leksah-narrow')) return;"
+  , "    window.__lkFlipClickX = e.clientX;"
+  , "    if (window.leksahFlipperKeysSoon) window.leksahFlipperKeysSoon();"
+  , "  }, true);"
+  , "})()" ]
+
+-- | The flipper's key handling: 'overlayKeysJs' armed by
+-- @window.leksahFlipperKeys(open)@ (↑/↓ step, Enter picks as a click does,
+-- Escape dismisses — with ⌘ held or not, so a flipper opened with ⌘\` takes
+-- ⌘↓ / ⌘↑ / ⌘Enter), plus @window.leksahFlipperKeysSoon()@: arm now, and
+-- disarm in a second unless the flipper confirms it opened.
+flipperKeysJs :: Text
+flipperKeysJs = T.unlines
+  [ overlayKeysJs "__lkFlipOpen" "leksahFlipperKeys" "leksahFlipperKey" False
+  , "(function(){"
+  , "  var arm = window.leksahFlipperKeys, gen = 0;"
+  , "  window.leksahFlipperKeys = function(open){ gen++; arm(open); };"
+  , "  window.leksahFlipperKeysSoon = function(){"
+  , "    var g = ++gen; arm(true);"
+  , "    setTimeout(function(){ if (g === gen) arm(false); }, 1000);"
+  , "  };"
+  , "})();"
+  , flipperTitleJs ]
+
+-- | Place the title-opened flipper ('.flipper.at-title' in the flipper CSS):
+-- its top just below the title, its left edge a little left of where the
+-- click was, kept on screen with room for the list.  Measured VISUAL, written
+-- LOCAL ('leksahLocal' — see 'zoomJs'), so it lands under the click at any
+-- page zoom.  The click position is used once.
+flipAtTitleJs :: Text
+flipAtTitleJs = T.unlines
+  [ "(function(){"
+  , "  var t = document.querySelector('.toolbar-active-pane');"
+  , "  var r = t ? t.getBoundingClientRect() : {left: 0, bottom: 30};"
+  , "  var x = (window.__lkFlipClickX != null) ? window.__lkFlipClickX : r.left;"
+  , "  window.__lkFlipClickX = null;"
+  , "  var L = window.leksahLocal || function(v){ return v; };"
+  , "  var left = Math.max(0, Math.min(x - 40, window.innerWidth - 420));"
+  , "  var s = document.documentElement.style;"
+  , "  s.setProperty('--flip-at-top', Math.round(L(r.bottom)) + 'px');"
+  , "  s.setProperty('--flip-at-left', Math.round(L(left)) + 'px');"
+  , "  s.setProperty('--flip-at-maxw', Math.round(L(window.innerWidth - left)) + 'px');"
+  , "  s.setProperty('--flip-at-maxh', Math.round(L(window.innerHeight - r.bottom - 16)) + 'px');"
+  , "})()" ]
+
 -- | Defines @window.leksahFlipMirror(owner, labelsJson, index)@ and
 -- @window.leksahFlipMirrorHide(owner)@: a read-only copy of another OS window's
 -- open flipper, so the flipper shows on every window at once.  The active window
@@ -3307,53 +3369,6 @@ barFocusJs = T.unlines
 -- each entry carries its owner window id so we can draw an owner-coloured window
 -- icon, and thicken the border on the window that owns the highlighted item.  The
 -- hue formula matches 'windowHue' so a window's colour is identical everywhere.
--- | Keyboard for the open tab flipper, in JS for the same reasons as
--- 'aiPickerKeysJs' (capture phase, so a focused xterm never also gets the
--- key; and a Haskell handler's preventDefault lands too late).  ↑/↓ move the
--- highlight and Enter picks it — with or without ⌘ held, so a flipper opened
--- with ⌘\` takes ⌘↓ / ⌘↑ / ⌘Enter without letting go; Escape dismisses it.
--- Armed by @window.leksahFlipperKeys(open)@ while the flipper is up, and
--- reports through @window.leksahFlipperKey(action)@.  Capture-phase on the
--- document, so it runs before the keymap's own (bubbling) listener.
-flipperKeysJs :: Text
-flipperKeysJs = T.unlines
-  [ "(function(){ if (window.__lkFlipKeysHooked) return;"
-  , "  window.__lkFlipKeysHooked = true; window.__lkFlipOpen = false;"
-  , "  window.leksahFlipperKeys = function(open){ window.__lkFlipOpen = !!open; };"
-  , "  document.addEventListener('keydown', function(e){"
-  , "    if (!window.__lkFlipOpen || e.altKey) return;"
-  , "    var a = null;"
-  , "    switch (e.key) {"
-  , "      case 'ArrowDown': a = 'down';   break;"
-  , "      case 'ArrowUp':   a = 'up';     break;"
-  , "      case 'Enter':     a = 'enter';  break;"
-  , "      case 'Escape':    a = 'cancel'; break;"
-  , "    }"
-  , "    if (!a) return;"
-  , "    e.preventDefault(); e.stopPropagation();"
-  , "    if (window.leksahFlipperKey) window.leksahFlipperKey(a);"
-  , "  }, true);"
-  -- Where the title was clicked: the flipper it opens drops down from there.
-  , "  document.addEventListener('mousedown', function(e){"
-  , "    if (e.target.closest && e.target.closest('.toolbar-active-pane')) window.__lkFlipClickX = e.clientX;"
-  , "  }, true);"
-  , "})()" ]
-
--- | Place the title-opened flipper ('.flipper.at-title' in the flipper CSS):
--- its top just below the title, its left edge a little left of where the
--- click was — kept on screen with room for the list.
-flipAtTitleJs :: Text
-flipAtTitleJs = T.unlines
-  [ "(function(){"
-  , "  var t = document.querySelector('.toolbar-active-pane');"
-  , "  var r = t ? t.getBoundingClientRect() : {left: 0, bottom: 30};"
-  , "  var x = (window.__lkFlipClickX != null) ? window.__lkFlipClickX : r.left;"
-  , "  var left = Math.max(0, Math.min(x - 40, window.innerWidth - 420));"
-  , "  var s = document.documentElement.style;"
-  , "  s.setProperty('--flip-at-top', Math.round(r.bottom) + 'px');"
-  , "  s.setProperty('--flip-at-left', Math.round(left) + 'px');"
-  , "})()" ]
-
 flipMirrorJs :: Text
 flipMirrorJs = T.unlines
   [ "window.leksahWindowColor = function(id){ return 'hsl(' + ((id*67)%360) + ',85%,55%)'; };"
@@ -6832,7 +6847,7 @@ main showMenubar macTitlebar wid ctx = mdo
           , False <$ ffilter (== "up")   aiKeyE ]
         aiCancelE = gate (current aiPickerVisibleD) (() <$ ffilter (== "cancel") aiKeyE)
         aiDoneE   = gate (current aiPickerVisibleD) $
-            leftmost [ rawFlipDoneE, () <$ ffilter (== "commit") aiKeyE ]
+            leftmost [ rawFlipDoneE, () <$ ffilter (== "enter") aiKeyE ]
     -- Failures worth a word (nothing to resume, the session went away between
     -- opening the picker and committing): a transient toast, on the frame thread.
     (aiStatusE, fireAIStatus) <- newTriggerEvent
@@ -7985,7 +8000,8 @@ main showMenubar macTitlebar wid ctx = mdo
     let titleFlipE = fmapMaybe (^? _ToolbarTitleClick) toolbarE
     -- …dropping down from where the title was clicked ('flipAtTitleJs'),
     -- placed before it shows.
-    performEvent_ $ ffor titleFlipE $ \_ -> liftJSM (void (eval flipAtTitleJs))
+    performEvent_ $ ffor (gate (not <$> current narrowD) titleFlipE) $ \_ ->
+      liftJSM (void (eval flipAtTitleJs))
     -- The open flipper's keys ('flipperKeysJs'): ↑/↓ step, Enter picks as a
     -- click does, Escape dismisses — with or without ⌘ held.
     (flipKeyE, fireFlipKey) <- newTriggerEvent
@@ -7996,10 +8012,14 @@ main showMenubar macTitlebar wid ctx = mdo
                (fun $ \_ _ args -> case args of
                   (v : _) -> valToText v >>= liftIO . fireFlipKey
                   _       -> return ())
-    let flipArrowE = leftmost [ True  <$ ffilter (== ("down" :: Text)) flipKeyE
-                              , False <$ ffilter (== "up") flipKeyE ]
-        flipEnterE = () <$ ffilter (== ("enter" :: Text)) flipKeyE
-        flipEscE   = () <$ ffilter (== ("cancel" :: Text)) flipKeyE
+    -- Only while it IS open: the JS arming runs a round trip behind (and is
+    -- armed early by a title click), so a stray key from either edge must not
+    -- reopen it — an arrow is a step, and a step opens a closed flipper.
+    let openKeyE   = gate (current flipperVisibleD) flipKeyE
+        flipArrowE = leftmost [ True  <$ ffilter (== ("down" :: Text)) openKeyE
+                              , False <$ ffilter (== "up") openKeyE ]
+        flipEnterE = () <$ ffilter (== ("enter" :: Text)) openKeyE
+        flipEscE   = () <$ ffilter (== ("cancel" :: Text)) openKeyE
     -- The tab flipper: always opens already-advanced (⌘` = the previous tab);
     -- in narrow mode the title tap opens it at entry 0 instead.  It is
     -- dismissed without a commit when the window loses or regains focus
@@ -8016,7 +8036,7 @@ main showMenubar macTitlebar wid ctx = mdo
                       -- so a ⌘ release after it finds it closed and commits
                       -- nothing more.  Enter (⌘Enter) is a click.
                       (leftmost [flipBlurE, () <$ flipClickE, flipEscE])
-                      flipEnterE titleOpenD
+                      flipEnterE ((&&) <$> titleOpenD <*> (not <$> narrowD))
                       flipLabel
     -- Arm the keys only while it is up.
     performEvent_ $ ffor (updated flipperVisibleD) $ \vis -> liftJSM . void . eval $
