@@ -358,7 +358,7 @@ import IDE.Web.Widget.Terminal
         cleanupStaleTwinPanes,
         killTmuxPaneId, breakTmuxPaneId, windowIndexOfPane, paneCountOfSession,
         moveTmuxWindow, selectTmuxWindowId, selectTmuxPaneId,
-        panesOfWindow, joinTmuxPane, joinTmuxPaneFull, breakTmuxPaneTo,
+        panesOfWindow, joinTmuxPane, joinTmuxPaneFull, breakTmuxPaneTo, rehomeAgentWindow,
         windowLayoutString, movePaneToPane, selectWindowLayout, swapTmuxPanes,
         createRemoteSession, selectRemoteTmuxWindow, selectRemoteTmuxPane,
         killRemoteTmuxSession, killRemoteTmuxWindow, killRemoteTmuxPane,
@@ -368,7 +368,7 @@ import IDE.Web.Widget.Terminal
         reapControlClients, TmuxWindow(..), TmuxPane(..), isClaudePane)
 import IDE.Web.Widget.Terminals
        (terminalsCss, terminalsWidget, sessionAlert, windowIconSrc,
-        windowTabLabel, paneIconSrc, stripIdxPrefix)
+        windowTabLabel, paneIconSrc, stripIdxPrefix, windowActivePane)
 import IDE.Web.Widget.TerminalCC (terminalCCWidget)
 import IDE.Web.Widget.LwView (sessionlessLwWidget, lwGeom)
 #if defined(ghcjs_HOST_OS)
@@ -6986,7 +6986,21 @@ main showMenubar macTitlebar wid ctx = mdo
                              (find ((== rawTmuxId w) . twId) wins)
                   | l <- treeLeafIds (lwTree lw)
                   , Just pc <- [M.lookup l (lwPanes lw)] ]
+              -- The agent in the window's first pane, when there is one: the
+              -- tab is then labelled by that agent alone, whatever tmux session
+              -- it happens to live in (a pane dragged into Koala's window and
+              -- split out again stays in Koala's session, and "Koala · Wolf"
+              -- named the wrong agent first).
+              agentShown lw tree = case listToMaybe
+                  [ pc | l <- treeLeafIds (lwTree lw)
+                       , Just pc <- [M.lookup l (lwPanes lw)] ] of
+                Just PaneContent { pcKind = PaneTmux w } ->
+                  find ((== rawTmuxId w) . twId)
+                       (maybe [] snd (lwSession lw >>= \s -> M.lookup s tree))
+                    >>= windowActivePane >>= tpAgentName
+                _ -> Nothing
               labelD = (\i names tree -> case M.lookup n (i ^. leksahWindows) of
+                        Just lw | Just a <- agentShown lw tree -> a
                         Just lw -> case lwSession lw of
                           Just s ->
                             -- (a remote session's label — "host · name" —
@@ -9572,7 +9586,9 @@ main showMenubar macTitlebar wid ctx = mdo
                           case mW of
                             Nothing -> endConversion >> activateSrc src
                             Just newW -> do
-                              newWindowWith (Just ds)
+                              -- an agent's pane goes home to its own session
+                              home <- rehomeAgentWindow newW ds
+                              newWindowWith (Just home)
                                 (PaneContent (PaneTmux newW) sfont)
                               endConversion
                   _ -> activateSrc src
@@ -9607,6 +9623,14 @@ main showMenubar macTitlebar wid ctx = mdo
               lws0 <- view leksahWindows <$> readCell (appUi app)
               case (M.lookup slwId lws0, M.lookup slwId lws0 >>= (M.lookup sl . lwPanes)) of
                 (Just slw0, Just pc) -> do
+                  -- A tmux leaf holding an agent goes home to that agent's
+                  -- session as it becomes a tab of its own (the move and
+                  -- the model write under one conversion guard: the moved
+                  -- window is a stray until the new leksah window names it).
+                  beginConversion
+                  msess <- case (pcKind pc, lwSession slw0) of
+                    (PaneTmux w, Just ss) -> Just <$> rehomeAgentWindow w ss
+                    (_, ms)               -> return ms
                   newId <- stateCell (appUi app) $ \i ->
                     let n     = i ^. nextLeksahWin
                         lwi   = lwIdText n
@@ -9616,11 +9640,12 @@ main showMenubar macTitlebar wid ctx = mdo
                     in ( syncLwTabs
                            (i & nextLeksahWin .~ (n + 1)
                               & leksahWindows %~
-                                  (M.insert lwi (singlePaneWindow (lwSession slw0) pc)
+                                  (M.insert lwi (singlePaneWindow msess pc)
                                    . drop'))
                            & webWindows %~ (activateWide0 wid (LeksahWinKey lwi)
                                             . moveTabTo wid (LeksahWinKey lwi))
                        , lwi )
+                  endConversion
                   case pcKind pc of
                     PaneTmux w -> selectTmuxWindowId w
                     _          -> return ()
