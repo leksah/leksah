@@ -91,6 +91,7 @@ import Data.Aeson
         encode)
 import Data.Aeson.Types (Pair, parseMaybe, FromJSON)
 import qualified Data.Aeson.Key as Key (fromText)
+import qualified Data.Aeson.KeyMap as KM (lookup)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (writeFile)
 import Data.Text.Encoding (decodeUtf8With)
@@ -104,6 +105,7 @@ import System.Directory
 import System.FilePath
        ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator, replaceExtension)
+import System.Environment (lookupEnv)
 import System.Info (os)
 import System.IO
        (withFile, IOMode(ReadMode), hIsEOF, hSeek,
@@ -1029,6 +1031,7 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
           home <- getHomeDirectory
           let path   = home </> ".leksah" </> "hooks.json"
               script = home </> ".leksah" </> "worktree-hook.sh"
+          userStatusLine <- claudeUserStatusLine
           -- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
           -- SessionStart keeps an agent's identity across /clear and /branch,
           -- re-briefs it on a resume, registers the worktree it started in,
@@ -1079,9 +1082,37 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
                           -- the activity line.  PreCompact MUST stay async:
                           -- a synchronous PreCompact hook's stdout becomes
                           -- instructions for the compaction summary.
-                          , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ])) ]
+                          , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ]))
+            , "statusLine" .= leksahStatusLine exe userStatusLine ]
           return (" --settings " <> T.pack path)
         _ -> return ""
+
+-- | The @statusLine@ setting for the sessions leksah launches: @leksah-cmd
+-- statusline@, which hands the status-line JSON (context use, cost, rate
+-- limits — "IDE.Web.AgentUsage") to leksah and then runs the user's OWN
+-- status-line command and prints what it prints.  A @--settings@ file
+-- outranks the user's and project's settings, so without that wrapper this
+-- would replace their status line.  Its @padding@ and @refreshInterval@ are
+-- carried over from the user's setting ('claudeUserStatusLine').
+leksahStatusLine :: FilePath -> Maybe Object -> Value
+leksahStatusLine exe mine = object $
+  [ "type"    .= ("command" :: Text)
+  , "command" .= (shq (T.pack exe) <> " statusline") ]
+  <> [ Key.fromText k .= v | Just o <- [mine], k <- ["padding", "refreshInterval"]
+                           , Just v <- [KM.lookup (Key.fromText k) o] ]
+
+-- | The @statusLine@ object in the user's own Claude Code settings
+-- (@~/.claude/settings.json@, or under @$CLAUDE_CONFIG_DIR@), if any.
+claudeUserStatusLine :: IO (Maybe Object)
+claudeUserStatusLine = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  dir <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
+    Just d | not (null d) -> return d
+    _ -> (</> ".claude") <$> getHomeDirectory
+  let f = dir </> "settings.json"
+  ex <- doesFileExist f
+  if not ex then return Nothing else do
+    v <- decodeStrict' <$> BS.readFile f
+    return $ v >>= parseMaybe (withObject "settings" (.: "statusLine"))
 
 -- | Is a @claude@ terminal window currently live for @dir@ — the shared
 -- interactive window (@dir#claude@) or any resumed/ask window (@dir#claude#…@)?

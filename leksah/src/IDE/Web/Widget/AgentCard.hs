@@ -43,6 +43,7 @@ import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Time (TimeZone, getCurrentTimeZone)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 
 import Clay (Css, (?), (-:))
@@ -62,6 +63,8 @@ import Language.Javascript.JSaddle (liftJSM)
 
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentInfo (AgentNode(..))
+import IDE.Web.AgentUsage
+       (SessionUsage(..), usageChip, usageContextPct, usageLevel, usageLines)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.Dom (focusElement)
 import GHCJS.DOM.HTMLInputElement (select)
@@ -97,6 +100,7 @@ agentCard
   :: forall t m . MonadWidget t m
   => CardActions -> Dynamic t Bool -> Bool -> Dynamic t AgentNode -> m ()
 agentCard acts mustD startOpen nD = mdo
+  tz <- liftIO getCurrentTimeZone
   openD <- holdDyn startOpen (not <$> tag (current openD) moreE)
   fullD <- holdUniqDyn ((||) <$> mustD <*> openD)
   renamingD <- holdDyn False (leftmost [True <$ renameE, False <$ doneRenameE])
@@ -120,6 +124,12 @@ agentCard acts mustD startOpen nD = mdo
               elDynAttr "span" (roleAttrs <$> nD) . dynText $ fromMaybe "" . anRole <$> nD
               elDynAttr "span" (stateAttrs <$> nD) . dynText $ stateWord . anState <$> nD
               elDynAttr "span" (ageAttrs <$> nD) . dynText $ anAge <$> nD
+              -- How full its context window is, and what it has cost (from
+              -- its status line); the details are the tooltip.
+              elDynAttr "span" (usageAttrs tz <$> nD) $ do
+                elDynAttr "span" (meterAttrs <$> nD) $
+                  elDynAttr "span" (meterFillAttrs <$> nD) blank
+                dynText $ maybe "" usageChip . anUsage <$> nD
               return r
             -- 2: its title
             elClass "div" "agent-card-line agent-card-title" . dynText $ anTitle <$> nD
@@ -200,6 +210,11 @@ agentCard acts mustD startOpen nD = mdo
         elDynAttr "span" (cwdAttrs <$> nD) . dynText $
           ffor nD $ \n -> maybe "" (\c -> "now in " <> T.pack (baseName c)) (anCwd n)
         elDynAttr "span" (editsAttrs <$> nD) . dynText $ editsText <$> nD
+      -- Its context use, cost and rate limits, in full.
+      tz <- liftIO getCurrentTimeZone
+      dyn_ $ ffor nD $ \n -> forM_ (anUsage n) $ \u ->
+        divClass "agent-card-facts agent-card-usage-facts" $
+          forM_ (usageLines tz (suAt u) u) $ \l -> elClass "span" "agent-card-fact" (text l)
       dyn_ $ ffor nD $ \n ->
         forM_ (anWorktrees n) $ \l -> divClass "agent-card-worktree" (text l)
       dyn_ $ ffor nD $ \n -> forM_ (anDone n) $ \d ->
@@ -301,6 +316,26 @@ editsText n = case anEdits n of
   [] -> ""
   fs -> "edited: " <> T.intercalate ", " (map (T.pack . baseName) (take 3 fs))
      <> (if length fs > 3 then " +" <> T.pack (show (length fs - 3)) else "")
+
+-- | The usage figure on the first line: hidden until its status line has
+-- reported, coloured as its context window fills ('usageLevel').  Reset
+-- times in the tooltip are judged against the report's own time, which a
+-- live session renews after every message.
+usageAttrs :: TimeZone -> AgentNode -> Map Text Text
+usageAttrs tz n = case anUsage n of
+  Just u | not (T.null (usageChip u)) ->
+    "class" =: T.unwords ([ "agent-card-usage" ]
+                          <> [ "agent-card-usage-" <> l | let l = usageLevel u, not (T.null l) ])
+    <> "title" =: T.intercalate "\n" (usageLines tz (suAt u) u)
+  _ -> hidden
+
+meterAttrs, meterFillAttrs :: AgentNode -> Map Text Text
+meterAttrs n = maybe hidden (const ("class" =: "agent-card-meter"))
+                 (anUsage n >>= usageContextPct)
+meterFillAttrs n = case anUsage n >>= usageContextPct of
+  Nothing -> hidden
+  Just p  -> "class" =: "agent-card-meter-fill"
+          <> "style" =: ("width:" <> T.pack (show (max 0 (min 100 p))) <> "%")
 
 moreAttrs :: Bool -> Bool -> Map Text Text
 moreAttrs full must
@@ -457,6 +492,29 @@ agentCardCss = do
     "font-size" -: "11px"
     "color" -: "var(--leksah-dim)"
   ".agent-card .agent-card-title" ? ("color" -: "var(--leksah-fg)")
+  -- The usage figure sits at the right of the first line: a small context
+  -- meter and "43% · $1.20", dim until the context window is nearly full.
+  ".agent-card .agent-card-usage" ? do
+    "margin-left" -: "auto"
+    "flex" -: "0 0 auto"
+    "font-size" -: "11px"
+    "color" -: "var(--leksah-dim)"
+    "font-variant-numeric" -: "tabular-nums"
+  ".agent-card .agent-card-usage-high" ? ("color" -: "#db6d28")
+  ".agent-card .agent-card-usage-full" ? ("color" -: "#f85149")
+  ".agent-card .agent-card-meter" ? do
+    "display" -: "inline-block"
+    "width" -: "22px"
+    "height" -: "4px"
+    "margin-right" -: "4px"
+    "border-radius" -: "2px"
+    "background" -: "var(--leksah-surface-alt)"
+    "overflow" -: "hidden"
+    "vertical-align" -: "middle"
+  ".agent-card .agent-card-meter-fill" ? do
+    "display" -: "block"
+    "height" -: "100%"
+    "background" -: "currentColor"
   ".agent-card .agent-card-activity" ? ("color" -: "var(--leksah-dim)")
   ".agent-card .agent-card-activity.agent-card-now" ? do
     "font-family" -: "'SF Mono', Menlo, monospace"

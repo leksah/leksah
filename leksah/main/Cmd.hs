@@ -23,8 +23,8 @@
 -- against the shell that ran @leksah-cmd@, not against leksah's own directory.)
 module Main (main) where
 
-import Control.Concurrent (threadDelay)
-import Control.Exception (IOException, SomeException, catch, try)
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, threadDelay)
+import Control.Exception (IOException, SomeException, catch, finally, try)
 import Control.Monad (unless, when, void)
 
 import Data.Aeson
@@ -39,7 +39,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL8 (putStrLn)
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.Char (isSpace, isDigit, toLower)
 import Data.List (isPrefixOf, isInfixOf, dropWhileEnd, sortBy, stripPrefix)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -51,15 +51,18 @@ import System.Directory
        (getCurrentDirectory, getHomeDirectory, doesFileExist,
         createDirectoryIfMissing, getPermissions, setPermissions,
         setOwnerExecutable)
-import System.Environment (getArgs, getExecutablePath, lookupEnv)
+import System.Environment (getArgs, getEnvironment, getExecutablePath, lookupEnv)
 import System.Exit (exitFailure)
-import System.FilePath ((</>), takeDirectory)
+import System.FilePath ((</>), takeDirectory, takeFileName)
 import System.IO
-       (hPutStrLn, stderr, stdout, hFlush, hSetBuffering,
+       (hClose, hPutStrLn, stderr, stdout, hFlush, hSetBuffering,
         BufferMode(LineBuffering), isEOF)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
-import System.Process (readProcess)
+import System.Process
+       (CreateProcess(std_in, std_out, std_err, env), StdStream(..),
+        createProcess, proc, readProcess,
+        terminateProcess, waitForProcess)
 import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
@@ -162,6 +165,13 @@ usage = T.unlines
   , "                                     ~/.claude/settings.json (or DIR/.claude/) so"
   , "                                     sessions NOT launched from leksah register too"
   , "  leksah-cmd hooks write-script      (re)write ~/.leksah/worktree-hook.sh"
+  , "  leksah-cmd statusline              a Claude Code statusLine command (leksah sets it"
+  , "                                     for the sessions it launches): passes the JSON on"
+  , "                                     stdin to leksah (context use, cost, rate limits"
+  , "                                     for the Agents pane), then runs YOUR statusLine"
+  , "                                     command (.claude/settings.local.json,"
+  , "                                     .claude/settings.json, ~/.claude/settings.json)"
+  , "                                     and prints its output (else a short default)"
   , "  leksah-cmd help                    show this help"
   ]
 
@@ -190,6 +200,11 @@ main = getArgs >>= \case
     case r of
       Just (Just t) | not (T.null (T.strip t)) -> T.putStr t
       _                                        -> return ()
+
+  -- statusline: Claude Code's statusLine command for the sessions leksah
+  -- launches (see claudeHooksFlag).  Never fails, never prints an error into
+  -- the status line: see 'statusLine'.
+  ("statusline":_) -> statusLine
 
   -- ping: exit 0 if the UI answered, 1 otherwise (for scripting).
   ("ping":_) -> pingOnce >>= \ok ->
@@ -266,6 +281,114 @@ main = getArgs >>= \case
   ("mcp":_) -> mcpServe
 
   args          -> send args
+
+-- | @leksah-cmd statusline@.  Claude Code runs it with the session's
+-- status-line JSON on stdin (at start, after every assistant message, after
+-- /compact …) and shows what it prints.  Two jobs, at once:
+--
+--   * hand the JSON to leksah — context use, cost and rate limits for the
+--     Agents pane ("IDE.Web.AgentUsage").  Fire-and-forget with a short
+--     timeout; when leksah is not running (or is too old to know the verb)
+--     nothing happens;
+--   * print the USER's status line.  Leksah's @--settings@ file outranks
+--     theirs, so this runs the @statusLine@ command they configured — from
+--     the first of the project's @.claude/settings.local.json@,
+--     @.claude/settings.json@ and their own @~/.claude/settings.json@ that
+--     has one — with the same stdin, and prints its stdout.  With none, a
+--     short default line.
+--
+-- It exits 0 whatever happens, and nothing it does goes to stderr.
+statusLine :: IO ()
+statusLine = (`catch` \(_ :: SomeException) -> return ()) $ do
+  input <- BS.getContents
+  sent <- newEmptyMVar
+  _ <- forkIO $ (`finally` putMVar sent ()) $ void . try' . timeout 1500000 $
+         tryReply ["statusline", T.unpack (decodeUtf8With lenientDecode input)]
+  let v = either (const Nothing) Just (eitherDecodeStrict input) :: Maybe Value
+  nested <- lookupEnv "LEKSAH_STATUSLINE"
+  mcmd <- if isJust nested then return Nothing else userStatusLineCommand v
+  out <- case mcmd of
+    Just cmd -> runStatusLineCommand cmd input
+    Nothing  -> return (encodeUtf8 (defaultStatusLine v) <> "\n")
+  BS.hPut stdout out
+  hFlush stdout
+  void $ timeout 1500000 (takeMVar sent)
+  where
+    try' :: IO a -> IO (Either SomeException a)
+    try' = try
+
+-- | The user's own statusLine command, by Claude Code's settings precedence
+-- (local project, shared project, user).  Leksah's own command is skipped
+-- wherever it turns up, so it can never end up running itself.
+userStatusLineCommand :: Maybe Value -> IO (Maybe String)
+userStatusLineCommand v = do
+  here <- getCurrentDirectory
+  configDir <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
+    Just d | not (null d) -> return d
+    _ -> (</> ".claude") <$> getHomeDirectory
+  let project = fromMaybe here $
+        (T.unpack <$> (jsonText ["workspace", "project_dir"] =<< v))
+        `orElse` (T.unpack <$> (jsonText ["cwd"] =<< v))
+      files = [ project </> ".claude" </> "settings.local.json"
+              , project </> ".claude" </> "settings.json"
+              , configDir </> "settings.json" ]
+  firstJustM fromFile files
+  where
+    orElse (Just a) _ = Just a
+    orElse Nothing b  = b
+    firstJustM _ [] = return Nothing
+    firstJustM f (x:xs) = f x >>= maybe (firstJustM f xs) (return . Just)
+    fromFile f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+      ex <- doesFileExist f
+      if not ex then return Nothing else do
+        sv <- either (const Nothing) Just . eitherDecodeStrict <$> BS.readFile f
+        return $ case (jsonText ["statusLine", "command"] =<< sv) of
+          Just c | not (T.null (T.strip c))
+                 , (jsonText ["statusLine", "type"] =<< sv) `elem` [Nothing, Just "command"]
+                 , not ("leksah-cmd" `T.isInfixOf` c && "statusline" `T.isInfixOf` c)
+                 -> Just (T.unpack c)
+          _ -> Nothing
+
+-- | Run a statusLine command as Claude Code does (@sh -c@), the JSON on its
+-- stdin; its stdout, or nothing if it fails or takes over 10s.  Its stderr
+-- is dropped: an error must never show up as the status line.
+runStatusLineCommand :: String -> BS.ByteString -> IO BS.ByteString
+runStatusLineCommand cmd input = (`catch` \(_ :: SomeException) -> return "") $ do
+  env0 <- getEnvironment
+  (Just hin, Just hout, _, ph) <- createProcess (proc "/bin/sh" ["-c", cmd])
+    { std_in = CreatePipe, std_out = CreatePipe, std_err = NoStream
+    , env = Just (("LEKSAH_STATUSLINE", "1") : filter ((/= "LEKSAH_STATUSLINE") . fst) env0) }
+  _ <- forkIO $ (BS.hPut hin input `catch` \(_ :: IOException) -> return ())
+                  `finally` (hClose hin `catch` \(_ :: IOException) -> return ())
+  r <- timeout 10000000 $ do
+    out <- BS.hGetContents hout
+    _ <- waitForProcess ph
+    return out
+  case r of
+    Just out -> return out
+    Nothing  -> terminateProcess ph >> return ""
+
+-- | The line shown when the user has no status line of their own:
+-- @[Opus] leksah · ctx 43%@.
+defaultStatusLine :: Maybe Value -> Text
+defaultStatusLine v = T.intercalate " · " $ filter (not . T.null)
+  [ T.unwords $ filter (not . T.null)
+      [ maybe "" (\m -> "[" <> m <> "]") (jsonText ["model", "display_name"] =<< v)
+      , maybe "" (T.pack . takeFileName . T.unpack)
+          (jsonText ["workspace", "current_dir"] =<< v) ]
+  , case jsonAt ["context_window", "used_percentage"] =<< v of
+      Just (Number n) -> "ctx " <> T.pack (show (round n :: Int)) <> "%"
+      _               -> "" ]
+
+jsonAt :: [Text] -> Value -> Maybe Value
+jsonAt [] x = Just x
+jsonAt (k:ks) (Object o) = KM.lookup (Key.fromText k) o >>= jsonAt ks
+jsonAt _ _ = Nothing
+
+jsonText :: [Text] -> Value -> Maybe Text
+jsonText p x = case jsonAt p x of
+  Just (String t) -> Just t
+  _               -> Nothing
 
 -- | The first element of a list, if any (as a String), for optional args.
 listToMaybeStr :: [String] -> Maybe String
