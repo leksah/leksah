@@ -87,7 +87,8 @@ import IDE.Web.AgentHost (Host(..), RanOn(..), currentHost, diedWithHost, ranOnF
 import IDE.Web.AgentNames
        (agentContinuations, agentLastSeen, agentNames, holdAgentNames)
 import IDE.Web.Claude
-       (ClaudeLive(..), claudeFindTranscript, claudeLatestActivity,
+       (ClaudeLive(..), ClaudeBackground(..), claudeBackgroundSessions,
+        claudeFindTranscript, claudeLatestActivity,
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
@@ -443,6 +444,11 @@ blank sid dir = AgentInfo
 --------------------------------------------------------------------------------
 -- liveness: which agents were running, and which of them were interrupted
 
+-- | How long a blocked background session counts as "needs you" (see
+-- 'agentForest'): a day.
+backgroundStaleAge :: Double
+backgroundStaleAge = 24 * 3600
+
 -- | How long an interrupted agent is offered back (by its card, and by "Resume
 -- all") before it becomes an ordinary exited one — the same week its name is
 -- reserved for ("IDE.Web.AgentNames").
@@ -760,6 +766,22 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       liveRows = M.fromList [ (csrSession r, r) | r <- csRows st ]
   lastSeen <- agentLastSeen
   exited <- exitedNodes now infos liveRows lastSeen
+  -- Background sessions with no process (blocked on a question, finished,
+  -- failed, stopped): no session file, so they are not in 'liveRows', but
+  -- `claude agents` still lists them — one blocked is waiting for YOU.  Each
+  -- replaces the exited row leksah would otherwise show for the same session.
+  bgs <- claudeBackgroundSessions
+  bgNodes <- forM [ b | b <- bgs, not (cbSession b `M.member` liveRows) ] $ \b -> do
+    (br, pr) <- agentGit posix (cbDir b)
+    -- When it last did anything: its transcript's mtime (the CLI's list only
+    -- says when it STARTED).
+    lastActive <- (`catch` \(_ :: SomeException) -> return Nothing) $ do
+      p <- claudeTranscriptPath (cbDir b) (cbSession b)
+      ex <- doesFileExist p
+      if ex then Just <$> getModificationTime p else return Nothing
+    return (cbSession b, (backgroundNode now lastActive b (M.lookup (cbSession b) infos))
+                           { anBranch = br, anPr = pr })
+  let bgIds = map fst bgNodes
   liveNodes <- forM (csRows st) $ \r -> do
     (br, pr) <- agentGit posix (T.unpack (csrDir r))
     act <- agentActivity r
@@ -786,7 +808,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   -- and the files it edited and where its shell went.
   names  <- agentNames
   events <- sessionEvents
-  decorated <- forM (liveNodes <> exited) $ \(s, n) -> do
+  decorated <- forM (liveNodes <> filter ((`notElem` bgIds) . fst) exited <> bgNodes)
+                 $ \(s, n) -> do
     wls <- worktreeClaimLines now s
     let i = M.lookup s infos
         e = M.lookup s events
@@ -861,6 +884,50 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anParentName = Nothing, anChildNames = []
       , anEdits = [], anError = Nothing, anCwd = Nothing
       , anChildren = [] }
+
+    -- A background session with no process, as a row: not live (a click
+    -- resumes it — `claude --resume` on a background session takes it up in
+    -- the pane), its state the CLI's, mapped onto the pane's states.
+    -- A blocked one is "needs you" only while recent: one left blocked for
+    -- longer than 'backgroundStaleAge' was most likely abandoned, so it sorts
+    -- with the exited rows (still clickable) instead of heading the pane.
+    backgroundNode now lastActive b i =
+      let idleFor = maybe 0 (\t -> realToFrac (diffUTCTime now t)) lastActive :: Double
+          (state, what) = case cbState b of
+            "blocked" | idleFor > backgroundStaleAge -> ("gone", "blocked (left waiting)")
+                      | otherwise -> ("waiting",   "blocked — it is waiting for you")
+            "done"    -> ("done",      "finished")
+            "stopped" -> ("suspended", "stopped")
+            "failed"  -> ("gone",      "failed")
+            "working" -> ("busy",      "working")
+            other     -> ("gone",      other)
+      in AgentNode
+        { anSession = cbSession b
+        , anName    = ""
+        , anTitle   = firstNonEmpty [ maybe "" T.strip (i >>= aiTitle)
+                                    , fromMaybe "" (cbName b)
+                                    , T.take 8 (cbSession b) ]
+        , anState   = state
+        , anDetail  = "Background session " <> cbId b <> ", " <> what
+                      <> " — click to open it here"
+        , anActivity = Just ("background session: " <> what)
+        , anDone    = i >>= aiDone
+        , anRole    = i >>= aiRole
+        , anDir     = cbDir b
+        , anDesc    = i >>= aiDesc
+        , anAge     = case lastActive of
+            Just t  -> humanAge now t
+            Nothing -> maybe "" (\t -> "started " <> humanAge now
+                                        (posixSecondsToUTCTime (realToFrac t)))
+                             (cbStarted b)
+        , anLive    = False
+        , anBranch  = Nothing
+        , anPr      = Nothing
+        , anWorktrees = []
+        , anBio = Nothing, anManager = False, anBorn = Nothing
+        , anParentName = Nothing, anChildNames = []
+        , anEdits = [], anError = Nothing, anCwd = Nothing
+        , anChildren = [] }
 
     -- Stored agents that are NOT running: either exited (their transcript's mtime
     -- is when they last did anything) or not yet registered — a pane leksah just

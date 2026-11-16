@@ -24,6 +24,8 @@ module IDE.Web.Claude
   , ClaudeLive(..)
   , claudeLiveSessions
   , claudeLiveBySession
+  , ClaudeBackground(..)
+  , claudeBackgroundSessions
   , claudeLiveOwners
   , ClaudeCmd(..)
   , AgentSpec(..)
@@ -79,6 +81,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
        (UTCTime, NominalDiffTime, getCurrentTime, diffUTCTime)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 
 import Data.Aeson
        (Object, Value(..), decodeStrict', withObject, (.:), (.:?), object, (.=),
@@ -270,6 +273,71 @@ claudeSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
                 , clJob        = mfilter (not . T.null) (v >>= objField "jobId")
                 , clKind       = mfilter (not . T.null) (v >>= objField "kind") } ]
           _ -> []
+
+-- | One background session (@claude --bg@, or one dispatched from @claude
+-- agents@), as the CLI's own @claude agents --json@ reports it — the one
+-- documented, machine-readable list of them.  A background session that is
+-- running has a session file like any other and shows up in
+-- 'claudeLiveBySession'; one that has stopped (blocked on a question,
+-- finished, failed, stopped) has no process and no session file, so this is
+-- the only way leksah sees it at all.
+data ClaudeBackground = ClaudeBackground
+  { cbId      :: Text            -- ^ the short id @claude attach@ takes
+  , cbSession :: Text            -- ^ the session id (@claude --resume@ takes it)
+  , cbName    :: Maybe Text
+  , cbState   :: Text            -- ^ working | blocked | done | failed | stopped
+  , cbDir     :: FilePath
+  , cbStarted :: Maybe Double    -- ^ POSIX seconds
+  , cbPid     :: Maybe Int       -- ^ while its process is alive
+  } deriving (Eq, Show)
+
+-- | The background sessions, from @claude agents --json@ — CACHED: the CLI
+-- takes a few hundred ms, and the Agents pane polls every 2s.  Returns what
+-- the last run found at once, and starts a fresh run in the background when
+-- that is older than 'backgroundTtl' (one at a time); so the first call after
+-- start-up returns @[]@ and the list fills in on the next poll.  Never throws:
+-- no @claude@, a failed run or unparsable output keep the previous list.
+claudeBackgroundSessions :: IO [ClaudeBackground]
+claudeBackgroundSessions = do
+  now <- realToFrac <$> getPOSIXTime
+  start <- atomicModifyIORef' backgroundRef $ \(at, running, xs) ->
+    if not running && now - at > backgroundTtl
+      then ((at, True, xs), True) else ((at, running, xs), False)
+  when start . void . forkIO $ do
+    fresh <- (Just <$> runAgentsJson) `catch` \(_ :: SomeException) -> return Nothing
+    done <- realToFrac <$> getPOSIXTime
+    atomicModifyIORef' backgroundRef $ \(_, _, xs) ->
+      ((done, False, fromMaybe xs fresh), ())
+  (\(_, _, xs) -> xs) <$> readIORef backgroundRef
+ where
+  runAgentsJson = findExecutable "claude" >>= \case
+    Nothing  -> return []
+    Just exe -> do
+      (ec, out, _) <- readProcessWithExitCode exe ["agents", "--json"] ""
+      case ec of
+        ExitSuccess | Just vs <- decodeStrict' (BS.pack out) -> return (mapMaybe one vs)
+        _ -> ioError (userError "claude agents --json failed")
+  one v = do
+    k <- objField "kind" v
+    if (k :: Text) /= "background" then Nothing else do
+      sid <- objField "sessionId" v
+      Just ClaudeBackground
+        { cbId      = fromMaybe (T.take 8 sid) (objField "id" v)
+        , cbSession = sid
+        , cbName    = mfilter (not . T.null) (objField "name" v)
+        , cbState   = fromMaybe "working" (objField "state" v)
+        , cbDir     = maybe "" (dropTrailingPathSeparator . T.unpack) (objField "cwd" v)
+        , cbStarted = (/ 1000) . fromInteger <$> objField "startedAt" v
+        , cbPid     = objField "pid" v }
+
+-- | (when the last run finished, whether one is running now, what it found)
+{-# NOINLINE backgroundRef #-}
+backgroundRef :: IORef (Double, Bool, [ClaudeBackground])
+backgroundRef = unsafePerformIO (newIORef (0, False, []))
+
+-- | How old the cached @claude agents --json@ may get before a poll refreshes it.
+backgroundTtl :: Double
+backgroundTtl = 10
 
 -- | Live sessions keyed by session id, with dead leftovers dropped: a session
 -- file can outlive its process (@kill -9@, a crash), so the pids are checked
