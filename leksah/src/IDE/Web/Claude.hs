@@ -1030,10 +1030,11 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
           let path   = home </> ".leksah" </> "hooks.json"
               script = home </> ".leksah" </> "worktree-hook.sh"
           -- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
-          -- SessionStart keeps an agent's identity across /clear and /branch
-          -- and re-briefs it on a resume; Stop, Notification and SessionEnd
-          -- make the status surfaces update at once rather than at the
-          -- next poll.  Each is `leksah-cmd agent hook EVENT`, which always
+          -- SessionStart keeps an agent's identity across /clear and /branch,
+          -- re-briefs it on a resume, registers the worktree it started in,
+          -- and (with UserPromptSubmit) gives it the title it gave itself;
+          -- UserPromptSubmit, Stop, Notification and SessionEnd make the
+          -- status surfaces update at once rather than at the next poll.  Each is `leksah-cmd agent hook EVENT`, which always
           -- exits 0 quickly, so a hook can never hold up or fail a session.
           --
           -- The rest only REPORT, so they run async — they never hold a
@@ -1065,12 +1066,20 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
                                      , "command" .= script
                                      , "timeout" .= (10 :: Int) ] ] ]
                     , reporter "PostToolUse" ] ]
-                 <> map lifecycle ["SessionStart", "Stop", "Notification", "SessionEnd"]
+                 -- (UserPromptSubmit is synchronous because its answer can
+                 -- carry the session's title.)
+                 <> map lifecycle [ "SessionStart", "UserPromptSubmit", "Stop"
+                                  , "Notification", "SessionEnd" ]
                  <> map (hookOn True)
                       -- (PostToolUse is registered above, with the
                       -- worktree hook.)
                       (filter (/= "PostToolUse") perToolHookEvents
-                       <> [ "PermissionRequest", "StopFailure", "CwdChanged" ])) ]
+                       <> [ "PermissionRequest", "StopFailure", "CwdChanged"
+                          -- Its subagents, and a compaction in progress, for
+                          -- the activity line.  PreCompact MUST stay async:
+                          -- a synchronous PreCompact hook's stdout becomes
+                          -- instructions for the compaction summary.
+                          , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ])) ]
           return (" --settings " <> T.pack path)
         _ -> return ""
 
