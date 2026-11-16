@@ -270,7 +270,7 @@ import IDE.Web.AISession
 #if !defined(ghcjs_HOST_OS)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
-        claudeStatusTooltip, registerClaudeStatusPush, startClaudeStatusPoll)
+        claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitles, agentsHeld, syncAgentLiveness)
 #endif
 import IDE.Web.NewLwRequest
@@ -2021,10 +2021,23 @@ jsMain showMenubar macTitlebar mbWid app = do
           ffor (leftmost [() <$ pb, () <$ claudeStatusTick]) $ \_ ->
               liftIO claudeStatusNow
       claudeStatusD <- holdUniqDyn =<< holdDyn emptyClaudeStatus claudeStatusE
+      -- The summary line and the rows (face, state, label, directory) for the
+      -- dot's hover list; only a real change gets here (holdUniqDyn), so the
+      -- faces' data URIs aren't re-sent every tick.
       performEvent_ $ ffor (updated claudeStatusD) $ \st ->
           liftJSM . void $ jsg ("window" :: Text)
-            ^. js3 ("leksahClaudeStatus" :: Text) (csState st) (claudeStatusTooltip st)
-                  (csCount st)
+            ^. js4 ("leksahClaudeStatus" :: Text) (csState st) (csSummary st)
+                  (csCount st) (claudeStatusRowsJson st)
+      -- A row of that list clicked: show the session, exactly as choosing it
+      -- from the menu-bar item's menu does (MacMenu's cbClaudeActivate).  Off
+      -- the frame thread — it runs tmux and ps.
+      performEvent_ $ ffor pb $ \_ -> liftJSM $ do
+          w <- jsg ("window" :: Text)
+          void $ w ^. jss ("leksahShowSession" :: Text) (fun $ \_ _ args -> case args of
+              (sidV:_) -> do
+                  sid <- valToText sidV
+                  unless (T.null sid) . liftIO . void . forkIO . void $ showLiveSession sid
+              _ -> return ())
 #endif
       return ()
   liftIO $ threadDelay 1000000000
@@ -5665,8 +5678,11 @@ activeEditorSelectionJs = mconcat
 -- nothing is running.  Same pairing on the menu-bar item.
 --
 -- Each window's reflex network pushes its own updates through
--- @leksahClaudeStatus(state, tooltip, count)@ from the shared poll — never a
--- cross-window JS broadcast.  Hovering lists the sessions.
+-- @leksahClaudeStatus(state, summary, count, rowsJson)@ from the shared poll —
+-- never a cross-window JS broadcast.  Hovering opens a list of the sessions
+-- (face, state shape, label, directory — the menu-bar item's menu, in the
+-- page); clicking one shows it (@leksahShowSession@, the same
+-- 'showLiveSession' the menu-bar item calls).
 --
 -- The AGENT-COORDINATION state (is it safe to touch leksah while an agent drives
 -- it) is set from the shell — @leksah-cmd js eval 'leksahTestStart()'@ (beep,
@@ -5677,7 +5693,7 @@ activeEditorSelectionJs = mconcat
 -- means \"hands off\").  Two independent signals, two independent parts of one
 -- indicator: the shape says what the sessions are doing, the ring says whether
 -- the UI is yours.  Same ring on the menu-bar item (leksah-mac-menu.m), and the
--- state is spelled out in the last line of the hover text either way.
+-- state is spelled out in the last line of the hover list either way.
 --
 -- The ring is why the dot is a WRAPPER with an inner @.shape@ child: a CSS
 -- @clip-path@ clips everything its element paints, pseudo-elements and outline
@@ -5689,9 +5705,13 @@ statusLightJs = T.unlines
   -- .shape child (carries the live-session shape); state = the coordination
   -- state.
   , "  var el = null, shapeEl = null, countEl = null, state = 'green', timer = null;"
-  -- The live-session state (what the dot draws) and its hover text, pushed by
-  -- the reflex network; 'none' until the first push, a tick after boot.
-  , "  var claude = 'none', claudeTip = 'No agents running', claudeCount = 0;"
+  -- The live-session state (what the dot draws), its summary line and rows,
+  -- pushed by the reflex network; 'none' until the first push, a tick after
+  -- boot.
+  , "  var claude = 'none', claudeTip = 'No agents running', claudeCount = 0, rows = [];"
+  -- The hover list (popEl, a child of the dot so moving into it keeps the dot
+  -- hovered) and its pending close.
+  , "  var popEl = null, popOpen = false, popTimer = null;"
   -- Runs BEFORE mainWidgetWithCss rebuilds <body>, which detaches anything we
   -- append now — so (re)create the dot on demand and keep it in whatever <body>
   -- is current, preserving the colour across a rebuild.
@@ -5705,9 +5725,10 @@ statusLightJs = T.unlines
   -- session shape.  Sized so the shape sits exactly where the bare dot used to
   -- (18px box at top:3/right:8 = the old 14px box at top:5/right:10), with 2px
   -- of clearance for the ring.
-  -- pointer-events:auto ONLY so the hover text appears (the dot has no click
-  -- action).  It does not steal the title-bar drag: the native drag watches
-  -- NSEvents, not DOM hit-testing (see leksah_configure_titlebar).
+  -- pointer-events:auto ONLY so hovering opens the session list (the dot has
+  -- no click action of its own).  It does not steal the title-bar drag: the
+  -- native drag watches NSEvents, not DOM hit-testing (see
+  -- leksah_configure_titlebar).
   -- NO transition on the ring: WebKit freezes transitions while the window is
   -- occluded, so a fading-in ring would still be invisible when you looked at a
   -- background window — measured (the computed box-shadow sat at the
@@ -5756,7 +5777,42 @@ statusLightJs = T.unlines
   , "        'font-variant-numeric:tabular-nums;pointer-events:none;'+"
   , "        'white-space:nowrap;text-shadow:0 0 2px rgba(0,0,0,.55)}'+"
   , "        '#leksah-status-light .count.c-waiting{color:#f85149}'+"
-  , "        '#leksah-status-light .count.c-busy{color:#d29922}';"
+  , "        '#leksah-status-light .count.c-busy{color:#d29922}'+"
+  -- The hover list: what the menu-bar item's menu lists, in the page — each
+  -- session's face, its state shape (the same three shapes and colours as the
+  -- dot), its label and directory.  Opens BELOW the 28px title bar
+  -- (kLeksahTitlebarHeight): a mouse-down inside that strip is the native
+  -- window drag's, so a row there could never be clicked.  Themed from the
+  -- palette variables, and bounded by the viewport so it never leaves the
+  -- window.
+  , "        '#leksah-status-pop{position:fixed;top:30px;right:6px;display:none;'+"
+  , "        'min-width:min(220px,calc(100vw - 12px));max-width:min(460px,calc(100vw - 12px));'+"
+  , "        'max-height:calc(100vh - 38px);overflow-y:auto;overflow-x:hidden;'+"
+  , "        'box-sizing:border-box;padding:4px 0;border-radius:8px;'+"
+  , "        'background:var(--leksah-surface);color:var(--leksah-fg);'+"
+  , "        'border:1px solid var(--leksah-border-control);'+"
+  , "        'box-shadow:0 6px 20px var(--leksah-shadow-drop);'+"
+  , "        'font:12px/1.35 -apple-system,system-ui,sans-serif;text-align:left;cursor:default}'+"
+  , "        '#leksah-status-pop.open{display:block}'+"
+  , "        '#leksah-status-pop .hd{padding:3px 10px 5px;margin-bottom:3px;font-weight:600;'+"
+  , "        'color:var(--leksah-fg-dim);border-bottom:1px solid var(--leksah-border-faint);white-space:nowrap}'+"
+  , "        '#leksah-status-pop .row{display:flex;align-items:center;gap:7px;'+"
+  , "        'padding:3px 10px;white-space:nowrap;cursor:pointer}'+"
+  , "        '#leksah-status-pop .row:hover{background:var(--leksah-hover)}'+"
+  , "        '#leksah-status-pop .g{flex:none;width:10px;height:10px;box-sizing:border-box}'+"
+  , "        '#leksah-status-pop .g.c-waiting{background:#f85149;clip-path:polygon(50% 2%,98% 96%,2% 96%)}'+"
+  , "        '#leksah-status-pop .g.c-busy{background:#d29922;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}'+"
+  , "        '#leksah-status-pop .g.c-idle{background:#3fb950;border-radius:50%}'+"
+  , "        '#leksah-status-pop .face{flex:none;width:18px;height:18px;display:block}'+"
+  , "        '#leksah-status-pop .lbl{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}'+"
+  , "        '#leksah-status-pop .lbl b{font-weight:600}'+"
+  , "        '#leksah-status-pop .dir{flex:0 1 auto;max-width:40%;overflow:hidden;'+"
+  , "        'text-overflow:ellipsis;color:var(--leksah-fg-dim)}'+"
+  , "        '#leksah-status-pop .coord{padding:5px 10px 3px;margin-top:3px;font-weight:600;'+"
+  , "        'border-top:1px solid var(--leksah-border-faint);white-space:nowrap}'+"
+  , "        '#leksah-status-pop .coord.coord-orange{color:#ff9500}'+"
+  , "        '#leksah-status-pop .coord.coord-red{color:#ff3b30}'+"
+  , "        '#leksah-status-pop .coord.coord-blue{color:#0a84ff}';"
   , "      (document.head || document.documentElement).appendChild(css);"
   , "    }"
   , "    el = document.createElement('div');"
@@ -5765,6 +5821,22 @@ statusLightJs = T.unlines
   , "    el.appendChild(shapeEl);"
   , "    countEl = document.createElement('div');"
   , "    el.appendChild(countEl);"
+  , "    popEl = document.createElement('div');"
+  , "    popEl.id = 'leksah-status-pop';"
+  , "    el.appendChild(popEl);"
+  -- Hover opens the list; leaving the dot AND the list closes it after a
+  -- beat, long enough to cross the gap below the title bar.  The list is
+  -- the dot's child, so moving into it is not a mouseleave.
+  , "    el.addEventListener('mouseenter', function(){ openPop(); });"
+  , "    el.addEventListener('mouseleave', function(){ closePopSoon(); });"
+  , "    popEl.addEventListener('click', function(ev){"
+  , "      var r = ev.target && ev.target.closest && ev.target.closest('.row');"
+  , "      if (!r) return;"
+  , "      ev.stopPropagation();"
+  , "      var sid = r.getAttribute('data-sid');"
+  , "      closePop();"
+  , "      if (sid && window.leksahShowSession) window.leksahShowSession(sid);"
+  , "    });"
   , "    paint();"
   , "    if (document.body) document.body.appendChild(el);"
   , "    return el;"
@@ -5774,7 +5846,7 @@ statusLightJs = T.unlines
   , "  function paint(){"
   , "    if (!el) return;"
   , "    el.className = (state === 'green') ? '' : ('coord-' + state);"
-  , "    el.title = tipText();"
+  , "    if (popOpen) renderPop();"
   , "    if (shapeEl) shapeEl.className = 'shape c-' + claude;"
   -- The count only exists for the states that want you; Haskell already sends 0
   -- for idle/none (csCount), so an empty string is all idle/none needs.
@@ -5793,7 +5865,63 @@ statusLightJs = T.unlines
   , "    if (state === 'blue')   return 'Leksah: an agent is rebuilding/restarting';"
   , "    return '';"
   , "  }"
-  , "  function tipText(){ var c = coordText(); return claudeTip + (c ? '\\n' + c : ''); }"
+  -- The hover list, rebuilt from the latest push (DOM nodes + textContent,
+  -- so a title can't inject markup).  Same order and labels as the menu-bar
+  -- item's menu: claudeRowLabel, then the directory's last component.
+  , "  function renderPop(){"
+  , "    if (!popEl) return;"
+  , "    popEl.textContent = '';"
+  , "    var hd = document.createElement('div');"
+  , "    hd.className = 'hd'; hd.textContent = claudeTip;"
+  , "    popEl.appendChild(hd);"
+  , "    rows.forEach(function(r){"
+  , "      var row = document.createElement('div');"
+  , "      row.className = 'row';"
+  , "      row.setAttribute('data-sid', r.sid || '');"
+  , "      if (r.tip) row.title = r.tip;"
+  , "      var g = document.createElement('span');"
+  , "      g.className = 'g c-' + (r.state || 'idle');"
+  , "      row.appendChild(g);"
+  -- No name yet: the plain Claude icon the workspace tree uses for one.
+  , "      var f = document.createElement('img');"
+  , "      f.className = 'face';"
+  , "      f.src = r.face || '/pics/tree-claude.svg';"
+  , "      row.appendChild(f);"
+  , "      var l = document.createElement('span');"
+  , "      l.className = 'lbl';"
+  , "      if (r.name && r.title) {"
+  , "        var b = document.createElement('b'); b.textContent = r.name;"
+  , "        l.appendChild(b);"
+  , "        l.appendChild(document.createTextNode(' \\u2014 ' + r.title));"
+  , "      } else l.textContent = r.label || '';"
+  , "      row.appendChild(l);"
+  , "      if (r.dir) {"
+  , "        var d = document.createElement('span');"
+  , "        d.className = 'dir'; d.textContent = r.dir;"
+  , "        row.appendChild(d);"
+  , "      }"
+  , "      popEl.appendChild(row);"
+  , "    });"
+  , "    var c = coordText();"
+  , "    if (c) {"
+  , "      var cl = document.createElement('div');"
+  , "      cl.className = 'coord coord-' + state; cl.textContent = c;"
+  , "      popEl.appendChild(cl);"
+  , "    }"
+  , "  }"
+  , "  function openPop(){"
+  , "    if (popTimer){ clearTimeout(popTimer); popTimer = null; }"
+  , "    if (popOpen || !popEl) return;"
+  , "    popOpen = true; renderPop(); popEl.className = 'open';"
+  , "  }"
+  , "  function closePop(){"
+  , "    if (popTimer){ clearTimeout(popTimer); popTimer = null; }"
+  , "    popOpen = false; if (popEl) popEl.className = '';"
+  , "  }"
+  , "  function closePopSoon(){"
+  , "    if (popTimer) clearTimeout(popTimer);"
+  , "    popTimer = setTimeout(closePop, 350);"
+  , "  }"
   -- Make sure the dot exists, then repaint both halves of it.
   , "  function apply(){ ensure(); paint(); }"
   -- Beep via a NATIVE macOS system sound (the "leksahBeep" script message
@@ -5828,12 +5956,14 @@ statusLightJs = T.unlines
   , "  window.leksahRestarting = function(){ set('blue'); };"
   -- What the dot actually draws: the live Claude sessions, pushed by this
   -- window's reflex network from the shared poll (IDE.Web.ClaudeStatus).  @tip@
-  -- is the summary line plus one line per session, @n@ how many sessions are in
-  -- state @st@ (0 for idle\/none — the states that get no number).
-  , "  window.leksahClaudeStatus = function(st, tip, n){"
+  -- is the summary line, @n@ how many sessions are in state @st@ (0 for
+  -- idle\/none — the states that get no number), @rowsJson@ the sessions for
+  -- the hover list ('claudeStatusRowsJson').
+  , "  window.leksahClaudeStatus = function(st, tip, n, rowsJson){"
   , "    claude = st || 'none';"
   , "    if (tip) claudeTip = tip;"
   , "    claudeCount = (typeof n === 'number' && n > 0) ? n : 0;"
+  , "    try { rows = JSON.parse(rowsJson || '[]') || []; } catch(e){ rows = []; }"
   , "    apply();"
   , "  };"
   -- Land the dot in the final <body> (mainWidget replaces an early append) and

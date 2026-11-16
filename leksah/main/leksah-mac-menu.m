@@ -2007,7 +2007,7 @@ static NSStatusItem *gStatusItem = nil;
 static NSString *gClaudeState = @"none";  // aggregate live-session state
 static int       gClaudeCount = 0;        // sessions IN that state; 0 = draw no number
 static NSString *gClaudeTip   = nil;      // one-line summary for the tooltip
-static NSArray  *gClaudeRows  = nil;      // @[@[state, title, tooltip, session id], …]
+static NSArray  *gClaudeRows  = nil;      // @[@[state, title, tooltip, session id, face svg], …]
 static NSString *gCoordState  = @"green"; // the in-page coordination light
 
 @interface LeksahStatusItemTarget : NSObject
@@ -2135,6 +2135,42 @@ static NSString *leksah_coord_line(NSString *st) {
     return nil;
 }
 
+// An agent's face (IDE.Web.AgentFace's SVG, sent along with its row) as an
+// image, or nil when the row has none (a session not named yet) or this macOS
+// can't read SVG (NSImage decodes SVG data from macOS 14).  Autoreleased.
+static NSImage *leksah_face_image(NSString *svg) {
+    if (svg == nil || [svg length] == 0) return nil;
+    NSData *d = [svg dataUsingEncoding:NSUTF8StringEncoding];
+    NSImage *img = [[[NSImage alloc] initWithData:d] autorelease];
+    if (img == nil || [[img representations] count] == 0) return nil;
+    return img;
+}
+
+// A session row's image in the menu: its state shape (the same shapes and
+// colours as the item's icon and the in-page dot — what it is DOING) and then
+// its animal face (WHO it is).  Every row's image is the same size, the face
+// slot left empty when there is no face, so the shapes, faces and titles each
+// line up in a column.  Not a template: the colours are the meaning.
+static NSImage *leksah_session_row_image(NSString *state, NSString *svg) {
+    const CGFloat shapePx = 12, gap = 5, facePx = 18;
+    NSImage *shape = leksah_claude_image(state, shapePx, shapePx * (2.0/18.0), nil);
+    NSImage *face  = leksah_face_image(svg);
+    // The drawing handler runs whenever AppKit draws the row, long after this
+    // returns; the (copied) block retains shape and face until then.
+    return [NSImage imageWithSize:NSMakeSize(shapePx + gap + facePx, facePx) flipped:YES
+                   drawingHandler:^BOOL(NSRect dst) {
+        (void)dst;
+        [shape drawInRect:NSMakeRect(0, (facePx - shapePx) / 2, shapePx, shapePx)
+                 fromRect:NSZeroRect operation:NSCompositingOperationSourceOver
+                 fraction:1 respectFlipped:YES hints:nil];
+        if (face != nil)
+            [face drawInRect:NSMakeRect(shapePx + gap, 0, facePx, facePx)
+                    fromRect:NSZeroRect operation:NSCompositingOperationSourceOver
+                    fraction:1 respectFlipped:YES hints:nil];
+        return YES;
+    }];
+}
+
 // Rebuild the item's menu from the pushed rows.  Cheap and only run when the
 // payload actually changed (the Haskell poll pushes on change only), so there
 // is no need for a menuNeedsUpdate: delegate calling back into Haskell from
@@ -2156,7 +2192,7 @@ static void leksah_status_rebuild_menu(void) {
             [mi setTarget:gStatusTarget];
             [mi setRepresentedObject:[row objectAtIndex:3]];
             [mi setToolTip:[row objectAtIndex:2]];
-            [mi setImage:leksah_claude_image([row objectAtIndex:0], 14, 14 * (2.0/18.0), nil)];
+            [mi setImage:leksah_session_row_image([row objectAtIndex:0], [row objectAtIndex:4])];
             [menu addItem:mi];
             [mi release];
         }
@@ -2241,8 +2277,9 @@ static void leksah_status_item_set(NSString *state) {
 // @state is the aggregate ("waiting" / "busy" / "idle" / "none"), @count how many
 // sessions are in that state (0 = draw no number: idle/none), @tip a
 // one-line summary, and @rows one session per line as
-// state \t title \t tooltip \t session-id (the tooltip's own newlines escaped
-// as \n by the sender, since they'd otherwise end the row).
+// state \t title \t tooltip \t session-id \t face-svg (the tooltip's own
+// newlines escaped as \n by the sender, since they'd otherwise end the row;
+// the face is the agent's SVG on one line, empty when it has no name yet).
 void leksah_set_claude_status(const char *state, int count, const char *tip,
                              const char *rows) {
     NSString *st = [[NSString stringWithUTF8String:(state != NULL ? state : "none")] copy];
@@ -2256,7 +2293,8 @@ void leksah_set_claude_status(const char *state, int count, const char *tip,
         [parsed addObject:@[ [f objectAtIndex:0], [f objectAtIndex:1],
                              [[f objectAtIndex:2] stringByReplacingOccurrencesOfString:@"\\n"
                                                                            withString:@"\n"],
-                             [f objectAtIndex:3] ]];
+                             [f objectAtIndex:3],
+                             ([f count] > 4 ? [f objectAtIndex:4] : @"") ]];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
         [gClaudeState release]; gClaudeState = st;   // each takes its copy's ref
