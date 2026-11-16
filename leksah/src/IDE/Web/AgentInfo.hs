@@ -68,7 +68,7 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ord (Down(..))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -199,6 +199,9 @@ data AgentNode = AgentNode
   , anEdits    :: [FilePath]  -- ^ files it edited (the hooks saw), newest first
   , anError    :: Maybe Text  -- ^ the API error its last turn ended on
   , anCwd      :: Maybe FilePath -- ^ where its shell is, when that is not 'anDir'
+  , anBackground :: Maybe Text  -- ^ a Claude Code BACKGROUND session's id (the
+                                --   short one @claude rm@\/@attach@ take), for a
+                                --   row that came from @claude agents@
   , anChildren :: [AgentNode] -- ^ the agents it forked
   } deriving (Eq, Show)
 
@@ -753,7 +756,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anBorn     = Nothing
   , anParentName = Nothing
   , anChildNames = map (\(DemoAgent _ _ _ _ _ _ _ _ _ _ nm _ _) -> fromMaybe "" nm) kids
-  , anEdits = [], anError = Nothing, anCwd = Nothing
+  , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
   , anChildren = map demoNode kids
   }
 #else
@@ -770,18 +773,36 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   -- failed, stopped): no session file, so they are not in 'liveRows', but
   -- `claude agents` still lists them — one blocked is waiting for YOU.  Each
   -- replaces the exited row leksah would otherwise show for the same session.
+  --
+  -- Not every one, though:
+  --   * one with a process is running — it shows up through its session file
+  --     (if 'liveRows' has not seen it yet, the next poll will; as a non-live
+  --     row a click would start a SECOND process on it);
+  --   * leksah's own row wins when it says more: an agent interrupted by a
+  --     restart, or suspended, keeps that state and its resume path;
+  --   * finished, failed and stopped ones age out like exited agents
+  --     ('exitedMaxAge').  A blocked one stays — it is still waiting on a
+  --     decision — but sorts with the exited rows once stale, and Forget
+  --     (`claude rm`) is how it goes.
   bgs <- claudeBackgroundSessions
-  bgNodes <- forM [ b | b <- bgs, not (cbSession b `M.member` liveRows) ] $ \b -> do
-    (br, pr) <- agentGit posix (cbDir b)
-    -- When it last did anything: its transcript's mtime (the CLI's list only
-    -- says when it STARTED).
+  let ownWins = [ s | (s, n) <- exited, anState n `elem` ["interrupted", "suspended"] ]
+  bgCands <- fmap catMaybes . forM
+      [ b | b <- bgs, isNothing (cbPid b), not (cbSession b `M.member` liveRows)
+          , cbSession b `notElem` ownWins ] $ \b -> do
+    -- When it last did anything: its transcript's mtime, else when it started
+    -- (the CLI's list only says that).
     lastActive <- (`catch` \(_ :: SomeException) -> return Nothing) $ do
       p <- claudeTranscriptPath (cbDir b) (cbSession b)
       ex <- doesFileExist p
       if ex then Just <$> getModificationTime p else return Nothing
-    return (cbSession b, (backgroundNode now lastActive b (M.lookup (cbSession b) infos))
-                           { anBranch = br, anPr = pr })
-  let bgIds = map fst bgNodes
+    let active = lastActive <|> (posixSecondsToUTCTime . realToFrac <$> cbStarted b)
+        idleFor = maybe 0 (\t -> realToFrac (diffUTCTime now t)) active :: Double
+        n = backgroundNode now active idleFor b (M.lookup (cbSession b) infos)
+    if cbState b /= "blocked" && idleFor > exitedMaxAge then return Nothing else do
+      (br, pr) <- agentGit posix (cbDir b)
+      return (Just (cbSession b, n { anBranch = br, anPr = pr }))
+  let bgNodes = bgCands
+      bgIds = map fst bgNodes
   liveNodes <- forM (csRows st) $ \r -> do
     (br, pr) <- agentGit posix (T.unpack (csrDir r))
     act <- agentActivity r
@@ -882,7 +903,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anWorktrees = []
       , anBio = Nothing, anManager = False, anBorn = Nothing
       , anParentName = Nothing, anChildNames = []
-      , anEdits = [], anError = Nothing, anCwd = Nothing
+      , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
       , anChildren = [] }
 
     -- A background session with no process, as a row: not live (a click
@@ -891,15 +912,17 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     -- A blocked one is "needs you" only while recent: one left blocked for
     -- longer than 'backgroundStaleAge' was most likely abandoned, so it sorts
     -- with the exited rows (still clickable) instead of heading the pane.
-    backgroundNode now lastActive b i =
-      let idleFor = maybe 0 (\t -> realToFrac (diffUTCTime now t)) lastActive :: Double
-          (state, what) = case cbState b of
+    -- (Only ever an exited-style row: a background session with a live
+    -- process is shown through its session file instead.  "stopped" is NOT
+    -- leksah's "suspended", which means leksah suspended it and will offer it
+    -- back.)
+    backgroundNode now active idleFor b i =
+      let (state, what) = case cbState b of
             "blocked" | idleFor > backgroundStaleAge -> ("gone", "blocked (left waiting)")
                       | otherwise -> ("waiting",   "blocked — it is waiting for you")
             "done"    -> ("done",      "finished")
-            "stopped" -> ("suspended", "stopped")
+            "stopped" -> ("gone",      "stopped")
             "failed"  -> ("gone",      "failed")
-            "working" -> ("busy",      "working")
             other     -> ("gone",      other)
       in AgentNode
         { anSession = cbSession b
@@ -911,15 +934,12 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         , anDetail  = "Background session " <> cbId b <> ", " <> what
                       <> " — click to open it here"
         , anActivity = Just ("background session: " <> what)
+        , anBackground = Just (cbId b)
         , anDone    = i >>= aiDone
         , anRole    = i >>= aiRole
         , anDir     = cbDir b
         , anDesc    = i >>= aiDesc
-        , anAge     = case lastActive of
-            Just t  -> humanAge now t
-            Nothing -> maybe "" (\t -> "started " <> humanAge now
-                                        (posixSecondsToUTCTime (realToFrac t)))
-                             (cbStarted b)
+        , anAge     = maybe "" (humanAge now) active
         , anLive    = False
         , anBranch  = Nothing
         , anPr      = Nothing
@@ -970,7 +990,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
           , anChildren = [] }
       let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
           interrupted i = isNothing (aiSuspended i) && isInterrupted posix i
@@ -1016,7 +1036,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 

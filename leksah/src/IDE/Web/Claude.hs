@@ -26,6 +26,7 @@ module IDE.Web.Claude
   , claudeLiveBySession
   , ClaudeBackground(..)
   , claudeBackgroundSessions
+  , claudeRemoveBackground
   , claudeLiveOwners
   , ClaudeCmd(..)
   , AgentSpec(..)
@@ -109,7 +110,10 @@ import System.IO
 import IDE.Utils.RemotePath (isRemotePath)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Exit (ExitCode(..))
-import System.Process (createProcess, proc, readProcess, readProcessWithExitCode)
+import System.Process
+       (CreateProcess(..), StdStream(..), createProcess, proc, readProcess,
+        readProcessWithExitCode, terminateProcess, waitForProcess)
+import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
 import IDE.App (appUi, getGlobalApp)
@@ -310,12 +314,23 @@ claudeBackgroundSessions = do
       ((done, False, fromMaybe xs fresh), ())
   (\(_, _, xs) -> xs) <$> readIORef backgroundRef
  where
+  -- The output is read as BYTES (it is UTF-8 JSON; a String round trip
+  -- through the locale would mangle any non-ASCII name or path), and under a
+  -- timeout: a CLI stuck on a prompt or a network stall must not wedge the
+  -- refresh, which only ever runs one at a time.
   runAgentsJson = findExecutable "claude" >>= \case
     Nothing  -> return []
     Just exe -> do
-      (ec, out, _) <- readProcessWithExitCode exe ["agents", "--json"] ""
-      case ec of
-        ExitSuccess | Just vs <- decodeStrict' (BS.pack out) -> return (mapMaybe one vs)
+      (_, Just hout, _, ph) <- createProcess (proc exe ["agents", "--json"])
+        { std_in = NoStream, std_out = CreatePipe, std_err = NoStream }
+      r <- timeout 15000000 $ do
+        out <- BS.hGetContents hout
+        (,) out <$> waitForProcess ph
+      case r of
+        Just (out, ExitSuccess) | Just vs <- decodeStrict' out -> return (mapMaybe one vs)
+        Nothing -> do
+          terminateProcess ph
+          ioError (userError "claude agents --json timed out")
         _ -> ioError (userError "claude agents --json failed")
   one v = do
     k <- objField "kind" v
@@ -329,6 +344,23 @@ claudeBackgroundSessions = do
         , cbDir     = maybe "" (dropTrailingPathSeparator . T.unpack) (objField "cwd" v)
         , cbStarted = (/ 1000) . fromInteger <$> objField "startedAt" v
         , cbPid     = objField "pid" v }
+
+-- | Remove background session @jobId@ from Claude Code's list (@claude rm@:
+-- it keeps the conversation, and deletes the session's worktree only when
+-- that is safe).  Answers what the CLI said.  The Agents pane's Forget, for a
+-- row that came from @claude agents@ — leksah's own record has nothing to
+-- forget, and the row would come straight back.
+claudeRemoveBackground :: Text -> IO Text
+claudeRemoveBackground jobId = (`catch` \(e :: SomeException) -> return (T.pack (show e))) $
+  findExecutable "claude" >>= \case
+    Nothing  -> return "claude is not on PATH"
+    Just exe -> do
+      r <- timeout 30000000 (readProcessWithExitCode exe ["rm", T.unpack jobId] "")
+      atomicModifyIORef' backgroundRef (\(_, running, xs) ->
+        ((0, running, filter ((/= jobId) . cbId) xs), ()))
+      return $ case r of
+        Nothing -> "claude rm " <> jobId <> " timed out"
+        Just (_, out, err) -> T.strip (T.pack (out <> err))
 
 -- | (when the last run finished, whether one is running now, what it found)
 {-# NOINLINE backgroundRef #-}

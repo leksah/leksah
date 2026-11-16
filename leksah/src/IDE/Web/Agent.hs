@@ -112,7 +112,8 @@ import IDE.Web.AgentNames
         resolveAgentName, touchAgentNames)
 import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, roleNote)
 import IDE.Web.Claude
-       (AgentSpec(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
+       (AgentSpec(..), ClaudeBackground(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
+        claudeBackgroundSessions,
         claudeCommandLine, claudeLiveBySession,
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
@@ -625,9 +626,16 @@ agentResume sid = do
       _ <- showAgentPane sid
       return (Right (name <> " is already running; showing it.\n"))
     else agentInfoOf sid >>= \case
-      Nothing -> return . Left $
-        "leksah does not know where " <> name <> " ran, so it cannot resume it \
-        \(resume it from the workspace tree's Agents node instead)"
+      -- Not one leksah started — but a Claude Code background session says
+      -- where it ran: resume it there (`claude --resume` takes one up).
+      Nothing -> claudeBackgroundSessions >>= \bgs ->
+        case [ b | b <- bgs, cbSession b == sid, not (null (cbDir b)) ] of
+          (b : _) -> do
+            runClaudeCmd (ClaudeResume (cbDir b) sid)
+            return (Right ("Resuming " <> name <> " in its own tab.\n"))
+          [] -> return . Left $
+            "leksah does not know where " <> name <> " ran, so it cannot resume it \
+            \(resume it from the workspace tree's Agents node instead)"
       Just i | null (aiDir i) -> return . Left $
         "leksah does not know where " <> name <> " ran, so it cannot resume it"
       Just i -> do
