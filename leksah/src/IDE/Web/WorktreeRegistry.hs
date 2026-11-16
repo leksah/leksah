@@ -49,7 +49,7 @@ module IDE.Web.WorktreeRegistry
 
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import Control.Exception (catch, try, SomeException)
-import Control.Monad (unless, void)
+import Control.Monad (filterM, void)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
@@ -64,7 +64,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 
-import System.Directory (doesDirectoryExist, doesFileExist)
+import System.Directory (canonicalizePath, doesDirectoryExist, doesFileExist)
 import System.Exit (ExitCode(..))
 import System.FilePath
        ((</>), dropTrailingPathSeparator, equalFilePath, takeDirectory,
@@ -254,7 +254,14 @@ registerWorktree
   -> Text            -- ^ the relationship, in the claimant's words
   -> Text            -- ^ via: @leksah@ | @agent@ | @hook@ | @scan@
   -> IO Text
-registerWorktree path0 mbranch msession mrole note via = do
+registerWorktree = registerWorktreeWith False
+
+-- | 'registerWorktree', or with @True@: only when the session has no claim on
+-- the worktree yet — decided inside the registry update itself, so a claim
+-- the session writes meanwhile is never overwritten.
+registerWorktreeWith
+  :: Bool -> FilePath -> Maybe Text -> Maybe Text -> Maybe ClaimRole -> Text -> Text -> IO Text
+registerWorktreeWith keepExisting path0 mbranch msession mrole note via = do
   known <- worktreeInfo path
   worktreeMainRoot path >>= \case
     -- A worktree that is gone (the hook's `git worktree remove` path runs
@@ -288,7 +295,10 @@ registerWorktree path0 mbranch msession mrole note via = do
                  <> (if T.null branch then "" else " [" <> branch <> "]")
                  <> " as " <> roleText role
                  <> maybe " (no session)" (\s -> " for session " <> T.take 8 s) msession
-        in (M.insert path w3 m, reply)
+            already = any ((== msession) . scSession) (wiClaims w0)
+        in if keepExisting && already
+             then (m, "already claimed: " <> T.pack (takeFileName path))
+             else (M.insert path w3 m, reply)
 
 -- | A session STARTED in a linked worktree — `claude --worktree`, a background
 -- session isolated into @.claude/worktrees/@, or a plain `claude` run in a
@@ -298,17 +308,23 @@ registerWorktree path0 mbranch msession mrole note via = do
 -- yet, so a note it registered itself is never overwritten.  @dir@ may be a
 -- subdirectory of the worktree.  Quiet: not a worktree, or already
 -- claimed, is the common case.
+--
+-- In the common case — a main checkout — this is two git calls and nothing
+-- else.  The worktree is matched to a registry entry by canonical path, so
+-- one registered as @/tmp/x@ is not registered again as @/private/tmp/x@.
 ensureSessionWorktree :: Text -> FilePath -> IO ()
-ensureSessionWorktree sid dir =
-  gitOut dir ["rev-parse", "--show-toplevel"] >>= \case
+ensureSessionWorktree sid dir = worktreeMainRoot dir >>= \case
+  Nothing -> return ()          -- not a linked worktree
+  Just _  -> gitOut dir ["rev-parse", "--show-toplevel"] >>= \case
     Nothing  -> return ()
     Just top -> do
-      let path = dropTrailingPathSeparator (T.unpack top)
-      known <- worktreeInfo path
-      let claimed = maybe False (any ((== Just sid) . scSession) . wiClaims) known
-      unless claimed . void $
-        registerWorktree path Nothing (Just sid) (Just RoleWorking)
-          "working here (the session started in this worktree)" "hook"
+      let path0 = dropTrailingPathSeparator (T.unpack top)
+      canon <- canonicalizePath path0
+      entries <- allWorktrees
+      existing <- filterM (\w -> (== canon) <$> canonicalizePath (wiPath w)) entries
+      let path = maybe path0 wiPath (listToMaybe existing)
+      void $ registerWorktreeWith True path Nothing (Just sid) (Just RoleWorking)
+        "working here (the session started in this worktree)" "hook"
 
 -- | Append a branch move WITHOUT touching claims — the PostToolUse hook's
 -- @git switch@\/@git checkout@ path, where clobbering a session's carefully

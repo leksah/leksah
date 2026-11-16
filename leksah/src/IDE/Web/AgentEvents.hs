@@ -11,6 +11,9 @@
 module IDE.Web.AgentEvents
   ( SessionEvents(..)
   , seTool
+  , seSubagentsAt
+  , seCompactingAt
+  , sePromptPending
   , perToolHookEvents
   , sessionEvents
   , eventsFor
@@ -59,14 +62,32 @@ data SessionEvents = SessionEvents
                                           --   when it started)
   , seCompacting :: Maybe Double          -- ^ since when it is compacting its
                                           --   conversation (PreCompact)
+  , seSubEnded   :: [Text]                -- ^ agent_ids that have finished (the
+                                          --   last few): see 'recordSubagentStart'
+  , sePromptAt   :: Maybe Double          -- ^ when the last prompt was submitted
   } deriving (Eq, Show)
 
 none :: SessionEvents
-none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing [] Nothing
+none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing [] Nothing [] Nothing
 
 -- | The tool call running now: the newest of those still running.
 seTool :: SessionEvents -> Maybe (Text, Double)
 seTool = fmap snd . listToMaybe . seRunning
+
+-- | The subagents running at @now@ (dropping any whose stop never came).
+seSubagentsAt :: Double -> SessionEvents -> [(Text, (Text, Double))]
+seSubagentsAt now e = [ x | x@(_, (_, t)) <- seSubagents e, now - t < subagentMaxAge ]
+
+-- | Is it compacting at @now@ (a compaction whose end never came is over)?
+seCompactingAt :: Double -> SessionEvents -> Bool
+seCompactingAt now e = maybe False (\t -> now - t < compactMaxAge) (seCompacting e)
+
+-- | A prompt submitted within the last @window@ seconds whose turn has not
+-- ended: the session is working, whatever its session file says yet.
+sePromptPending :: Double -> Double -> SessionEvents -> Bool
+sePromptPending window now e = case sePromptAt e of
+  Just p -> now - p < window && maybe True (< p) (seTurnEnd e)
+  Nothing -> False
 
 -- | The hook events that come once per tool call — several times a turn.
 -- They are registered async (they must never hold a tool call up) and
@@ -80,6 +101,18 @@ perToolHookEvents = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
 -- new prompt and a model response first, which takes longer than this.
 lateStartGrace :: Double
 lateStartGrace = 1.5
+
+-- | The least time from a prompt to its turn's first tool call (see
+-- 'recordToolStart').
+firstCallGap :: Double
+firstCallGap = 0.7
+
+-- | How long a subagent with no SubagentStop is believed to be running (it
+-- was interrupted, or its stop never arrived), and how long a compaction with
+-- no PostCompact is (it failed).
+subagentMaxAge, compactMaxAge :: Double
+subagentMaxAge = 2 * 3600
+compactMaxAge  = 600
 
 {-# NOINLINE eventsRef #-}
 eventsRef :: IORef (Map Text SessionEvents)
@@ -107,14 +140,23 @@ update sid f = do
 -- denied).  Otherwise the row would say "running …" until the next event.
 -- It leaves the approval alone: PermissionRequest for this very call may have
 -- overtaken it.
+--
+-- "The turn ended moments ago" holds even when a prompt has been submitted
+-- since, as long as that prompt is newer still than 'firstCallGap': its own
+-- first tool call can't come that soon (the model has to answer first), so a
+-- start that soon is the old turn's.  A tool call also means any compaction is
+-- over.
 recordToolStart :: Text -> Maybe Text -> Text -> IO ()
 recordToolStart sid uid what = update sid $ \now e ->
   let finished = maybe False (`elem` seEnded e) uid
-      afterTurn = maybe False (\t -> now - t < lateStartGrace) (seTurnEnd e)
+      newTurn = case (seTurnEnd e, sePromptAt e) of
+        (Just t, Just p) -> p >= t && now - p >= firstCallGap
+        _                -> True
+      afterTurn = maybe False (\t -> now - t < lateStartGrace) (seTurnEnd e) && not newTurn
   in if finished || afterTurn then e
      else e { seRunning = (uid, (what, now))
                           : filter (\(u, _) -> isNothing u || u /= uid) (seRunning e)
-            , seError = Nothing }
+            , seError = Nothing, seCompacting = Nothing }
 
 -- | A tool call finished, one way or the other (PostToolUse /
 -- PostToolUseFailure); @what@ is its approval text ('recordPermission''s
@@ -138,30 +180,37 @@ recordPermission sid what = update sid $ \now e -> e { sePermission = Just (what
 recordFailure :: Text -> Text -> IO ()
 recordFailure sid err = update sid $ \now e ->
   e { seError = Just (err, now), seRunning = [], sePermission = Nothing
-    , seTurnEnd = Just now }
+    , seTurnEnd = Just now, seCompacting = Nothing }
 
 -- | The turn ended normally (Stop): nothing is running, nothing is waiting.
 recordTurnEnd :: Text -> IO ()
 recordTurnEnd sid = update sid $ \now e ->
-  e { seRunning = [], sePermission = Nothing, seError = Nothing, seTurnEnd = Just now }
+  e { seRunning = [], sePermission = Nothing, seError = Nothing, seTurnEnd = Just now
+    , seCompacting = Nothing }
 
 -- | The user (or `agent send --submit`) submitted a prompt (UserPromptSubmit):
--- a new turn starts — no error stands, and it is not "just after a turn"
--- any more (so its first tool call is not taken for a late report).
+-- a new turn starts — no error stands.  When (see 'recordToolStart', and the
+-- status poll, which counts a session as working from this moment).
 recordPromptSubmit :: Text -> IO ()
-recordPromptSubmit sid = update sid $ \_ e -> e { seError = Nothing, seTurnEnd = Nothing }
+recordPromptSubmit sid = update sid $ \now e -> e { seError = Nothing, sePromptAt = Just now }
 
 -- | A subagent started (SubagentStart).  Called again for one that is
--- resumed, which keeps its place.
+-- resumed, which keeps its place.  The hooks are async, so a quick
+-- subagent's SubagentStop can arrive first: a start for one that has already
+-- finished is ignored.  The newest 20 are kept, and any older than
+-- 'subagentMaxAge' (its stop never came) are dropped.
 recordSubagentStart :: Text -> Text -> Text -> IO ()
 recordSubagentStart sid aid kind = update sid $ \now e ->
-  if aid `elem` map fst (seSubagents e) then e
-  else e { seSubagents = take 20 (seSubagents e <> [(aid, (kind, now))]) }
+  let current = [ x | x@(_, (_, t)) <- seSubagents e, now - t < subagentMaxAge ]
+  in if aid `elem` seSubEnded e || aid `elem` map fst current then e { seSubagents = current }
+     else e { seSubagents = lastN 20 (current <> [(aid, (kind, now))]) }
+  where lastN n xs = drop (length xs - n) xs
 
 -- | A subagent finished (SubagentStop).
 recordSubagentStop :: Text -> Text -> IO ()
 recordSubagentStop sid aid = update sid $ \_ e ->
-  e { seSubagents = filter ((/= aid) . fst) (seSubagents e) }
+  e { seSubagents = filter ((/= aid) . fst) (seSubagents e)
+    , seSubEnded = take 32 (aid : filter (/= aid) (seSubEnded e)) }
 
 -- | Compaction started (True, PreCompact) or finished (False, PostCompact or
 -- the SessionStart that follows it).
