@@ -930,12 +930,12 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
                 ([ "additionalContext" .= T.intercalate "\n\n" notes | not (null notes) ]
                  <> [ "sessionTitle" .= t | Just t <- [title] ]))
     -- A prompt was submitted (by the user, or `agent send --submit`): a new
-    -- turn starts — the status surfaces should say "working" at once, not at
-    -- the next poll (the session file says so a moment later; look again
-    -- then) — and its own title follows it into Claude Code.
+    -- turn starts — the status surfaces say "working" at once (the poll
+    -- counts a just-submitted prompt as working, whatever the session file
+    -- says yet) — and its own title follows it into Claude Code.
     ("UserPromptSubmit", Just s) -> do
       recordPromptSubmit s
-      void . forkIO $ threadDelay 400000 >> pokeClaudeStatus
+      pokeClaudeStatus
       title <- titleForClaude s (field "session_title")
       return (hookOutput "UserPromptSubmit" [ "sessionTitle" .= t | Just t <- [title] ])
     -- Its subagents (the Agent tool), for the activity line.  An empty type is
@@ -998,10 +998,7 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
                <> ". Their changes may not be committed yet — check with them before \
                   \going further (`leksah-cmd agent send NAME …`), so your edits \
                   \do not collide."
-        return . TE.decodeUtf8 . BL.toStrict . encode $ object
-          [ "hookSpecificOutput" .= object
-              [ "hookEventName" .= ("PostToolUse" :: Text)
-              , "additionalContext" .= msg ] ]
+        return (hookOutput "PostToolUse" [ "additionalContext" .= msg ])
 
     briefing sid = do
       name <- agentNameFor sid

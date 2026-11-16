@@ -305,17 +305,31 @@ data ClaudeBackground = ClaudeBackground
   , cbPid     :: Maybe Int       -- ^ while its process is alive
   , cbLastActive :: Maybe UTCTime -- ^ when it last did anything: its transcript's
                                  --   mtime, else when it started
+  , cbStateAt :: Maybe UTCTime   -- ^ when its job last reported (its state
+                                 --   file's mtime — never its contents)
   } deriving (Eq, Show)
 
--- | A blocked background session that is waiting for YOU: no process, and it
--- blocked recently.  One left blocked for longer than 'backgroundStaleAge' was
--- most likely abandoned; it still shows in the Agents pane (Forget removes
--- it) but no longer counts as needing you — in the pane's sort order, or on
--- the status dot and menu-bar item.
+-- | A blocked background session that is waiting for YOU: no process, it
+-- blocked recently, and its conversation has not moved on since.
+--
+--   * One left blocked for longer than 'backgroundStaleAge' was most likely
+--     abandoned; it still shows in the Agents pane (Forget removes it) but no
+--     longer counts as needing you — in the pane's sort order, or on the
+--     status dot and menu-bar item.  When there is no telling how long ago it
+--     last did anything, it counts as stale too: a session nobody can date
+--     must not keep the dot red for good.
+--   * One whose transcript was written well after its job last reported
+--     ('cbStateAt') was taken up since — resumed in a pane, say, and
+--     answered — and the CLI's "blocked" is out of date.
 backgroundNeedsYou :: UTCTime -> ClaudeBackground -> Bool
 backgroundNeedsYou now b =
   cbState b == "blocked" && isNothing (cbPid b)
-    && maybe True (\t -> realToFrac (diffUTCTime now t) <= backgroundStaleAge) (cbLastActive b)
+    && maybe False (\t -> realToFrac (diffUTCTime now t) <= backgroundStaleAge) (cbLastActive b)
+    && not movedOn
+  where
+    movedOn = case (cbLastActive b, cbStateAt b) of
+      (Just act, Just st) -> realToFrac (diffUTCTime act st) > (60 :: Double)
+      _                   -> False
 
 -- | How long a blocked background session counts as needing you: a day.
 backgroundStaleAge :: Double
@@ -327,7 +341,8 @@ backgroundStaleAge = 24 * 3600
 -- fresh run in the background (one at a time) when something may have
 -- changed — so the first call after start-up returns @[]@ and the list fills
 -- in on the next poll.  Never throws: no @claude@, a failed run or unparsable
--- output keep the previous list.
+-- output keep the previous list (and the change that prompted the run still
+-- counts as unseen, so the next poll after 'backgroundTtl' tries again).
 --
 -- "May have changed": a background session's state lives in
 -- @~\/.claude\/jobs\/\<id\>\/state.json@, rewritten on every change.  Those
@@ -335,21 +350,34 @@ backgroundStaleAge = 24 * 3600
 -- format is undocumented; @claude agents --json@ is the interface) — and the
 -- CLI is run again when any of them (or the set of jobs) changes, at most
 -- every 'backgroundTtl'; with nothing changing, every 'backgroundBackstop'.
+-- They are only looked at when a run could start at all.
 claudeBackgroundSessions :: IO [ClaudeBackground]
 claudeBackgroundSessions = do
   now <- realToFrac <$> getPOSIXTime
-  fp <- jobsFingerprint
-  start <- atomicModifyIORef' backgroundRef $ \(at, running, seen, xs) ->
-    let due = now - at > backgroundBackstop || (fp /= seen && now - at > backgroundTtl)
-    in if not running && due
-         then ((at, True, seen, xs), True) else ((at, running, seen, xs), False)
-  when start . void . forkIO $ do
-    fresh <- (Just <$> (runAgentsJson >>= mapM withLastActive))
-               `catch` \(_ :: SomeException) -> return Nothing
-    done <- realToFrac <$> getPOSIXTime
-    atomicModifyIORef' backgroundRef $ \(_, _, _, xs) ->
-      ((done, False, fp, fromMaybe xs fresh), ())
-  (\(_, _, _, xs) -> xs) <$> readIORef backgroundRef
+  st0 <- readIORef backgroundRef
+  when (not (bsRunning st0) && now - bsAt st0 > backgroundTtl) $ do
+    fp <- jobsFingerprint
+    start <- atomicModifyIORef' backgroundRef $ \st ->
+      let due = now - bsAt st > backgroundBackstop
+                || (fp /= bsSeen st && now - bsAt st > backgroundTtl)
+      in if not (bsRunning st) && due then (st { bsRunning = True }, True) else (st, False)
+    when start . void . forkIO $ do
+      fresh <- (Just <$> (runAgentsJson >>= mapM (withTimes fp)))
+                 `catch` \(_ :: SomeException) -> return Nothing
+      done <- realToFrac <$> getPOSIXTime
+      atomicModifyIORef' backgroundRef $ \st -> (case fresh of
+        -- A failed run leaves the change it was for unseen: retried after
+        -- 'backgroundTtl', not left until the backstop.
+        Nothing -> st { bsAt = done, bsRunning = False }
+        Just xs ->
+          -- A session removed (Forget) while this run was in flight may
+          -- still be in its output: keep it out, until the CLI stops
+          -- listing it.
+          let listed = map cbId xs
+          in st { bsAt = done, bsRunning = False, bsSeen = fp
+                , bsList = filter ((`notElem` bsRemoved st) . cbId) xs
+                , bsRemoved = filter (`elem` listed) (bsRemoved st) }, ())
+  bsList <$> readIORef backgroundRef
  where
   jobsFingerprint = (`catch` \(_ :: SomeException) -> return []) $ do
     home <- getHomeDirectory
@@ -361,12 +389,15 @@ claudeBackgroundSessions = do
         let f = jobs </> i </> "state.json"
         e <- doesFileExist f
         if e then (\t -> [(i, t)]) <$> getModificationTime f else return [(i, posixSecondsToUTCTime 0)]
-  withLastActive b = do
+  -- When it last did anything (its transcript, else when it started), and
+  -- when its job last reported (its state file's mtime, from the fingerprint).
+  withTimes fp b = do
     t <- (`catch` \(_ :: SomeException) -> return Nothing) $ do
       p <- claudeTranscriptPath (cbDir b) (cbSession b)
       e <- doesFileExist p
       if e then Just <$> getModificationTime p else return Nothing
-    return b { cbLastActive = t <|> (posixSecondsToUTCTime . realToFrac <$> cbStarted b) }
+    return b { cbLastActive = t <|> (posixSecondsToUTCTime . realToFrac <$> cbStarted b)
+             , cbStateAt = lookup (T.unpack (cbId b)) fp }
   -- The output is read as BYTES (it is UTF-8 JSON; a String round trip
   -- through the locale would mangle any non-ASCII name or path), and under a
   -- timeout: a CLI stuck on a prompt or a network stall must not wedge the
@@ -397,7 +428,8 @@ claudeBackgroundSessions = do
         , cbDir     = maybe "" (dropTrailingPathSeparator . T.unpack) (objField "cwd" v)
         , cbStarted = (/ 1000) . fromInteger <$> objField "startedAt" v
         , cbPid     = objField "pid" v
-        , cbLastActive = Nothing }
+        , cbLastActive = Nothing
+        , cbStateAt = Nothing }
 
 -- | Remove background session @jobId@ from Claude Code's list (@claude rm@:
 -- it keeps the conversation, and deletes the session's worktree only when
@@ -410,17 +442,27 @@ claudeRemoveBackground jobId = (`catch` \(e :: SomeException) -> return (T.pack 
     Nothing  -> return "claude is not on PATH"
     Just exe -> do
       r <- timeout 30000000 (readProcessWithExitCode exe ["rm", T.unpack jobId] "")
-      atomicModifyIORef' backgroundRef (\(_, running, seen, xs) ->
-        ((0, running, seen, filter ((/= jobId) . cbId) xs), ()))
+      -- Out of the list at once, and kept out even if a run already in
+      -- flight still lists it; a fresh run is due straight away.
+      atomicModifyIORef' backgroundRef (\st ->
+        (st { bsAt = 0, bsList = filter ((/= jobId) . cbId) (bsList st)
+            , bsRemoved = jobId : bsRemoved st }, ()))
       return $ case r of
         Nothing -> "claude rm " <> jobId <> " timed out"
         Just (_, out, err) -> T.strip (T.pack (out <> err))
 
--- | (when the last run finished, whether one is running now, the jobs'
--- state-file mtimes it ran for, what it found)
+-- | The cache behind 'claudeBackgroundSessions'.
+data BackgroundState = BackgroundState
+  { bsAt      :: Double                 -- ^ when the last run finished
+  , bsRunning :: Bool                   -- ^ a run is in flight
+  , bsSeen    :: [(FilePath, UTCTime)]  -- ^ the jobs' state-file mtimes it ran for
+  , bsList    :: [ClaudeBackground]     -- ^ what it found
+  , bsRemoved :: [Text]                 -- ^ job ids Forget removed meanwhile
+  }
+
 {-# NOINLINE backgroundRef #-}
-backgroundRef :: IORef (Double, Bool, [(FilePath, UTCTime)], [ClaudeBackground])
-backgroundRef = unsafePerformIO (newIORef (0, False, [], []))
+backgroundRef :: IORef BackgroundState
+backgroundRef = unsafePerformIO (newIORef (BackgroundState 0 False [] [] []))
 
 -- | The least time between two runs of @claude agents --json@, however much
 -- changes.
@@ -1579,7 +1621,10 @@ nativeShowLiveSession here sid = paneForSession sid >>= \case
     -- show: take it up in one — `claude --resume` resumes a background
     -- session in the foreground.
     background = claudeBackgroundSessions >>= \bgs ->
-      case [ b | b <- bgs, cbSession b == sid, isNothing (cbPid b), not (null (cbDir b)) ] of
+      -- Only a BLOCKED one — the kind the status surfaces list as needing
+      -- you; a finished or failed one is not "shown" by starting it again.
+      case [ b | b <- bgs, cbSession b == sid, cbState b == "blocked"
+               , isNothing (cbPid b), not (null (cbDir b)) ] of
         (b : _) -> runClaudeCmd (ClaudeResume (cbDir b) sid) >> return True
         []      -> return False
 
