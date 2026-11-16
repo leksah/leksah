@@ -73,6 +73,9 @@ module IDE.Web.Widget.Terminal
   , joinTmuxPaneFull
   , breakTmuxPaneTo
   , rehomeAgentWindow
+  , windowAgents
+  , moveWindowToAgents
+  , sessionNamed
   , windowLayoutString
   , movePaneToPane
   , selectWindowLayout
@@ -170,13 +173,13 @@ import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
         findRunPane, liveRunPanes, isBackingRunKey, selectTmuxWindowById,
-        freshSessionName, tmuxOut, tmuxStdout,
+        freshSessionName, tmuxOut, tmuxStdout, agentsSessionName,
         getLoginShell, interactiveShellArgs, writeTmuxConf, clipboardCopyCmd)
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.WakeOnLan (ensureAwake)
 import IDE.Web.TmuxServer
        (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn, tmuxStdoutOn,
-        tmuxOnIds, qualifyTmuxId)
+        tmuxOnIds, qualifyTmuxId, rawTmuxId)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -1905,59 +1908,62 @@ breakTmuxPaneTo p dstS = tmuxOnIds [p, dstS] Nothing $ \srv raw -> do
             return $ qualifyTmuxId srv <$>
                 listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
 
--- | The one agent whose panes window @w@ holds, by their @\@leksah_agent@
--- tags ('tagAgentWindow' keeps them) — 'Nothing' for a window with no agent,
--- or with two.
-windowAgent :: Text -> IO (Maybe Text)
-windowAgent w = tmuxOnIds [w] Nothing $ \srv raw -> do
+-- | The agents whose panes window @w@ holds, by their @\@leksah_agent@ tags
+-- ('tagAgentWindow' keeps them) — empty for a window with no agent.
+windowAgents :: Text -> IO [Text]
+windowAgents w = tmuxOnIds [w] [] $ \srv raw -> do
     out <- tmuxStdoutOn srv ["list-panes", "-t", raw w, "-F", "#{@leksah_agent}"]
-    return $ case nub (filter (not . T.null) (map T.strip (T.lines out))) of
-      [a] -> Just a
-      _   -> Nothing
+    return (nub (filter (not . T.null) (map T.strip (T.lines out))))
 
--- | The session an agent's window belongs in: the one named after the agent
--- (its own, as 'newSessionWindow' made it).
-agentHomeName :: Text -> Text
-agentHomeName a = a
+-- | The id of the session named @name@ on window @w@'s server, if any.
+sessionNamed :: Text -> Text -> IO (Maybe Text)
+sessionNamed w name = tmuxOnIds [w] Nothing $ \srv _ -> do
+    ls <- T.lines <$> tmuxStdoutOn srv
+            ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
+    return $ listToMaybe
+      [ qualifyTmuxId srv sid | l <- ls, (sid : nm) <- [T.splitOn "\t" l]
+                              , T.intercalate "\t" nm == name ]
+
+-- | Move window @w@ into the shared Agents session ('agentsSessionName') —
+-- creating it when there is none, and killing the placeholder window a new
+-- session is born with — and return that session's id.  'Nothing' when tmux
+-- refused.  Run it under the conversion guard ('beginConversion'): until the
+-- model names the moved window it is a stray, and so is the placeholder until
+-- it is killed here.
+moveWindowToAgents :: Text -> IO (Maybe Text)
+moveWindowToAgents w = (`catch` \(_ :: SomeException) -> return Nothing) $
+  tmuxOnIds [w] Nothing $ \srv raw -> do
+    existing <- sessionNamed w agentsSessionName
+    mdst <- case existing of
+      Just sid -> return (Just (raw sid, Nothing))
+      Nothing -> do
+        out <- tmuxStdoutOn srv
+          ["new-session", "-d", "-s", T.unpack agentsSessionName
+          , "-P", "-F", "#{session_id}\t#{window_id}"]
+        return $ case T.splitOn "\t" (T.strip out) of
+          [sid, pw] | not (T.null sid) -> Just (T.unpack sid, Just pw)
+          _                            -> Nothing
+    case mdst of
+      Nothing -> return Nothing
+      Just (sid, mplaceholder) -> do
+        ok <- tmuxOkOn srv ["move-window", "-d", "-s", raw w, "-t", sid <> ":"] ""
+        forM_ mplaceholder $ \pw -> tmuxCmdOn srv ["kill-window", "-t", T.unpack pw]
+        return (if ok then Just (qualifyTmuxId srv (T.pack sid)) else Nothing)
 
 -- | Window @w@ is about to become a leksah window (a tab) of its own, in
--- session @cur@.  When it holds one agent's panes, move it to that agent's
--- home session ('agentHomeName'; created when there is none) and return that
--- session's id; otherwise, or on any failure, return @cur@.  Dragging Wolf's
--- pane into Koala's window and out again otherwise left Wolf's tab living in
--- Koala's session.
---
--- Run it under the conversion guard ('beginConversion'): until the model
--- names the moved window it is a stray, and so is the placeholder window a
--- brand-new session is born with, until it is killed here.
+-- session @cur@.  When it holds an agent's panes, move it to the shared
+-- Agents session ('moveWindowToAgents') and return that session's id;
+-- otherwise, or on any failure, return @cur@.  Dragging Wolf's pane into
+-- Koala's window and out again otherwise left Wolf's tab living in Koala's
+-- session — or, dragged into a plain terminal's window, in that terminal's.
+-- Run it under the conversion guard, as 'moveWindowToAgents' says.
 rehomeAgentWindow :: Text -> Text -> IO Text
 rehomeAgentWindow w cur = (`catch` \(_ :: SomeException) -> return cur) $
-  windowAgent w >>= \case
-    Nothing -> return cur
-    Just a -> tmuxOnIds [w, cur] cur $ \srv raw -> do
-      let home = agentHomeName a
-      ls <- T.lines <$> tmuxStdoutOn srv
-              ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
-      let sessions = [ (sid, T.intercalate "\t" nm)
-                     | l <- ls, (sid : nm) <- [T.splitOn "\t" l] ]
-      case lookup (raw cur) [ (T.unpack sid, nm) | (sid, nm) <- sessions ] of
-        Just nm | nm == home -> return cur
-        _ -> do
-          mdst <- case [ sid | (sid, nm) <- sessions, nm == home ] of
-            (sid : _) -> return (Just (sid, Nothing))
-            [] -> do
-              out <- tmuxStdoutOn srv
-                ["new-session", "-d", "-s", T.unpack home
-                , "-P", "-F", "#{session_id}\t#{window_id}"]
-              return $ case T.splitOn "\t" (T.strip out) of
-                [sid, pw] | not (T.null sid) -> Just (sid, Just pw)
-                _                            -> Nothing
-          case mdst of
-            Nothing -> return cur
-            Just (sid, mplaceholder) -> do
-              tmuxCmdOn srv ["move-window", "-d", "-s", raw w, "-t", T.unpack sid <> ":"]
-              forM_ mplaceholder $ \pw -> tmuxCmdOn srv ["kill-window", "-t", T.unpack pw]
-              return (qualifyTmuxId srv sid)
+  windowAgents w >>= \case
+    [] -> return cur
+    _ -> sessionNamed w agentsSessionName >>= \case
+      Just home | rawTmuxId home == rawTmuxId cur -> return cur
+      _ -> fromMaybe cur <$> moveWindowToAgents w
 
 -- | Rename session @s@ (a session id) to @name@.
 renameTmuxSession :: Text -> Text -> IO ()

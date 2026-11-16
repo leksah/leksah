@@ -27,6 +27,8 @@ module IDE.Web.ReplTmux
   , ensureCommandWindow
   , newSessionWindow
   , newWindowInSession
+  , agentsSessionName
+  , newAgentWindow
   , activePaneIdOfWindow
   , ensureRemoteWindow
   , openTerminalInDir
@@ -48,6 +50,8 @@ module IDE.Web.ReplTmux
   ) where
 
 import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
+import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (catch, SomeException)
 import Control.Monad (void, mfilter, forM_)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -703,6 +707,63 @@ newWindowInSession sid dir mkey cmd keepShell =
                         , "@leksah_run", T.unpack key]
                 return (Just wid)
               _ -> return Nothing
+
+-- | The tmux session every agent leksah starts lives in, one window each,
+-- named after its agent.  One session for all of them means a pane dragged
+-- between agents' tabs and out again can't be left living in another agent's
+-- session, and the Terminals tree shows the agents as one group.
+agentsSessionName :: Text
+agentsSessionName = "Agents"
+
+-- | Serializes 'newAgentWindow', so two launches at once can't both find no
+-- Agents session and both try to create it.
+{-# NOINLINE agentsLock #-}
+agentsLock :: MVar ()
+agentsLock = unsafePerformIO (newMVar ())
+
+-- | A new DETACHED window for agent @name@ in the Agents session
+-- ('agentsSessionName' — created by the first launch), in @dir@ running
+-- @cmd@ (login-shell fallback as in 'newSessionWindow'), its pane tagged with
+-- the run key.  Same result shape as 'newSessionWindow':
+-- @(session id, window id, pane id)@, so a launch can switch between them.
+-- The window is created with its agent's name when the launch knows it
+-- (which also turns tmux's automatic renaming off for it); otherwise tmux
+-- names it until the Terminals poll can ('tagAgentWindow').
+newAgentWindow :: Maybe Text -> FilePath -> Maybe Text -> Text -> Bool
+               -> IO (Maybe (Text, Text, Text))
+newAgentWindow mname dir mkey cmd keepShell =
+  (`catch` \(_ :: SomeException) -> return Nothing) $
+    findExecutable "tmux" >>= \case
+        Nothing -> return Nothing
+        Just tmux -> withMVar agentsLock $ \_ -> do
+            shell <- getLoginShell
+            conf  <- writeTmuxConf shell
+            let run as = readProcessWithExitCode tmux
+                             (["-L", tmuxSocket, "-f", conf] ++ as) ""
+                line = T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell
+                fmt  = "#{session_id}\t#{window_id}\t#{pane_id}"
+                ids out = case T.splitOn "\t" (T.strip (T.pack out)) of
+                  (sid : wid : pid : _) | not (T.null pid) -> Just (sid, wid, pid)
+                  _                                        -> Nothing
+                -- "=Agents:" is the session named exactly that (a bare name
+                -- would also match "Agents-2" by prefix).
+                inExisting = run $ [ "new-window", "-d", "-t", "=" <> T.unpack agentsSessionName <> ":"
+                                   ] <> named <> [ "-c", dir, "-P", "-F", fmt, line ]
+                named = maybe [] (\n -> ["-n", T.unpack n]) mname
+            (rc, out, _) <- inExisting
+            r <- case rc of
+              ExitSuccess -> return (ids out)
+              _ -> do
+                (rc2, out2, _) <- run $
+                  [ "new-session", "-d", "-s", T.unpack agentsSessionName
+                  ] <> named <> [ "-c", dir, "-P", "-F", fmt, line ]
+                case rc2 of
+                  ExitSuccess -> return (ids out2)
+                  -- another leksah made it in the meantime
+                  _ -> (\(_, o, _) -> ids o) <$> inExisting
+            forM_ r $ \(_, _, pid) -> forM_ mkey $ \key ->
+                run ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack key]
+            return r
 
 -- | The command a plain terminal in @dir@ runs: the owning project's command
 -- prefix wrapping the login shell (so e.g. a nix dev-shell terminal), or a

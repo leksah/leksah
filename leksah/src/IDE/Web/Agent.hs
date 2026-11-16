@@ -140,7 +140,7 @@ import IDE.Web.Codex
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
-       (freshSessionName, liveRunPanes, newSessionWindow, pasteTo,
+       (freshSessionName, liveRunPanes, newAgentWindow, pasteTo,
         sendKeysTo, splitPane, tmuxCmd, tmuxOut)
 import IDE.Web.TmuxServer (TmuxServer(LocalServer), tmuxStdoutOn)
 
@@ -293,8 +293,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
               requestLocalTerm tsess
               return (Right (asSession spec, described ownName spec live ("pane " <> newPane)))
         Nothing -> do
-          name <- freshSessionName ownName
-          newSessionWindow name (asDir spec) (Just key) line False >>= \case
+          newAgentWindow (Just ownName) (asDir spec) (Just key) line False >>= \case
             Nothing -> return (Left "could not open a terminal for the agent")
             Just (tsess, wid, _) -> do
               requestNewLw (tsess, wid)
@@ -546,12 +545,20 @@ renameAgentEverywhere sid new = do
   res <- renameAgent sid new
   case (res, old) of
     (Right nm, Just o) -> do
-      paneForSession sid >>= mapM_ (\(ts, _, _) -> do
+      paneForSession sid >>= mapM_ (\(ts, _, pane) -> do
+        let namedAfter c = c == o || (o <> "-") `T.isPrefixOf` c
         cur <- fmap T.strip <$> tmuxOut
                  ["display-message", "-p", "-t", T.unpack ts, "#{session_name}"]
-        when (maybe False (\c -> c == o || (o <> "-") `T.isPrefixOf` c) cur) $ do
+        when (maybe False namedAfter cur) $ do
           fresh <- freshSessionName nm
-          tmuxCmd ["rename-session", "-t", T.unpack ts, T.unpack fresh])
+          tmuxCmd ["rename-session", "-t", T.unpack ts, T.unpack fresh]
+        -- …and its window (an agent in the shared Agents session is named
+        -- by its window, which the Terminals poll won't rename from a name
+        -- that is no longer an agent's)
+        win <- fmap T.strip <$> tmuxOut
+                 ["display-message", "-p", "-t", T.unpack pane, "#{window_name}"]
+        when (win == Just o) $
+          tmuxCmd ["rename-window", "-t", T.unpack pane, T.unpack nm])
       return res
     _ -> return res
 

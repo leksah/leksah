@@ -85,6 +85,7 @@ import IDE.Web.Widget.Terminal
        (TmuxWindow(..), TmuxPane(..), listTerminalTree, killTmuxWindow,
         killTmuxPane, newTmuxWindow, zoomTmuxPane, breakTmuxPane, moveTmuxPane,
         moveRemoteTmuxPane, renameTmuxSession, renameTmuxWindow, isClaudePane)
+import IDE.Web.ReplTmux (agentsSessionName)
 import IDE.Web.Widget.Tree (treeItem)
 import IDE.Web.Widget.Menu (rowMenu)
 import IDE.Web.AddServerRequest (requestAddServer)
@@ -781,11 +782,18 @@ sessionRow activeD attnD n vD = do
       dynText rawNameD
   renE <- renameControl rawNameD (renameTmuxSession n)
   newWinE <- actionBtn "+" "New window in this session"
-  killE <- confirmClose
+  -- The shared Agents session holds every agent leksah started: its ✕ would
+  -- end all of them at once, so it has none (close agents one by one), and
+  -- the menu's kill says what it would do.
+  isAgentsD <- holdUniqDyn ((== agentsSessionName) <$> rawNameD)
+  killE <- switchHold never =<< dyn (ffor isAgentsD $ \a ->
+             if a then return never else confirmClose)
   menuE <- rowMenu labelEl
     [ constDyn ("Show",         Right (SelectTerminal n))
     , constDyn ("New Window",   Left (newTmuxWindow n))
-    , constDyn ("Kill Session", Right (CloseTerminal n)) ]
+    , ffor isAgentsD $ \a ->
+        ( if a then "Kill Session (ends every agent)" else "Kill Session"
+        , Right (CloseTerminal n) ) ]
   return $ leftmost [ menuE
                     , Right (SelectTerminal n) <$ domEvent Click labelEl
                     , Left <$> renE

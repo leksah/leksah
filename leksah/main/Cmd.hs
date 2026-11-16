@@ -151,6 +151,8 @@ usage = T.unlines
   , "  leksah-cmd agent suspend|resume|refresh SID"
   , "                                     end its process but keep it / bring it back /"
   , "                                     ask it to rewrite its title, description and bio"
+  , "  leksah-cmd agent gather [NAME...]  move agents' tabs from sessions of their own into"
+  , "                                     the shared Agents tmux session"
   , "  leksah-cmd agent manager [start]   the team's manager agent: who it is / start it"
   , "  leksah-cmd team                    open the Team pane (a bio card for every agent)"
   , "                                     (every SID may also be the agent's name, e.g. wren)"

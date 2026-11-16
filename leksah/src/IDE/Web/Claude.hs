@@ -144,7 +144,7 @@ import IDE.Web.AgentNames
 import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
         liveRunPanes, livePanePids, livePaneTitles, tmuxCmd, sendKeysTo, findRunPane,
-        newSessionWindow, freshSessionName)
+        newAgentWindow)
 import IDE.Web.RemoteTermRequest (requestLocalTerm, requestBringTerm)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.SplitLayout (windowOwner)
@@ -820,13 +820,13 @@ runClaudeCmd cmd = void . forkIO $ do
       tmuxCmd ["select-pane", "-t", T.unpack pid]
       requestLocalTerm sid
     Nothing -> do
-      -- The tmux session (so the tab, and the spoken bell) is called after the
-      -- agent ("Wren") whenever the launch pins its session id; a launch that
-      -- can't know its id yet (@-c@, the picker) is renamed by the Terminals
-      -- poll once its session shows up ('IDE.Web.Widget.Terminal').
-      base <- maybe (return "claude") agentNameFor (sessionOfRunKey key)
-      name <- freshSessionName base
-      newSessionWindow name d (Just key) line' False
+      -- A window of the shared Agents session, called after the agent
+      -- ("Wren": the tab, and the spoken bell) whenever the launch pins its
+      -- session id; a launch that can't know its id yet (@-c@, the picker)
+      -- is named by the Terminals poll once its session shows up
+      -- ('IDE.Web.Widget.Terminal').
+      name <- traverse agentNameFor (sessionOfRunKey key)
+      newAgentWindow name d (Just key) line' False
         >>= mapM_ (\(sid, wid, _) -> requestNewLw (sid, wid))
 
 -- | Resolve a 'ClaudeCmd' to its @(working dir, run key, shell command line)@,
