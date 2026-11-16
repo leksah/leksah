@@ -861,9 +861,12 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       obj k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Object
       toolName = fromMaybe "" (field "tool_name")
       toolInput = fromMaybe mempty (obj "tool_input")
-  proc <- maybe (return Nothing) claudeProcessOf mpid
-  -- (Not the per-tool events: they come several times a turn.)
-  if ev `elem` ["PreToolUse", "PostToolUse", "PostToolUseFailure"] then return ()
+  -- The per-tool events come several times a turn, and PreToolUse holds the
+  -- tool call until this answers: they skip the claude-process lookup (a
+  -- `ps` walk, ~100ms) — only SessionStart uses it — and the log line.
+  let perTool = ev `elem` ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
+  proc <- if perTool then return Nothing else maybe (return Nothing) claudeProcessOf mpid
+  if perTool then return ()
     else logHook ev proc [sid, field "source", field "reason", field "notification_type"
                          , field "error", field "tool_name"]
   case (ev, sid) of
@@ -889,11 +892,11 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       if source == "startup" then return "" else briefing new
     -- What it is doing this moment (the activity line), and what it changed.
     ("PreToolUse", Just s) -> do
-      recordToolStart s (describeToolUse toolName toolInput)
+      recordToolStart s (field "tool_use_id") (describeToolUse toolName toolInput)
       return ""
-    ("PostToolUseFailure", Just s) -> recordToolEnd s >> return ""
+    ("PostToolUseFailure", Just s) -> recordToolEnd s (field "tool_use_id") >> return ""
     ("PostToolUse", Just s) -> do
-      recordToolEnd s
+      recordToolEnd s (field "tool_use_id")
       let files = editedFiles toolName toolInput (v >>= parseMaybe (withObject "hook" (.: "tool_response")))
       if null files then return "" else do
         recordEdit s files

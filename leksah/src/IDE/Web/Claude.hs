@@ -882,13 +882,15 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
           -- next poll.  Each is `leksah-cmd agent hook EVENT`, which always
           -- exits 0 quickly, so a hook can never hold up or fail a session.
           --
-          -- The rest only REPORT, so they run async where Claude Code allows
-          -- it — they never hold a session up: the tool call running now
-          -- (PreToolUse / PostToolUse[Failure]) and the files it edited, the approval a
+          -- The rest only REPORT, so they run async — they never hold a
+          -- session up: the tool call running now (PreToolUse /
+          -- PostToolUse[Failure]) and the files it edited, the approval a
           -- session waits for (PermissionRequest), a turn that ended on an
           -- API error (StopFailure), and where its shell went (CwdChanged).
-          -- A PostToolUse answer (another agent edited the same file) reaches
-          -- the session on its next turn.
+          -- PreToolUse above all: a synchronous hook there delays EVERY tool
+          -- call by the hook's run time.  A PostToolUse answer (another agent
+          -- edited the same file) reaches the session on its next turn.
+          -- (Async hooks can arrive out of order; 'recordToolStart' copes.)
           let hookGroup :: Bool -> Text -> Value
               hookGroup async ev = object [ "hooks" .=
                 [ object ([ "type"    .= ("command" :: Text)
@@ -909,13 +911,9 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
                                      , "command" .= script
                                      , "timeout" .= (10 :: Int) ] ] ]
                     , reporter "PostToolUse" ] ]
-                 <> map lifecycle ["SessionStart", "Stop", "Notification", "SessionEnd"
-                                  -- (Claude Code does not run an async
-                                  -- PreToolUse hook; this one answers at once
-                                  -- with nothing, which leaves the call alone.)
-                                  , "PreToolUse"]
+                 <> map lifecycle ["SessionStart", "Stop", "Notification", "SessionEnd"]
                  <> map (hookOn True)
-                      [ "PostToolUseFailure", "PermissionRequest"
+                      [ "PreToolUse", "PostToolUseFailure", "PermissionRequest"
                       , "StopFailure", "CwdChanged" ]) ]
           return (" --settings " <> T.pack path)
         _ -> return ""

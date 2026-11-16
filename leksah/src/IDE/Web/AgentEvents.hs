@@ -38,10 +38,13 @@ data SessionEvents = SessionEvents
   , seError      :: Maybe (Text, Double)  -- ^ the API error its turn ended on
   , seEdits      :: [(FilePath, Double)]  -- ^ files it edited, newest first
   , seCwd        :: Maybe FilePath        -- ^ where its shell is now
+  , seToolId     :: Maybe Text            -- ^ 'seTool''s tool_use_id, if known
+  , seEnded      :: [Text]                -- ^ tool_use_ids that have finished
+                                          --   (the last few): see 'recordToolStart'
   } deriving (Eq, Show)
 
 none :: SessionEvents
-none = SessionEvents Nothing Nothing Nothing [] Nothing
+none = SessionEvents Nothing Nothing Nothing [] Nothing Nothing []
 
 {-# NOINLINE eventsRef #-}
 eventsRef :: IORef (Map Text SessionEvents)
@@ -61,14 +64,29 @@ update sid f = do
 
 -- | A tool call starting (PreToolUse).  A new call also means the turn is
 -- going again: no error stands, and any approval was answered.
-recordToolStart :: Text -> Text -> IO ()
-recordToolStart sid what = update sid $ \now e ->
-  e { seTool = Just (what, now), seError = Nothing, sePermission = Nothing }
+--
+-- The hooks are ASYNC (they never hold a tool call up), so for a quick tool
+-- its PostToolUse report can arrive first: a start whose @tool_use_id@ has
+-- already finished is ignored, or the row would say "running …" until the
+-- next event.
+recordToolStart :: Text -> Maybe Text -> Text -> IO ()
+recordToolStart sid uid what = update sid $ \now e ->
+  if maybe False (`elem` seEnded e) uid then e
+  else e { seTool = Just (what, now), seToolId = uid
+         , seError = Nothing, sePermission = Nothing }
 
 -- | A tool call finished, one way or the other (PostToolUse /
--- PostToolUseFailure).
-recordToolEnd :: Text -> IO ()
-recordToolEnd sid = update sid $ \_ e -> e { seTool = Nothing, sePermission = Nothing }
+-- PostToolUseFailure).  Clears the running tool only when it is THIS call (or
+-- either id is unknown): with parallel calls, another may still be running.
+recordToolEnd :: Text -> Maybe Text -> IO ()
+recordToolEnd sid uid = update sid $ \_ e ->
+  let mine = case (uid, seToolId e) of
+        (Just u, Just t) -> u == t
+        _                -> True
+  in e { seTool = if mine then Nothing else seTool e
+       , seToolId = if mine then Nothing else seToolId e
+       , sePermission = Nothing
+       , seEnded = take 32 (maybe id (:) uid (seEnded e)) }
 
 -- | Waiting for the user to approve this (PermissionRequest).
 recordPermission :: Text -> Text -> IO ()
@@ -77,12 +95,12 @@ recordPermission sid what = update sid $ \now e -> e { sePermission = Just (what
 -- | The turn ended on an API error (StopFailure).
 recordFailure :: Text -> Text -> IO ()
 recordFailure sid err = update sid $ \now e ->
-  e { seError = Just (err, now), seTool = Nothing, sePermission = Nothing }
+  e { seError = Just (err, now), seTool = Nothing, seToolId = Nothing, sePermission = Nothing }
 
 -- | The turn ended normally (Stop): nothing is running, nothing is waiting.
 recordTurnEnd :: Text -> IO ()
 recordTurnEnd sid = update sid $ \_ e ->
-  e { seTool = Nothing, sePermission = Nothing, seError = Nothing }
+  e { seTool = Nothing, seToolId = Nothing, sePermission = Nothing, seError = Nothing }
 
 -- | It edited these files (kept to the 100 most recent).
 recordEdit :: Text -> [FilePath] -> IO ()

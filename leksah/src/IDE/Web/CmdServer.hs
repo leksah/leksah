@@ -801,6 +801,11 @@ handleConn app conn = do
     -- the client's pid walked up to the @claude@ process above it, if any.  That
     -- is what lets `agent fork` take no arguments (fork me, beside me), `agent
     -- list` mark "(you)", and a child's report reach the right parent.
+    -- A Claude Code hook (`leksah-cmd agent hook EVENT`, its JSON as the next
+    -- argument): see 'agentHook'.  The reply is what the hook prints.  Ahead
+    -- of the WHO lookup below — a `ps` walk a hook never needs, and hooks run
+    -- on every tool call (PreToolUse holds the call until it answers).
+    agentVerb mpid _ ("hook" : ev : raw : _) = agentHook mpid ev raw >>= reply
     agentVerb mpid cwd args = do
       me <- maybe (return Nothing) sessionOwningPid mpid
       case args of
@@ -843,9 +848,6 @@ handleConn app conn = do
           _ -> reply ("agent rename: give a new name (and, from outside an agent, "
                       <> "which agent)\n\n" <> agentUsage)
         ("roles" : _) -> agentRoleList cwd >>= reply
-        -- A Claude Code hook (`leksah-cmd agent hook EVENT`, its JSON as the
-        -- next argument): see 'agentHook'.  The reply is what the hook prints.
-        ("hook" : ev : raw : _) -> agentHook mpid ev raw >>= reply
         ("events" : who : _) | not (T.null who) -> withAgent who $ \sid ->
             agentEvents sid >>= reply
         -- Ending an agent's process on purpose, keeping the agent; and
