@@ -323,7 +323,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
     let paneCbs = PaneCallbacks
           { pcLink   = triggerLink
           , pcLookup = triggerLookup
-          , pcBell   = triggerBell ()
+          , pcBell   = triggerBell . Just
           , pcHover  = fireHoverResp
           }
 
@@ -1498,16 +1498,16 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                                (void (ffilter (== lid) viewFocusE))
                                                leafViewW closeMenuD renderCloseMenu
                                       let isBell e = case e of
-                                            TerminalBell -> True
-                                            _            -> False
+                                            TerminalBell p -> Just p
+                                            _              -> Nothing
                                           isTree e = case e of
                                             TerminalTreeChanged -> True
                                             _                   -> False
                                           paneFocus e = case e of
                                             TerminalPaneFocused{} -> Just e
                                             _                     -> Nothing
-                                      performEvent_ $ ffor (ffilter isBell evs) $
-                                          \_ -> liftIO (triggerBell ())
+                                      performEvent_ $ ffor (fmapMaybe isBell evs) $
+                                          liftIO . triggerBell
                                       -- its windows coming and going re-poll
                                       -- the trees (the IDE pokes the remote
                                       -- poll for a tab holding remote children)
@@ -1733,7 +1733,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
     -- as the PTY widget's reader-EOF path.
     return $ leftmost
       [ gotoE
-      , TerminalBell <$ bellE
+      , TerminalBell <$> bellE
       , fmapMaybe (\case
           EvWindowRenamed _ nm -> Just (TerminalTitle nm)
           -- A LOCAL client exiting (session ended) closes the tab.  A REMOTE
@@ -2004,7 +2004,7 @@ halfPx cell = T.pack (show (cell / 2)) <> "px"
 data PaneCallbacks = PaneCallbacks
   { pcLink   :: (FilePath, Int, Int) -> IO ()
   , pcLookup :: (Text, Int, Int) -> IO ()
-  , pcBell   :: IO ()
+  , pcBell   :: PaneId -> IO ()      -- ^ the pane that rang
   , pcHover  :: (Int, Maybe Text) -> IO ()
   }
 
@@ -2266,7 +2266,7 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
         clip <- new (jsg ("ClipboardAddon" :: Text) ^. js ("ClipboardAddon" :: Text)) ()
         _ <- term ^. js1 ("loadAddon" :: Text) clip
         -- Bell (Claude Code's needs-input signal) → leksah attention.
-        _ <- term ^. js1 ("onBell" :: Text) (fun $ \_ _ _ -> liftIO (pcBell cbs))
+        _ <- term ^. js1 ("onBell" :: Text) (fun $ \_ _ _ -> liftIO (pcBell cbs pane))
         -- the grid IS the tmux pane's cells; the box already matches
         _ <- term ^. js2 ("resize" :: Text) w h
         -- Keystrokes → tmux.  ccSendBytes is fire-and-forget, so no forkIO:

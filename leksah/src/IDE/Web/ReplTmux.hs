@@ -29,6 +29,7 @@ module IDE.Web.ReplTmux
   , newWindowInSession
   , agentsSessionName
   , newAgentWindow
+  , withAgentsSession
   , activePaneIdOfWindow
   , ensureRemoteWindow
   , openTerminalInDir
@@ -52,7 +53,7 @@ module IDE.Web.ReplTmux
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import System.IO.Unsafe (unsafePerformIO)
-import Control.Exception (catch, SomeException)
+import Control.Exception (bracket_, catch, SomeException)
 import Control.Monad (void, mfilter, forM_)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.List (find, isPrefixOf, sortOn)
@@ -86,7 +87,7 @@ import IDE.Web.TmuxServer
 import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
 import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
-import IDE.Web.NewLwRequest (requestNewLwIn)
+import IDE.Web.NewLwRequest (requestNewLwIn, beginConversion, endConversion)
 
 -- | The private tmux server socket leksah's terminals live on (so they don't
 -- mix with the user's own tmux sessions, and so its options don't touch their
@@ -694,18 +695,26 @@ newSessionWindow name dir mkey cmd keepShell =
 newWindowInSession :: Text -> FilePath -> Maybe Text -> Text -> Bool
                    -> IO (Maybe Text)
 newWindowInSession sid dir mkey cmd keepShell =
+  fmap fst <$> newNamedWindowIn Nothing sid dir mkey cmd keepShell
+
+-- | 'newWindowInSession', optionally naming the window (which turns tmux's
+-- automatic renaming off for it), returning @(window id, pane id)@.
+newNamedWindowIn :: Maybe Text -> Text -> FilePath -> Maybe Text -> Text -> Bool
+                 -> IO (Maybe (Text, Text))
+newNamedWindowIn mname sid dir mkey cmd keepShell =
   (`catch` \(_ :: SomeException) -> return Nothing) $ do
             shell <- getLoginShell
-            out <- tmuxStdout
-                [ "new-window", "-d", "-t", T.unpack sid
-                , "-c", dir, "-P", "-F", "#{window_id}\t#{pane_id}"
-                , T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell ]
+            out <- tmuxStdout $
+                [ "new-window", "-d", "-t", T.unpack sid ]
+                <> maybe [] (\n -> ["-n", T.unpack n]) mname
+                <> [ "-c", dir, "-P", "-F", "#{window_id}\t#{pane_id}"
+                   , T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell ]
             case T.splitOn "\t" (T.strip out) of
               (wid : pid : _) | not (T.null pid) -> do
                 forM_ mkey $ \key ->
                     tmuxCmd ["set-option", "-p", "-t", T.unpack pid
                         , "@leksah_run", T.unpack key]
-                return (Just wid)
+                return (Just (wid, pid))
               _ -> return Nothing
 
 -- | The tmux session every agent leksah starts lives in, one window each,
@@ -715,55 +724,62 @@ newWindowInSession sid dir mkey cmd keepShell =
 agentsSessionName :: Text
 agentsSessionName = "Agents"
 
--- | Serializes 'newAgentWindow', so two launches at once can't both find no
--- Agents session and both try to create it.
+-- | Serializes 'withAgentsSession', so two callers can't both find no Agents
+-- session and both try to create it.
 {-# NOINLINE agentsLock #-}
 agentsLock :: MVar ()
 agentsLock = unsafePerformIO (newMVar ())
 
--- | A new DETACHED window for agent @name@ in the Agents session
--- ('agentsSessionName' — created by the first launch), in @dir@ running
--- @cmd@ (login-shell fallback as in 'newSessionWindow'), its pane tagged with
--- the run key.  Same result shape as 'newSessionWindow':
--- @(session id, window id, pane id)@, so a launch can switch between them.
--- The window is created with its agent's name when the launch knows it
--- (which also turns tmux's automatic renaming off for it); otherwise tmux
+-- | THE way into the Agents session, for everything that puts a window there
+-- (a launch, a split-out, @agent gather@): run @act@ with the session's id —
+-- and, when it had to be created, the placeholder window tmux creates a
+-- session with, for @act@ to kill once its own window is in.  Holds
+-- 'agentsLock'; if another leksah on the server created the session in
+-- between, that one is used.  A creation runs under the conversion guard
+-- ('beginConversion'), so the reconcile can't adopt the placeholder as a
+-- stray tab before it is gone.  @act Nothing@ when tmux refuses.
+withAgentsSession :: (Maybe (Text, Maybe Text) -> IO a) -> IO a
+withAgentsSession act = withMVar agentsLock $ \_ -> findAgents >>= \case
+    Just sid -> act (Just (sid, Nothing))
+    Nothing  -> bracket_ beginConversion endConversion $ do
+      created <- (`catch` \(_ :: SomeException) -> return Nothing) $
+        findExecutable "tmux" >>= \case
+          Nothing   -> return Nothing
+          Just tmux -> do
+            conf <- writeTmuxConf =<< getLoginShell
+            (rc, out, _) <- readProcessWithExitCode tmux
+              [ "-L", tmuxSocket, "-f", conf
+              , "new-session", "-d", "-s", T.unpack agentsSessionName
+              , "-P", "-F", "#{session_id}\t#{window_id}" ] ""
+            return $ case (rc, T.splitOn "\t" (T.strip (T.pack out))) of
+              (ExitSuccess, [sid, pw]) | not (T.null sid) -> Just (sid, Just pw)
+              _                                           -> Nothing
+      case created of
+        Just c  -> act (Just c)
+        Nothing -> findAgents >>= act . fmap (\s -> (s, Nothing))
+  where
+    findAgents = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+      out <- tmuxStdout ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
+      return $ listToMaybe
+        [ sid | l <- T.lines out, (sid : nm) <- [T.splitOn "\t" l]
+              , T.intercalate "\t" nm == agentsSessionName ]
+
+-- | A new DETACHED window for an agent in the Agents session
+-- ('withAgentsSession'), in @dir@ running @cmd@ (login-shell fallback as in
+-- 'newSessionWindow'), its pane tagged with the run key.  Same result shape
+-- as 'newSessionWindow': @(session id, window id, pane id)@.  The window is
+-- created with its agent's name when the launch knows it; otherwise tmux
 -- names it until the Terminals poll can ('tagAgentWindow').
 newAgentWindow :: Maybe Text -> FilePath -> Maybe Text -> Text -> Bool
                -> IO (Maybe (Text, Text, Text))
 newAgentWindow mname dir mkey cmd keepShell =
   (`catch` \(_ :: SomeException) -> return Nothing) $
-    findExecutable "tmux" >>= \case
-        Nothing -> return Nothing
-        Just tmux -> withMVar agentsLock $ \_ -> do
-            shell <- getLoginShell
-            conf  <- writeTmuxConf shell
-            let run as = readProcessWithExitCode tmux
-                             (["-L", tmuxSocket, "-f", conf] ++ as) ""
-                line = T.unpack cmd <> (if keepShell then " ; exec " else " || exec ") <> shell
-                fmt  = "#{session_id}\t#{window_id}\t#{pane_id}"
-                ids out = case T.splitOn "\t" (T.strip (T.pack out)) of
-                  (sid : wid : pid : _) | not (T.null pid) -> Just (sid, wid, pid)
-                  _                                        -> Nothing
-                -- "=Agents:" is the session named exactly that (a bare name
-                -- would also match "Agents-2" by prefix).
-                inExisting = run $ [ "new-window", "-d", "-t", "=" <> T.unpack agentsSessionName <> ":"
-                                   ] <> named <> [ "-c", dir, "-P", "-F", fmt, line ]
-                named = maybe [] (\n -> ["-n", T.unpack n]) mname
-            (rc, out, _) <- inExisting
-            r <- case rc of
-              ExitSuccess -> return (ids out)
-              _ -> do
-                (rc2, out2, _) <- run $
-                  [ "new-session", "-d", "-s", T.unpack agentsSessionName
-                  ] <> named <> [ "-c", dir, "-P", "-F", fmt, line ]
-                case rc2 of
-                  ExitSuccess -> return (ids out2)
-                  -- another leksah made it in the meantime
-                  _ -> (\(_, o, _) -> ids o) <$> inExisting
-            forM_ r $ \(_, _, pid) -> forM_ mkey $ \key ->
-                run ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack key]
-            return r
+    withAgentsSession $ \case
+      Nothing -> return Nothing
+      Just (sid, mplaceholder) -> do
+        r <- newNamedWindowIn mname sid dir mkey cmd keepShell
+        forM_ mplaceholder $ \pw -> tmuxCmd ["kill-window", "-t", T.unpack pw]
+        return ((\(w, p) -> (sid, w, p)) <$> r)
 
 -- | The command a plain terminal in @dir@ runs: the owning project's command
 -- prefix wrapping the login shell (so e.g. a nix dev-shell terminal), or a

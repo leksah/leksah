@@ -782,19 +782,22 @@ sessionRow activeD attnD n vD = do
       dynText rawNameD
   renE <- renameControl rawNameD (renameTmuxSession n)
   newWinE <- actionBtn "+" "New window in this session"
-  -- The shared Agents session holds every agent leksah started: its ✕ would
-  -- end all of them at once, so it has none (close agents one by one), and
-  -- the menu's kill says what it would do.
+  -- The shared Agents session holds every agent leksah started: killing it
+  -- ends all of them at once.  So it has no ✕ (close agents one by one), and
+  -- its menu's kill only opens the confirmation, which says what it does.
+  -- (A menu item of 'Nothing' = "ask first".)
   isAgentsD <- holdUniqDyn ((== agentsSessionName) <$> rawNameD)
-  killE <- switchHold never =<< dyn (ffor isAgentsD $ \a ->
-             if a then return never else confirmClose)
-  menuE <- rowMenu labelEl
-    [ constDyn ("Show",         Right (SelectTerminal n))
-    , constDyn ("New Window",   Left (newTmuxWindow n))
-    , ffor isAgentsD $ \a ->
-        ( if a then "Kill Session (ends every agent)" else "Kill Session"
-        , Right (CloseTerminal n) ) ]
-  return $ leftmost [ menuE
+  rec killE <- switchHold never =<< dyn (ffor isAgentsD $ \a ->
+               if a then confirmCloseWith False "Kill every agent" askKillE
+                    else confirmClose)
+      menuE <- rowMenu labelEl
+        [ constDyn ("Show",         Just (Right (SelectTerminal n)))
+        , constDyn ("New Window",   Just (Left (newTmuxWindow n)))
+        , ffor isAgentsD $ \a ->
+            if a then ("Kill Session (ends every agent)…", Nothing)
+                 else ("Kill Session", Just (Right (CloseTerminal n))) ]
+      let askKillE = fmapMaybe (maybe (Just ()) (const Nothing)) menuE
+  return $ leftmost [ fmapMaybe id menuE
                     , Right (SelectTerminal n) <$ domEvent Click labelEl
                     , Left <$> renE
                     , Left (newTmuxWindow n) <$ newWinE
@@ -874,18 +877,25 @@ panesTree n widx panesD =
 -- work in this web view) or a native UI delegate (which would clash with
 -- jsaddle's bridge).
 confirmClose :: MonadWidget t m => m (Event t ())
-confirmClose = elClass "div" "terminals-close-slot" $ mdo
-  confirmingD <- holdDyn False setConfirmE
+confirmClose = confirmCloseWith True "Kill" never
+
+-- | 'confirmClose', with or without its ✕, its kill button's text, and an
+-- event that opens the confirmation from elsewhere (a row menu's item).
+confirmCloseWith :: MonadWidget t m => Bool -> Text -> Event t () -> m (Event t ())
+confirmCloseWith showX killLabel openE = elClass "div" "terminals-close-slot" $ mdo
+  confirmingD <- holdDyn False (leftmost [setConfirmE, True <$ openE])
   rowE <- dyn $ ffor confirmingD $ \confirming ->
     if confirming
       then elClass "div" "terminals-confirm" $ do
-        (killEl, _)   <- elClass' "button" "terminal-close"  $ text "Kill"
+        (killEl, _)   <- elClass' "button" "terminal-close"  $ text killLabel
         (cancelEl, _) <- elClass' "button" "terminal-cancel" $ text "Cancel"
         return ( leftmost [ False <$ domEvent Click killEl, False <$ domEvent Click cancelEl ]
                , domEvent Click killEl )
-      else do
-        (xEl, _) <- elClass' "button" "terminal-close" $ text "✕"
-        return ( True <$ domEvent Click xEl, never )
+      else if showX
+        then do
+          (xEl, _) <- elClass' "button" "terminal-close" $ text "✕"
+          return ( True <$ domEvent Click xEl, never )
+        else return (never, never)
   setConfirmE <- switchHold never (fst <$> rowE)
   switchHold never (snd <$> rowE)
 

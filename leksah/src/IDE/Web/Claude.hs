@@ -60,6 +60,7 @@ module IDE.Web.Claude
   , showLiveSessionHere
   , showTmuxPane
   , showTmuxPaneWith
+  , raiseTabOfPane
   , paneForSession
   , sessionForPaneId
   , sessionOwningPid
@@ -144,7 +145,7 @@ import IDE.Web.AgentNames
 import IDE.Web.ReplTmux
        (clipboardCopyCmd, cmdPrefixForDir, liveRunKeys,
         liveRunPanes, livePanePids, livePaneTitles, tmuxCmd, sendKeysTo, findRunPane,
-        newAgentWindow)
+        newAgentWindow, tmuxOut)
 import IDE.Web.RemoteTermRequest (requestLocalTerm, requestBringTerm)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.SplitLayout (windowOwner)
@@ -815,10 +816,9 @@ runClaudeCmd :: ClaudeCmd -> IO ()
 runClaudeCmd cmd = void . forkIO $ do
   (d, key, line') <- claudeCommandLine cmd
   findRunPane key >>= \case
-    Just (sid, wid, pid) -> do
-      tmuxCmd ["select-window", "-t", T.unpack wid]
-      tmuxCmd ["select-pane", "-t", T.unpack pid]
-      requestLocalTerm sid
+    -- (its own tab: the session's first would be another agent's, every
+    -- agent being on the Agents session)
+    Just (sid, wid, pid) -> showTmuxPane sid wid pid
     Nothing -> do
       -- A window of the shared Agents session, called after the agent
       -- ("Wren": the tab, and the spoken bell) whenever the launch pins its
@@ -1725,6 +1725,18 @@ showTmuxPaneWith here s w p = do
   tmuxCmd ["select-pane", "-t", T.unpack p]
   mlw <- lwForTmuxWindow w
   (if here then requestBringTerm else requestLocalTerm) (fromMaybe s mlw)
+
+-- | Bring up the tab holding tmux pane @p@: the leksah window owning its
+-- window, else its session's tab.  Not the session's tab outright — tabs
+-- share sessions (every agent's is on the Agents session), so that would be
+-- whichever tab the session reaches first.
+raiseTabOfPane :: Text -> IO ()
+raiseTabOfPane p = do
+  ids <- fmap (T.splitOn "\t" . T.strip) <$>
+           tmuxOut ["display-message", "-p", "-t", T.unpack p, "#{session_id}\t#{window_id}"]
+  case ids of
+    Just [s, w] | not (T.null s) -> lwForTmuxWindow w >>= requestLocalTerm . fromMaybe s
+    _                            -> return ()
 
 -- | The leksah window (wide0 tab) holding tmux window @w@, if one does.
 lwForTmuxWindow :: Text -> IO (Maybe Text)

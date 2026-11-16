@@ -71,7 +71,7 @@ import qualified Data.Map as M
         member, filter, filterWithKey, keysSet, singleton, mapWithKey, mapMaybe, empty, size, null)
 import Data.Map (Map)
 import qualified Data.Set as S
-       (Set, fromList, delete, null, singleton, empty, insert, member, intersection, toList)
+       (filter, Set, fromList, delete, null, singleton, empty, insert, member, toList)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Text (Text)
 import qualified Data.Text as T (pack, unpack, unlines, isPrefixOf, null, intercalate, breakOn, breakOnEnd, drop, dropEnd, length, take, stripPrefix, takeWhile, all, splitOn, replace, concatMap, singleton, dropWhile)
@@ -264,7 +264,7 @@ import IDE.Web.SaveRequest (requestSaveActiveFileWait)
 import IDE.Web.Claude
        (runClaudeCmd, claudeCommandLine, ClaudeCmd(..), ClaudeLive(..),
         claudeLiveBySession, paneCurrentPath, paneForSession, sendToSession,
-        showLiveSession, showLiveSessionHere)
+        showLiveSession, showLiveSessionHere, raiseTabOfPane)
 import IDE.Web.AISession
        (AIChoice(..), AIRow(..), activeAIPaneRef, aiPickerChoices, choiceKey)
 #if !defined(ghcjs_HOST_OS)
@@ -2472,15 +2472,19 @@ activePaneOfSession n tree = do
 -- its active pane, if it is one; otherwise the tmux (terminal) window NAME, then
 -- the pane number when the window has more than one pane, e.g.
 -- "leksah, 1" (or just "leksah" for a single-pane window; no "window"/"pane"
--- words, and NOT the OS window name) — for the terminal-bell announcement.  The
--- bell fires in the session's viewed (current/active) window; the pane is that
--- window's active pane.
-bellLocation :: Text -> Map Text (Text, [TmuxWindow]) -> Maybe Text
-bellLocation n tree = do
+-- words, and NOT the OS window name) — for the terminal-bell announcement.
+-- The pane that rang when it is known (a control-mode pane's bell carries its
+-- @#{pane_id}@ — the only way to tell agents apart in the shared Agents
+-- session), else the session's current window's active pane.
+bellLocation :: Text -> Maybe Text -> Map Text (Text, [TmuxWindow]) -> Maybe Text
+bellLocation n mp tree = do
   (_, wins) <- M.lookup n tree
-  w <- listToMaybe (filter twActive wins ++ wins)
+  let rang = do
+        p <- mp
+        listToMaybe [ (w', pn) | w' <- wins, pn <- twPanes w', tpId pn == p ]
+  w <- (fst <$> rang) <|> listToMaybe (filter twActive wins ++ wins)
   let name = stripIdxPrefix (twIndex w) (twLabel w)
-      pane = listToMaybe (filter tpActive (twPanes w) ++ twPanes w)
+      pane = (snd <$> rang) <|> windowActivePane w
       pnum = maybe (twIndex w) tpIndex pane
   -- An agent is announced by its own name ("Wren") — unique, and what its tab
   -- says, so no pane number is needed.  A lone pane needs no number either —
@@ -6428,8 +6432,7 @@ main showMenubar macTitlebar wid ctx = mdo
                        -- belongs to another tab when tabs share a session
                        -- (every agent's tab, in the Agents session).
                        Just s | Just (w, p) <- (lwFocusedWindow tree lw >>= \win ->
-                                  (\pn -> (twIndex win, tpIndex pn)) <$>
-                                    listToMaybe (filter tpActive (twPanes win) ++ twPanes win))
+                                  (,) (twIndex win) . tpIndex <$> windowActivePane win)
                                 <|> activePaneOfSession s tree ->
                          ( flipIconSrc lws tree (FlipPane s w p)
                          , flipPaneLabel s w p tree
@@ -6972,13 +6975,13 @@ main showMenubar macTitlebar wid ctx = mdo
               idleOrView mlw =
                 fromMaybe "/pics/tree-window-idle.svg" (mlw >>= viewIcon)
               iconD = (\mlw tree att -> case mlw >>= lwSession of
-                        Just s
-                          | s `S.member` att -> "/pics/tree-window-bell.svg"
+                        Just _
+                          | LeksahWinKey n `S.member` att -> "/pics/tree-window-bell.svg"
                           | otherwise ->
                               maybe (idleOrView mlw) windowIconSrc
                                 (mlw >>= lwFocusedWindow tree)
                         Nothing -> idleOrView mlw)
-                      <$> lwD' <*> allTreeD <*> attentionD
+                      <$> lwD' <*> allTreeD <*> attentionTabsD
               -- First-pane label, for sessionless windows and to tell apart
               -- SEVERAL leksah windows backed by one session.
               contentLabel lw tree = fromMaybe "(empty)" $ listToMaybe $
@@ -8639,7 +8642,12 @@ main showMenubar macTitlebar wid ctx = mdo
                          , Just (Identity e) <- [DM.lookup TerminalTab dm]
                          , f e ])
           (current leksahWindowsD') tabE
-        bellSessE = termSessionsBy (\case TerminalBell -> True; _ -> False)
+        -- Bells by TAB (and the pane that rang, when known), not by session:
+        -- every agent's tab is on the one Agents session, so a session says
+        -- neither whose bell it was nor which tab to badge.
+        bellTabsE = ffilter (not . null) $ ffor tabE $ \m ->
+          [ (k, mp) | (k, dm) <- M.toList m
+                    , Just (Identity (TerminalBell mp)) <- [DM.lookup TerminalTab dm] ]
         -- A control-mode tab saw a window created/closed: refresh the trees
         -- now instead of on the next 2s (local) / 10s (ssh) poll.
         treeChangedTabsE = termSessionsBy
@@ -8682,34 +8690,49 @@ main showMenubar macTitlebar wid ctx = mdo
     -- usual Claude Code "needs input" case: you've switched to another app, the
     -- terminal is still the active tab) DOES ping.  Reads document.hasFocus() per
     -- bell, hence performEvent rather than a pure gate.
+    -- Each away bell: (tab, the pane that rang if known, the tab's session).
     bellAwayRawE <- performEvent $ ffor
         (attach ((,) <$> current activePaneD <*> current leksahWindowsD')
-                bellSessE) $ \((active, lws), ns) -> do
+                bellTabsE) $ \((active, lws), bs) -> do
         foc <- liftJSM $ valToBool =<< eval ("document.hasFocus()" :: Text)
-        let away = filter (\n -> not (foc
-                     && (active >>= tabSessionOf lws) == Just n)) ns
-        wlog wid ("bell caught=" <> show ns <> " active=" <> show active
+        let away = [ (k, mp, tabSessionOf lws k)
+                   | (k, mp) <- bs, not (foc && active == Just k) ]
+        wlog wid ("bell caught=" <> show bs <> " active=" <> show active
                   <> " focus=" <> show foc <> " ping=" <> show away)
         return away
     let bellAwayE = ffilter (not . null) bellAwayRawE
-    -- Which sessions want attention (a viewed-window bell): set on bellAwayE,
-    -- cleared when the session becomes the active pane (you focused its tab), and
-    -- pruned to still-live sessions.  Drives the 🔔 badge on the tab + tree.
-    attentionD <- foldDyn ($) S.empty $ leftmost
-      [ (\ns s -> foldr S.insert s ns) <$> bellAwayE
-      , (\(lws, mk) s -> case mk >>= tabSessionOf lws of
-            Just n -> S.delete n s; _ -> s)
-          <$> attach (current leksahWindowsD') (updated activePaneD)
-      , (\tree s -> S.intersection s (S.fromList (M.keys tree))) <$> updated paneTreeD ]
+    -- Which TABS want attention (a viewed-window bell): set on bellAwayE,
+    -- cleared when the tab becomes the active pane (you focused it), and
+    -- pruned to still-live tabs.  Drives the 🔔 badge on the tab.  By tab, not
+    -- by session: the agents share the Agents session, and one agent's bell
+    -- must neither badge nor be cleared by another agent's tab.
+    attentionTabsD <- foldDyn ($) S.empty $ leftmost
+      [ (\bs s -> foldr (\(k, _, _) -> S.insert k) s bs) <$> bellAwayE
+      , (\mk s -> maybe s (`S.delete` s) mk) <$> updated activePaneD
+      , (\(lws, tree) s -> S.filter (liveBellTab lws tree) s)
+          <$> attach (current leksahWindowsD') (updated paneTreeD) ]
+    -- …and the sessions holding such a tab: the Terminals tree's session
+    -- rows and the session-keyed (remote) tabs badge from this.
+    let attentionD = (\lws att -> S.fromList (mapMaybe (tabSessionOf lws) (S.toList att)))
+                       <$> leksahWindowsD' <*> attentionTabsD
+        liveBellTab lws tree k = case k of
+          LeksahWinKey n -> M.member n lws
+          _              -> maybe False (`M.member` tree) (tabSessionOf lws k)
     -- Desktop notification for those bells (tmux's hook won't fire for a viewed
-    -- window), via the same osascript notify script.
-    performEvent_ $ ffor bellAwayE $ \ns -> liftIO (mapM_ notifyTerminalBell ns)
+    -- window), via the same osascript notify script — aimed at the pane that
+    -- rang when it is a local one (its window is named after its agent), else
+    -- at the session's current window.
+    performEvent_ $ ffor bellAwayE $ \bs -> liftIO $
+      forM_ bs $ \(_, mp, ms) -> case (mp, ms) of
+        (Just p, Just s) | not ("ssh://" `T.isPrefixOf` s) -> notifyTerminalBell p
+        (_, Just s)                                        -> notifyTerminalBell s
+        _                                                  -> return ()
     -- ...and, after the ping, SPEAK the belling terminal's location so you know
     -- which window/pane wants you without looking.  Location comes from the same
     -- pane-tree poll; multiple simultaneous bells are joined into one utterance.
     let bellAnnounceE = ffilter (not . null) $ attachWith
-          (\tree ns -> [ p | n <- ns, Just p <- [bellLocation n tree] ])
-          (current paneTreeD) bellAwayE
+          (\tree bs -> [ p | (_, mp, Just n) <- bs, Just p <- [bellLocation n mp tree] ])
+          (current allTreeD) bellAwayE
     performEvent_ $ ffor bellAnnounceE $ \phrases ->
         liftJSM . void $ jsg ("window" :: Text)
           ^. js1 ("leksahTermBell" :: Text) (T.intercalate ". " phrases)
@@ -9379,7 +9402,7 @@ main showMenubar macTitlebar wid ctx = mdo
                 forM_ mkey $ \k ->
                   tmuxCmd ["set-option", "-p", "-t", T.unpack pid, "@leksah_run", T.unpack k]
                 tmuxCmd ["select-pane", "-t", T.unpack pid]
-                sessionOfPane activePid >>= mapM_ requestLocalTerm
+                raiseTabOfPane pid
             placeClaude activePid ccmd = do
               (d, key, line') <- claudeCommandLine ccmd
               placeShell activePid d (Just line') (Just key)

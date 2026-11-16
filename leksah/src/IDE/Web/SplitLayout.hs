@@ -7,9 +7,13 @@
 -- native leksah views (editors, git logs), each with its own font size.
 --
 -- Persistence is split by backing.  Session-backed windows live ON their
--- tmux session, as the @\@leksah_layout@ session option (the session-level
--- sibling of the @\@leksah_run@ pane option): a base64-encoded, versioned
--- JSON blob holding every leksah window backed by that session.  Base64
+-- tmux windows: each leksah window as the @\@leksah_lw@ window option of its
+-- first tmux window (the window-level sibling of the @\@leksah_run@ pane
+-- option), a base64-encoded, versioned JSON blob — so it travels with the
+-- window when that moves to another session.  A session-backed window with
+-- no tmux window of its own falls back to the session's @\@leksah_layout@
+-- option, the format all of them used before; one option per session hit
+-- tmux's command-size limit once every agent shared the Agents session.  Base64
 -- sidesteps tmux quoting and any @#{}@ format expansion when the option is
 -- read back through a format string.  Storing it on the session means those
 -- layouts survive leksah restarts for as long as the tmux session lives, and
@@ -74,7 +78,9 @@ module IDE.Web.SplitLayout
 
 import Control.Applicative ((<|>))
 import Control.Exception (catch, SomeException)
-import Control.Monad (unless)
+import Control.Monad (forM_, unless, when)
+import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import System.IO.Unsafe (unsafePerformIO)
 import Data.Aeson
        (FromJSON(..), ToJSON(..), Value, object, withObject, (.=), (.:),
         (.:?), decodeStrict)
@@ -82,7 +88,7 @@ import qualified Data.Aeson as Aeson (encode)
 import Data.Aeson.Types (Parser, parseMaybe)
 import qualified Data.ByteString.Base64 as B64 (encode, decode)
 import qualified Data.ByteString.Lazy as LBS (toStrict)
-import Data.List (foldl', sortOn)
+import Data.List (foldl', partition, sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
        (adjust, delete, elems, empty, fromList, insert, keysSet, lookup, member,
@@ -90,10 +96,10 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
-       (difference, empty, fromList, insert, member, union, unions)
+       (difference, empty, fromList, insert, member, notMember, union, unions)
 import Data.Text (Text)
 import qualified Data.Text as T
-       (isPrefixOf, length, null, pack, splitOn, stripPrefix, unpack)
+       (isPrefixOf, length, lines, null, pack, splitOn, stripPrefix, unpack)
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import System.Log.Logger (debugM)
 import Text.Read (readMaybe)
@@ -885,20 +891,56 @@ removeLeaves dead = go
 -- tmux persistence
 --
 
--- | Persist one session's leksah windows onto it.  Fire-and-forget (failures
--- are logged and swallowed — the in-memory windows stay the runtime truth).
--- Remote (@ssh://@) session tabs keep today's single-window view, so their
--- layouts are not persisted.
+-- | What each tmux window's @\@leksah_lw@ was last set to by
+-- 'saveSessionLayouts', so a save rewrites only the windows whose leksah
+-- window changed (with every agent in one session, a session holds dozens).
+{-# NOINLINE lastWindowWrites #-}
+lastWindowWrites :: IORef (Map Text Text)
+lastWindowWrites = unsafePerformIO (newIORef M.empty)
+
+-- | Persist one session's leksah windows onto it: each on its first tmux
+-- window's @\@leksah_lw@, the windowless ones on the session's
+-- @\@leksah_layout@ (see the module header), and stale copies — a window no
+-- longer the first of the leksah window it describes — removed, so a read
+-- never finds one leksah window twice.  Fire-and-forget (failures are logged
+-- and swallowed — the in-memory windows stay the runtime truth).  Remote
+-- (@ssh://@) session tabs keep today's single-window view, so their layouts
+-- are not persisted.
 saveSessionLayouts :: Text -> [(Text, LeksahWindow)] -> IO ()
 saveSessionLayouts sid lws
   | "ssh://" `T.isPrefixOf` sid = return ()
   | otherwise = (`catch` \(_ :: SomeException) -> return ()) $ do
-      let b64 = encodeLayoutOption lws
-      if T.length b64 > 6144
-        then debugM "leksah" $ "SplitLayout: @leksah_layout for " <> T.unpack sid
-               <> " too large to persist (" <> show (T.length b64) <> " chars)"
-        else tmuxCmdOn LocalServer
-                 [ "set-option", "-t", T.unpack sid, "@leksah_layout", T.unpack b64 ]
+      let (windowed, bare) = partition (not . null . lwWindowIds . snd) lws
+          firsts = M.fromList
+            [ (w, encodeLayoutOption [(i, lw)])
+            | (i, lw) <- windowed, (w : _) <- [lwWindowIds lw] ]
+      prev <- atomicModifyIORef' lastWindowWrites
+                (\m -> (M.union firsts m, m))
+      forM_ (M.toList firsts) $ \(w, b64) ->
+        when (M.lookup w prev /= Just b64) $
+          setCapped ("window " <> T.unpack w)
+            [ "set-option", "-w", "-t", T.unpack w, "@leksah_lw" ] b64
+      if null bare
+        then tmuxCmdOn LocalServer
+               [ "set-option", "-u", "-t", T.unpack sid, "@leksah_layout" ]
+        else setCapped ("session " <> T.unpack sid)
+               [ "set-option", "-t", T.unpack sid, "@leksah_layout" ]
+               (encodeLayoutOption bare)
+      out <- tmuxStdoutOn LocalServer
+        [ "list-windows", "-t", T.unpack sid, "-F", "#{window_id}\t#{?@leksah_lw,1,0}" ]
+      let stale = [ w | l <- T.lines out, [w, "1"] <- [T.splitOn "\t" l]
+                      , not (w `M.member` firsts) ]
+      forM_ stale $ \w ->
+        tmuxCmdOn LocalServer [ "set-option", "-w", "-u", "-t", T.unpack w, "@leksah_lw" ]
+      unless (null stale) $
+        atomicModifyIORef' lastWindowWrites (\m -> (foldr M.delete m stale, ()))
+  where
+    -- tmux refuses a command bigger than its message limit (16KB); one leksah
+    -- window never comes near it, a session's worth once could
+    setCapped what cmd b64
+      | T.length b64 > 6144 = debugM "leksah" $ "SplitLayout: layout for " <> what
+          <> " too large to persist (" <> show (T.length b64) <> " chars)"
+      | otherwise = tmuxCmdOn LocalServer (cmd <> [T.unpack b64])
 
 -- | Every local session's stored leksah windows, in one @list-sessions@
 -- call.  Sessions with no (or an undecodable) option contribute nothing —
@@ -909,13 +951,23 @@ readLeksahWindows :: IO (Map Text LeksahWindow, Int)
 readLeksahWindows = (`catch` \(_ :: SomeException) -> return (mempty, 0)) $ do
       out <- T.unpack <$> tmuxStdoutOn LocalServer
         [ "list-sessions", "-F", "#{session_id}\t#{@leksah_layout}" ]
-      let parsed =
+      wout <- T.unpack <$> tmuxStdoutOn LocalServer
+        [ "list-windows", "-a", "-F", "#{session_id}\t#{@leksah_lw}" ]
+      let decodeLines o =
             [ p
-            | line <- lines out
+            | line <- lines o
             , (sid : b64 : _) <- [T.splitOn "\t" (T.pack line)]
             , not (T.null b64)
             , Just ps <- [decodeLayoutOption sid b64]
             , p <- ps ]
+          -- A leksah window stored on its tmux window wins over a copy in a
+          -- session option (written before the per-window format, or by an
+          -- older leksah sharing the server).
+          perWindow = decodeLines wout
+          onWindows = S.fromList [ i | (Just i, _) <- perWindow ]
+          parsed = perWindow
+            ++ [ p | p@(mi, _) <- decodeLines out
+                   , maybe True (`S.notMember` onWindows) mi ]
           start = 1 + maximum
             (0 : [ n | (Just i, _) <- parsed, Just n <- [lwIdNum i] ])
           go (n, m) (Just i, lw)  = (n, M.insert i lw m)

@@ -124,7 +124,8 @@ import IDE.Web.Model
        (AIPaneRef(..), TabKey(..), WindowId(..), activeWindow, paneAISession,
         webWindows, wwActive, wwWide0, LeksahWindow(..), PaneContent(..),
         PaneKind(..), leksahWindows)
-import IDE.Web.Widget.Terminal (windowAgents, moveWindowToAgents, sessionNamed)
+import IDE.Web.Widget.Terminal
+       (windowAgents, moveWindowToAgents, sessionNamed, moveTmuxWindow)
 import IDE.Web.ReplTmux (agentsSessionName)
 import IDE.Web.NewLwRequest (beginConversion, endConversion)
 import IDE.Workspace
@@ -175,12 +176,13 @@ import IDE.Web.SnapRequest (requestSnapPane)
 -- (a tab mixing an agent with a shell or an editor stays put).  Each tab's
 -- windows move, then the tab is repointed at the Agents session, under one
 -- conversion guard so the reconcile never sees a window in a session its tab
--- doesn't name; the tab's terminal reattaches by itself.  Emptied sessions go
--- away with their last window.
+-- doesn't name; the tab's terminal reattaches by itself.  A tab whose windows
+-- don't ALL move gets the moved ones put back, so it is never split between
+-- two sessions.  Emptied sessions go away with their last window.
 gatherAgents :: App -> [Text] -> IO Text
 gatherAgents app only = do
     lws <- view leksahWindows <$> readCell (appUi app)
-    moved <- fmap concat . forM (Map.toList lws) $ \(lwi, lw) ->
+    results <- fmap concat . forM (Map.toList lws) $ \(lwi, lw) ->
       case (lwSession lw, Map.elems (lwPanes lw)) of
         (Just s, pcs@(_ : _)) | not ("ssh://" `T.isPrefixOf` s)
                               , Just ws@(w0 : _) <- traverse tmuxWin pcs -> do
@@ -190,20 +192,27 @@ gatherAgents app only = do
               wanted = null only || any (`elem` only') (map T.toLower names)
           if any null agents || not wanted || home0 == Just s then return [] else do
             beginConversion
-            r <- mapM moveWindowToAgents ws
-            res <- case sequence r of
-              Just (home : _) | home /= s -> do
+            r <- forM ws $ \w -> (,) w <$> moveWindowToAgents w
+            res <- case [ h | (_, Just h) <- r ] of
+              hs@(home : _) | length hs == length ws -> do
                 modifyCell (appUi app) $ leksahWindows %~
                   Map.adjust (\l -> l { lwSession = Just home }) lwi
-                return names
-              _ -> return []
+                return [Right names]
+              _ -> do
+                mapM_ (\(w, _) -> moveTmuxWindow w s) [ m | m@(_, Just _) <- r ]
+                return [Left names]
             endConversion
             return res
         _ -> return []
-    return $ if null moved
-      then "No agent tabs to move: they are all in the Agents session already"
-             <> (if null only then "" else ", or aren't the ones named") <> ".\n"
-      else "Moved into the Agents session: " <> T.intercalate ", " moved <> ".\n"
+    let moved  = concat [ n | Right n <- results ]
+        failed = concat [ n | Left n <- results ]
+    return . T.unlines $
+      [ if null moved
+          then "No agent tabs moved: they are all in the Agents session already"
+                 <> (if null only then "" else ", or aren't the ones named") <> "."
+          else "Moved into the Agents session: " <> T.intercalate ", " moved <> "." ]
+      <> [ "Could not move (tmux refused; left where they were): "
+             <> T.intercalate ", " failed <> "." | not (null failed) ]
   where
     only' = map T.toLower only
     tmuxWin pc = case pcKind pc of

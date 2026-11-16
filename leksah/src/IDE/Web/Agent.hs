@@ -24,7 +24,7 @@
 --     pid, so a fork needs no arguments at all in the common case;
 --   * 'paneForSession' answers "where is that session?" exactly (pid ancestry,
 --     not directory guesswork), which is what makes "beside me" meaningful;
---   * 'splitPane' + 'requestLocalTerm' put the child in that window;
+--   * 'splitPane' + 'raiseTabOfPane' put the child in that window;
 --   * @--session-id@ pins the child's id before it starts, so the reply is a
 --     handle the parent can use immediately.
 --
@@ -123,7 +123,8 @@ import IDE.Web.Claude
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
         showLiveSession, showLiveSessionHere, showTmuxPaneWith, claudeProcessOf, nameNote, agentNote,
-        managerNote, describeToolUse, claudePaneSessions, planHtmlNote, worktreeNote)
+        managerNote, describeToolUse, claudePaneSessions, planHtmlNote, worktreeNote,
+        raiseTabOfPane)
 import System.Process (readProcessWithExitCode)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seTool, perToolHookEvents, editedRecently, eventsFor, sessionEvents,
@@ -138,7 +139,6 @@ import IDE.Web.Codex
         codexPatchFiles, codexSessionDir, codexStarted, codexTranscriptOf, isCodexSession,
         isRollout, rolloutTurns)
 import IDE.Web.NewLwRequest (requestNewLw)
-import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
        (freshSessionName, liveRunPanes, newAgentWindow, pasteTo,
         sendKeysTo, splitPane, tmuxCmd, tmuxOut)
@@ -284,13 +284,13 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
         (_, Just p)       -> paneForSession p
         (_, Nothing)      -> return Nothing
       case mPane of
-        Just (tsess, _, pane) ->
+        Just (_, _, pane) ->
           splitPane (frPlace fr /= PlaceBelow) pane (asDir spec) (Just line) >>= \case
             Nothing      -> return (Left "tmux would not split the parent's pane")
             Just newPane -> do
               tmuxCmd ["set-option", "-p", "-t", T.unpack newPane
                       , "@leksah_run", T.unpack key]
-              requestLocalTerm tsess
+              raiseTabOfPane newPane
               return (Right (asSession spec, described ownName spec live ("pane " <> newPane)))
         Nothing -> do
           newAgentWindow (Just ownName) (asDir spec) (Just key) line False >>= \case
