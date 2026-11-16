@@ -23,15 +23,16 @@
 -- against the shell that ran @leksah-cmd@, not against leksah's own directory.)
 module Main (main) where
 
-import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, threadDelay)
+import Control.Concurrent
+       (forkIO, newEmptyMVar, putMVar, readMVar, takeMVar, threadDelay)
 import Control.Exception (IOException, SomeException, catch, finally, try)
-import Control.Monad (unless, when, void)
+import Control.Monad (forM_, unless, when, void)
 
 import Data.Aeson
        (Value(..), Result(..), object, (.=), encode, eitherDecodeStrict,
         fromJSON, toJSON)
 import qualified Data.Aeson.Key as Key (fromText)
-import qualified Data.Aeson.KeyMap as KM (insert, lookup)
+import qualified Data.Aeson.KeyMap as KM (KeyMap, insert, lookup)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8 (getLine)
 import qualified Data.ByteString.Lazy as BL (toStrict, writeFile)
@@ -39,7 +40,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL8 (putStrLn)
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.Char (isSpace, isDigit, toLower)
 import Data.List (isPrefixOf, isInfixOf, dropWhileEnd, sortBy, stripPrefix)
-import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -52,17 +53,23 @@ import System.Directory
         createDirectoryIfMissing, getPermissions, setPermissions,
         setOwnerExecutable)
 import System.Environment (getArgs, getEnvironment, getExecutablePath, lookupEnv)
-import System.Exit (exitFailure)
-import System.FilePath ((</>), takeDirectory, takeFileName)
+import System.Exit (ExitCode(ExitFailure), exitFailure)
+import System.FilePath
+       ((</>), dropTrailingPathSeparator, takeDirectory, takeFileName)
+import System.Info (os)
 import System.IO
-       (hClose, hPutStrLn, stderr, stdout, hFlush, hSetBuffering,
+       (Handle, IOMode(WriteMode), hClose, hPutStrLn, openFile, stderr, stdout, hFlush,
+        hSetBuffering,
         BufferMode(LineBuffering), isEOF)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Posix.Process (getProcessID)
+import System.Posix.Process (exitImmediately, getProcessID)
+import System.Posix.Signals
+       (Handler(CatchOnce), installHandler, sigHUP, sigINT, sigTERM,
+        signalProcessGroup)
 import System.Process
-       (CreateProcess(std_in, std_out, std_err, env), StdStream(..),
-        createProcess, proc, readProcess,
-        terminateProcess, waitForProcess)
+       (CreateProcess(std_in, std_out, std_err, env, create_group), StdStream(..),
+        createProcess, getPid, proc, readProcess,
+        waitForProcess)
 import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
@@ -169,9 +176,13 @@ usage = T.unlines
   , "                                     for the sessions it launches): passes the JSON on"
   , "                                     stdin to leksah (context use, cost, rate limits"
   , "                                     for the Agents pane), then runs YOUR statusLine"
-  , "                                     command (.claude/settings.local.json,"
-  , "                                     .claude/settings.json, ~/.claude/settings.json)"
-  , "                                     and prints its output (else a short default)"
+  , "                                     command (.claude/settings.local.json and"
+  , "                                     .claude/settings.json if the project is trusted,"
+  , "                                     else ~/.claude/settings.json; none at all under"
+  , "                                     disableAllHooks) and prints its output (else a"
+  , "                                     short default)"
+  , "  leksah-cmd statusline --resolve [DIR]"
+  , "                                     the statusLine setting that would be used in DIR"
   , "  leksah-cmd help                    show this help"
   ]
 
@@ -204,7 +215,7 @@ main = getArgs >>= \case
   -- statusline: Claude Code's statusLine command for the sessions leksah
   -- launches (see claudeHooksFlag).  Never fails, never prints an error into
   -- the status line: see 'statusLine'.
-  ("statusline":_) -> statusLine
+  ("statusline":rest) -> statusLine rest
 
   -- ping: exit 0 if the UI answered, 1 otherwise (for scripting).
   ("ping":_) -> pingOnce >>= \ok ->
@@ -291,24 +302,39 @@ main = getArgs >>= \case
 --     timeout; when leksah is not running (or is too old to know the verb)
 --     nothing happens;
 --   * print the USER's status line.  Leksah's @--settings@ file outranks
---     theirs, so this runs the @statusLine@ command they configured — from
---     the first of the project's @.claude/settings.local.json@,
---     @.claude/settings.json@ and their own @~/.claude/settings.json@ that
---     has one — with the same stdin, and prints its stdout.  With none, a
---     short default line.
+--     theirs, so this runs the @statusLine@ command they configured
+--     ('resolveUserStatusLine') with the same stdin, and prints its stdout.
+--     With none, a short default line.
 --
 -- It exits 0 whatever happens, and nothing it does goes to stderr.
-statusLine :: IO ()
-statusLine = (`catch` \(_ :: SomeException) -> return ()) $ do
+--
+-- @statusline --resolve DIR@ prints the statusLine setting that would be
+-- used for a session in DIR (a JSON object, or @null@): how leksah, writing
+-- the settings it launches sessions with, carries over the same setting's
+-- @padding@ and @refreshInterval@.
+statusLine :: [String] -> IO ()
+statusLine ("--resolve" : rest) = (`catch` \(_ :: SomeException) -> BL8.putStrLn "null") $ do
+  dir <- maybe getCurrentDirectory return (listToMaybeStr rest)
+  r <- resolveUserStatusLine dir
+  BL8.putStrLn (encode (maybe Null (Object . snd) r))
+statusLine _ = (`catch` \(_ :: SomeException) -> return ()) $ do
+  -- Opened BEFORE stdin is read: reading it to the end closes fd 0, and a
+  -- /dev/null opened after that would BE fd 0 — which the spawn then
+  -- overwrites with the command's stdin pipe before copying it to fd 2.
+  devNull <- openFile "/dev/null" WriteMode
   input <- BS.getContents
   sent <- newEmptyMVar
   _ <- forkIO $ (`finally` putMVar sent ()) $ void . try' . timeout 1500000 $
          tryReply ["statusline", T.unpack (decodeUtf8With lenientDecode input)]
   let v = either (const Nothing) Just (eitherDecodeStrict input) :: Maybe Value
   nested <- lookupEnv "LEKSAH_STATUSLINE"
-  mcmd <- if isJust nested then return Nothing else userStatusLineCommand v
+  here <- getCurrentDirectory
+  let project = fromMaybe here $
+        (T.unpack <$> (jsonText ["workspace", "project_dir"] =<< v))
+        `orElse` (T.unpack <$> (jsonText ["cwd"] =<< v))
+  mcmd <- if isJust nested then return Nothing else fmap fst <$> resolveUserStatusLine project
   out <- case mcmd of
-    Just cmd -> runStatusLineCommand cmd input
+    Just cmd -> runStatusLineCommand devNull cmd input
     Nothing  -> return (encodeUtf8 (defaultStatusLine v) <> "\n")
   BS.hPut stdout out
   hFlush stdout
@@ -316,57 +342,125 @@ statusLine = (`catch` \(_ :: SomeException) -> return ()) $ do
   where
     try' :: IO a -> IO (Either SomeException a)
     try' = try
-
--- | The user's own statusLine command, by Claude Code's settings precedence
--- (local project, shared project, user).  Leksah's own command is skipped
--- wherever it turns up, so it can never end up running itself.
-userStatusLineCommand :: Maybe Value -> IO (Maybe String)
-userStatusLineCommand v = do
-  here <- getCurrentDirectory
-  configDir <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
-    Just d | not (null d) -> return d
-    _ -> (</> ".claude") <$> getHomeDirectory
-  let project = fromMaybe here $
-        (T.unpack <$> (jsonText ["workspace", "project_dir"] =<< v))
-        `orElse` (T.unpack <$> (jsonText ["cwd"] =<< v))
-      files = [ project </> ".claude" </> "settings.local.json"
-              , project </> ".claude" </> "settings.json"
-              , configDir </> "settings.json" ]
-  firstJustM fromFile files
-  where
     orElse (Just a) _ = Just a
     orElse Nothing b  = b
-    firstJustM _ [] = return Nothing
-    firstJustM f (x:xs) = f x >>= maybe (firstJustM f xs) (return . Just)
-    fromFile f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-      ex <- doesFileExist f
-      if not ex then return Nothing else do
-        sv <- either (const Nothing) Just . eitherDecodeStrict <$> BS.readFile f
-        return $ case (jsonText ["statusLine", "command"] =<< sv) of
-          Just c | not (T.null (T.strip c))
-                 , (jsonText ["statusLine", "type"] =<< sv) `elem` [Nothing, Just "command"]
-                 , not ("leksah-cmd" `T.isInfixOf` c && "statusline" `T.isInfixOf` c)
-                 -> Just (T.unpack c)
-          _ -> Nothing
+
+-- | The user's own statusLine setting for a session in @project@ — its
+-- command and the whole object — gated the way Claude Code gates it:
+--
+--   * @disableAllHooks: true@ in ANY settings file (managed, user, project,
+--     local) means none of the user's commands run;
+--   * the project's @.claude/settings.local.json@ and @.claude/settings.json@
+--     count only when the project is trusted ('projectTrusted') — a status
+--     line is a command, and a repository you only cloned must not get to
+--     run one;
+--   * then by precedence: local, shared project, user (@~/.claude/settings.json@,
+--     or under @$CLAUDE_CONFIG_DIR@).
+--
+-- Leksah's own command is skipped wherever it turns up, so it can never end
+-- up running itself.
+resolveUserStatusLine :: FilePath -> IO (Maybe (String, KM.KeyMap Value))
+resolveUserStatusLine project = do
+  configDir <- claudeConfigDir
+  let local   = project </> ".claude" </> "settings.local.json"
+      shared  = project </> ".claude" </> "settings.json"
+      user    = configDir </> "settings.json"
+  [l, sh, u, m] <- mapM readJsonFile [local, shared, user, managedSettingsFile]
+  let disabled = any (\x -> (jsonAt ["disableAllHooks"] =<< x) == Just (Bool True))
+                     [l, sh, u, m]
+  if disabled then return Nothing else do
+    trusted <- projectTrusted project
+    return . listToMaybe $ mapMaybe (>>= statusLineOf)
+      ((if trusted then [l, sh] else []) <> [u])
+  where
+    statusLineOf sv = case jsonAt ["statusLine"] sv of
+      Just (Object o)
+        | Just c <- jsonText ["command"] (Object o)
+        , not (T.null (T.strip c))
+        , jsonText ["type"] (Object o) `elem` [Nothing, Just "command"]
+        , not ("leksah-cmd" `T.isInfixOf` c && "statusline" `T.isInfixOf` c)
+        -> Just (T.unpack c, o)
+      _ -> Nothing
+    managedSettingsFile
+      | os == "darwin" = "/Library/Application Support/ClaudeCode/managed-settings.json"
+      | otherwise      = "/etc/claude-code/managed-settings.json"
+
+-- | Claude Code's config directory: @$CLAUDE_CONFIG_DIR@, else @~/.claude@.
+claudeConfigDir :: IO FilePath
+claudeConfigDir = lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
+  Just d | not (null d) -> return d
+  _ -> (</> ".claude") <$> getHomeDirectory
+
+-- | Has the user accepted Claude Code's trust dialog for @dir@ — or for a
+-- directory above it, which Claude Code takes to cover everything below?
+-- Read from Claude Code's global config: @$CLAUDE_CONFIG_DIR/.claude.json@
+-- when that is set, else @~/.claude.json@ (@projects[dir].hasTrustDialogAccepted@).
+-- Anything unreadable counts as not trusted.
+projectTrusted :: FilePath -> IO Bool
+projectTrusted dir = (`catch` \(_ :: SomeException) -> return False) $ do
+  file <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
+    Just d | not (null d) -> return (d </> ".claude.json")
+    _ -> (</> ".claude.json") <$> getHomeDirectory
+  mv <- readJsonFile file
+  let trustedAt d = (jsonAt ["projects", T.pack d, "hasTrustDialogAccepted"] =<< mv)
+                      == Just (Bool True)
+  return (any trustedAt (ancestors (dropTrailingPathSeparator dir)))
+  where
+    ancestors d = let p = takeDirectory d
+                  in d : (if p == d || null p then [] else ancestors p)
+
+-- | A JSON file's contents; 'Nothing' if it is missing or unreadable.
+readJsonFile :: FilePath -> IO (Maybe Value)
+readJsonFile f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  ex <- doesFileExist f
+  if not ex then return Nothing
+    else either (const Nothing) Just . eitherDecodeStrict <$> BS.readFile f
 
 -- | Run a statusLine command as Claude Code does (@sh -c@), the JSON on its
--- stdin; its stdout, or nothing if it fails or takes over 10s.  Its stderr
--- is dropped: an error must never show up as the status line.
-runStatusLineCommand :: String -> BS.ByteString -> IO BS.ByteString
-runStatusLineCommand cmd input = (`catch` \(_ :: SomeException) -> return "") $ do
+-- stdin; what it printed.  Its stderr goes to @/dev/null@ (an error must never
+-- show up as the status line — and a CLOSED fd 2 would make a write to it
+-- fail, or let a file it opens land on fd 2).
+--
+-- It runs in its own process group, so that everything it started can be
+-- stopped together: when it takes over 10s; when it has exited but something
+-- it left running (@sleep 30 &@) still holds its stdout open; and when Claude
+-- Code cancels us because a newer update came in (SIGTERM).  A background job
+-- that does NOT hold its stdout (the usual "refresh a cache in the
+-- background" trick) is left alone once the command itself has exited.
+--
+-- @devNull@ must be open on a descriptor above 2 (see 'statusLine').
+runStatusLineCommand :: Handle -> String -> BS.ByteString -> IO BS.ByteString
+runStatusLineCommand devNull cmd input = (`catch` \(_ :: SomeException) -> return "") $ do
   env0 <- getEnvironment
   (Just hin, Just hout, _, ph) <- createProcess (proc "/bin/sh" ["-c", cmd])
-    { std_in = CreatePipe, std_out = CreatePipe, std_err = NoStream
+    { std_in = CreatePipe, std_out = CreatePipe, std_err = UseHandle devNull
+    , create_group = True
     , env = Just (("LEKSAH_STATUSLINE", "1") : filter ((/= "LEKSAH_STATUSLINE") . fst) env0) }
+  mpid <- getPid ph
+  let stopGroup = forM_ mpid $ \pgid ->
+        signalProcessGroup sigTERM (fromIntegral pgid) `catch` \(_ :: SomeException) -> return ()
+  -- Cancelled by Claude Code: take the command's whole group down with us.
+  forM_ [sigTERM, sigHUP, sigINT] $ \sig ->
+    installHandler sig (CatchOnce (stopGroup >> exitImmediately (ExitFailure 143))) Nothing
   _ <- forkIO $ (BS.hPut hin input `catch` \(_ :: IOException) -> return ())
                   `finally` (hClose hin `catch` \(_ :: IOException) -> return ())
-  r <- timeout 10000000 $ do
-    out <- BS.hGetContents hout
-    _ <- waitForProcess ph
-    return out
-  case r of
-    Just out -> return out
-    Nothing  -> terminateProcess ph >> return ""
+  chunks <- newIORef []
+  eof <- newEmptyMVar
+  _ <- forkIO $ (`finally` putMVar eof ()) $
+    let go = do
+          c <- BS.hGetSome hout 65536
+          unless (BS.null c) $ atomicModifyIORef' chunks (\cs -> (c : cs, ())) >> go
+    in go `catch` \(_ :: SomeException) -> return ()
+  exited <- timeout 10000000 (waitForProcess ph)
+  -- The command has exited: its output ends when nothing it left behind
+  -- holds the pipe any more — at once, normally.
+  closed <- case exited of
+    Nothing -> return Nothing
+    Just _  -> timeout 200000 (readMVar eof)
+  when (isNothing closed) $ do
+    stopGroup
+    void $ timeout 200000 (readMVar eof)
+  BS.concat . reverse <$> atomicModifyIORef' chunks (\cs -> (cs, cs))
 
 -- | The line shown when the user has no status line of their own:
 -- @[Opus] leksah · ctx 43%@.

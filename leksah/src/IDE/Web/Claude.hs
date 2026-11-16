@@ -93,8 +93,8 @@ import Data.Aeson.Types (Pair, parseMaybe, FromJSON)
 import qualified Data.Aeson.Key as Key (fromText)
 import qualified Data.Aeson.KeyMap as KM (lookup)
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as BL (writeFile)
-import Data.Text.Encoding (decodeUtf8With)
+import qualified Data.ByteString.Lazy as BL (toStrict, writeFile)
+import Data.Text.Encoding (decodeUtf8With, encodeUtf8)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Word (Word8)
 import Numeric (showHex)
@@ -105,7 +105,6 @@ import System.Directory
 import System.FilePath
        ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator, replaceExtension)
-import System.Environment (lookupEnv)
 import System.Info (os)
 import System.IO
        (withFile, IOMode(ReadMode), hIsEOF, hSeek,
@@ -790,7 +789,7 @@ claudeCommandLine cmd = do
   -- build, hover, screenshot…) — see `leksah-cmd mcp`.  The config file points
   -- at a local binary, so remote (ssh://) dirs skip it.
   mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag
-  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag
+  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag d
   -- The agent's own name, when its session id is known at launch — so it can
   -- tell the user and other agents who it is.
   myName <- traverse agentNameFor ownSession
@@ -1020,8 +1019,8 @@ claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
 -- @leksah-cmd hooks install@); this just refreshes it and points a small
 -- settings JSON at it.  Empty when @leksah-cmd@ isn't on PATH.  @--settings@
 -- loads ADDITIONAL settings, so the user's own hooks keep working.
-claudeHooksFlag :: IO Text
-claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
+claudeHooksFlag :: FilePath -> IO Text
+claudeHooksFlag dir = (`catch` \(_ :: SomeException) -> return "") $
   findExecutable "leksah-cmd" >>= \case
     Nothing  -> return ""
     Just exe -> do
@@ -1029,9 +1028,9 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
       case ec of
         ExitSuccess -> do
           home <- getHomeDirectory
-          let path   = home </> ".leksah" </> "hooks.json"
+          statusLine <- leksahStatusLine exe <$> claudeUserStatusLine exe dir
+          let path   = home </> ".leksah" </> statusLineSettingsFile statusLine
               script = home </> ".leksah" </> "worktree-hook.sh"
-          userStatusLine <- claudeUserStatusLine
           -- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
           -- SessionStart keeps an agent's identity across /clear and /branch,
           -- re-briefs it on a resume, registers the worktree it started in,
@@ -1083,7 +1082,7 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
                           -- a synchronous PreCompact hook's stdout becomes
                           -- instructions for the compaction summary.
                           , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ]))
-            , "statusLine" .= leksahStatusLine exe userStatusLine ]
+            , "statusLine" .= statusLine ]
           return (" --settings " <> T.pack path)
         _ -> return ""
 
@@ -1093,26 +1092,42 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
 -- status-line command and prints what it prints.  A @--settings@ file
 -- outranks the user's and project's settings, so without that wrapper this
 -- would replace their status line.  Its @padding@ and @refreshInterval@ are
--- carried over from the user's setting ('claudeUserStatusLine').
+-- carried over from the same setting the wrapper will run the command of
+-- ('claudeUserStatusLine').
 leksahStatusLine :: FilePath -> Maybe Object -> Value
 leksahStatusLine exe mine = object $
   [ "type"    .= ("command" :: Text)
   , "command" .= (shq (T.pack exe) <> " statusline") ]
-  <> [ Key.fromText k .= v | Just o <- [mine], k <- ["padding", "refreshInterval"]
+  <> [ Key.fromText k .= v | Just o <- [mine], k <- statusLineCarried
                            , Just v <- [KM.lookup (Key.fromText k) o] ]
 
--- | The @statusLine@ object in the user's own Claude Code settings
--- (@~/.claude/settings.json@, or under @$CLAUDE_CONFIG_DIR@), if any.
-claudeUserStatusLine :: IO (Maybe Object)
-claudeUserStatusLine = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-  dir <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
-    Just d | not (null d) -> return d
-    _ -> (</> ".claude") <$> getHomeDirectory
-  let f = dir </> "settings.json"
-  ex <- doesFileExist f
-  if not ex then return Nothing else do
-    v <- decodeStrict' <$> BS.readFile f
-    return $ v >>= parseMaybe (withObject "settings" (.: "statusLine"))
+statusLineCarried :: [Text]
+statusLineCarried = ["padding", "refreshInterval"]
+
+-- | Where to write the settings file with this @statusLine@: one file per
+-- distinct carried-over @padding@\/@refreshInterval@ (nearly always just
+-- @hooks.json@), so two sessions launched together in projects with
+-- different settings can't overwrite each other's file before their
+-- @claude@ has read it.
+statusLineSettingsFile :: Value -> FilePath
+statusLineSettingsFile v = case tag of
+    "" -> "hooks.json"
+    t  -> "hooks-" <> t <> ".json"
+  where
+    tag = concat [ T.unpack k <> filter isAlphaNum (BS.unpack (BL.toStrict (encode x)))
+                 | Object o <- [v], k <- statusLineCarried
+                 , Just x <- [KM.lookup (Key.fromText k) o] ]
+
+-- | The user's own @statusLine@ setting for a session in @dir@ — exactly the
+-- one @leksah-cmd statusline@ will run the command of, because it asks it
+-- (@statusline --resolve DIR@: project settings only in a trusted project,
+-- nothing under @disableAllHooks@, then local > project > user).
+claudeUserStatusLine :: FilePath -> FilePath -> IO (Maybe Object)
+claudeUserStatusLine exe dir = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  (ec, out, _) <- readProcessWithExitCode exe ["statusline", "--resolve", dir] ""
+  return $ case ec of
+    ExitSuccess -> decodeStrict' (encodeUtf8 (T.pack out))
+    _           -> Nothing
 
 -- | Is a @claude@ terminal window currently live for @dir@ — the shared
 -- interactive window (@dir#claude@) or any resumed/ask window (@dir#claude#…@)?

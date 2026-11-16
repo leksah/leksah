@@ -134,6 +134,10 @@ parseUsage now v = SessionUsage
   , suAt           = now
   }
   where
+    -- total_input_tokens is what is IN the context window now, not a running
+    -- total: "Token counts currently in the context window, from the most
+    -- recent API response.  Input includes cache reads and writes"
+    -- (https://code.claude.com/docs/en/statusline.md, Available data).
     used = int ["context_window", "total_input_tokens"] v
     size = int ["context_window", "context_window_size"] v
     window w = RateWindow <$> num ["rate_limits", w, "used_percentage"] v
@@ -178,7 +182,8 @@ usageLevel u = case usageContextPct u of
          | p >= 80 -> "high"
   _ -> ""
 
--- | One line for `agent status`: @ctx 43% · $1.20 · 5h 23% · 7d 41%@.
+-- | One line for `agent status`: @ctx 43% · $1.20 · 5h 23% · 7d 41%@ (a
+-- window that has reset by @now@, the current time, left out).
 usageSummary :: Double -> SessionUsage -> Text
 usageSummary now u = T.intercalate " · " $ catMaybes
   [ (\p -> "ctx " <> T.pack (show p) <> "%") <$> usageContextPct u
@@ -192,7 +197,9 @@ usageSummary now u = T.intercalate " · " $ catMaybes
 -- | Everything, one fact per line, for a tooltip, the expanded card and
 -- `agent events`.  Reset times are local clock times (a weekday too when
 -- more than a day away); a window that has already reset is left out, as
--- Claude Code itself drops it.
+-- Claude Code itself drops it, and a prompt cache past its expiry is cold.
+-- @now@ must be the CURRENT time, not the report's ('suAt'): an idle session
+-- reports nothing for hours while its windows reset and its cache expires.
 usageLines :: TimeZone -> Double -> SessionUsage -> [Text]
 usageLines tz now u = catMaybes
   [ (\m -> m <> maybe "" (\e -> " · effort " <> e) (suEffort u)) <$> suModel u
@@ -218,17 +225,17 @@ usageLines tz now u = catMaybes
       | rwResetsAt w <= now = Nothing
       | otherwise = Just (k <> " " <> pct (rwUsedPct w) <> " used · resets "
                           <> clock (rwResetsAt w))
-    cache = case suCacheWarm u of
-      Just True -> Just ("prompt cache warm"
-                         <> maybe "" (\e -> if e > now then " until " <> clock e else "")
-                                  (suCacheExpires u)
-                         <> hit)
-      Just False -> Just ("prompt cache cold" <> hit)
-      Nothing -> Nothing
+    cache = case (suCacheWarm u, suCacheExpires u) of
+      (Just True, Just e)
+        | e > now   -> Just ("prompt cache warm until " <> clock e <> hit)
+        | otherwise -> Just ("prompt cache cold (expired " <> clock e <> ")" <> hit)
+      (Just True, Nothing) -> Just ("prompt cache warm" <> hit)
+      (Just False, _)      -> Just ("prompt cache cold" <> hit)
+      (Nothing, _)         -> Nothing
     hit = maybe "" (\h -> " · hit ratio " <> pct (100 * h)) (suCacheHit u)
     clock t =
       let lt = utcToLocalTime tz (posixSecondsToUTCTime (realToFrac t))
-          fmt = if t - now > 20 * 3600 then "%a %H:%M" else "%H:%M"
+          fmt = if abs (t - now) > 20 * 3600 then "%a %H:%M" else "%H:%M"
       in T.pack (formatTime defaultTimeLocale fmt lt)
 
 pct :: Double -> Text
@@ -237,12 +244,14 @@ pct p = T.pack (show (round p :: Int)) <> "%"
 dollars :: Double -> Text
 dollars c = "$" <> T.pack (showFFloat (Just 2) c "")
 
--- | @86k@, @1.2M@.
+-- | @86k@, @1.0M@ — rounded to thousands BEFORE picking the unit, so that
+-- 999,500 tokens reads @1.0M@ rather than @1000k@.
 kTokens :: Int -> Text
 kTokens n
-  | n >= 1000000 = T.pack (showFFloat (Just 1) (fromIntegral n / 1e6 :: Double) "") <> "M"
-  | n >= 1000    = T.pack (show (round (fromIntegral n / 1e3 :: Double) :: Int)) <> "k"
-  | otherwise    = T.pack (show n)
+  | k >= 1000 = T.pack (showFFloat (Just 1) (fromIntegral n / 1e6 :: Double) "") <> "M"
+  | n >= 1000 = T.pack (show k) <> "k"
+  | otherwise = T.pack (show n)
+  where k = round (fromIntegral n / 1e3 :: Double) :: Int
 
 duration :: Double -> Text
 duration s
