@@ -30,6 +30,7 @@ module IDE.Web.AgentInfo
   , markAgentDone
   , setAgentRole
   , titleForClaude
+  , agentsHeld
   , setAgentSuspended
   , Interruption(..)
   , syncAgentLiveness
@@ -83,7 +84,8 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
-import IDE.Web.AgentEvents (SessionEvents(..), seTool, sessionEvents)
+import IDE.Web.AgentEvents
+       (SessionEvents(..), seCompactingAt, seSubagentsAt, seTool, sessionEvents)
 import IDE.Web.AgentUsage (SessionUsage, sessionUsage)
 import IDE.Web.AgentHost (Host(..), RanOn(..), currentHost, diedWithHost, ranOnFor)
 import IDE.Web.AgentNames
@@ -442,18 +444,38 @@ setAgentRole sid role = withInfos $ \m ->
 -- ('aiTitleSent') came from @/rename@ or @--name@, and stays.  Records what
 -- it hands out; reads before writing, so the common no-change case (every
 -- prompt) does not rewrite the store.
+--
+-- Only a title the agent gave ITSELF (@agent describe@, which sets 'aiWhen'):
+-- a fork's record starts out titled with its prompt, which is no title.  And
+-- a fork inherits its parent's session title: one that is the parent's (as
+-- leksah set it, or its own title) is not the user's either.
 titleForClaude :: Text -> Maybe Text -> IO (Maybe Text)
 titleForClaude sid current = do
   m <- peekInfos
   case M.lookup sid m of
-    Just i | Just t <- clean <$> aiTitle i, not (T.null t), Just t /= current'
-           , isNothing current' || current' == aiTitleSent i -> do
+    Just i | isJust (aiWhen i)
+           , Just t <- clean <$> aiTitle i, not (T.null t), Just t /= current'
+           , isNothing current' || current' `elem` ours m i -> do
       withInfos $ \m' -> (M.adjust (\x -> x { aiTitleSent = Just t }) sid m', ())
       return (Just t)
     _ -> return Nothing
   where
     current' = mfilter (not . T.null) (T.strip <$> current)
     clean = T.take 80 . T.strip . T.takeWhile (/= '\n')
+    -- The titles leksah is responsible for: what it set for this session,
+    -- and — for a fork — what its parent was titled.
+    ours m i = map Just $ catMaybes
+      ( aiTitleSent i
+      : [ t | Just p <- [aiParent i >>= (`M.lookup` m)]
+            , t <- [aiTitleSent p, clean <$> aiTitle p] ] )
+
+-- | The sessions leksah holds as suspended or interrupted — what its Agents
+-- pane shows them as, whatever else may say they are doing (see
+-- 'IDE.Web.ClaudeStatus.startClaudeStatusPoll').
+agentsHeld :: IO [Text]
+agentsHeld = (\m -> [ aiSession i | i <- M.elems m
+                                  , isJust (aiSuspended i) || isJust (aiInterrupted i) ])
+             <$> peekInfos
 
 -- | The agent that started @sid@, if leksah saw it happen.
 agentParentOf :: Text -> IO (Maybe Text)
@@ -864,12 +886,13 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           _ -> anActivity n
         -- Compacting its conversation says more than anything else it is
         -- doing; its subagents ride along with whatever that is.
-        subs = nub (maybe [] (map (fst . snd) . seSubagents) e)
-        nSubs = maybe 0 (length . seSubagents) e
+        running = maybe [] (seSubagentsAt posix) e
+        subs = nub (map (fst . snd) running)
+        nSubs = length running
         subsText = T.pack (show nSubs) <> (if nSubs == 1 then " subagent" else " subagents")
                    <> " (" <> T.intercalate ", " subs <> ")"
         activity
-          | isJust (e >>= seCompacting) = Just "Compacting the conversation…"
+          | maybe False (seCompactingAt posix) e = Just "Compacting the conversation…"
           | nSubs == 0 = activity0
           | otherwise = Just $ maybe (subsText <> " running") (<> " · " <> subsText) activity0
     return (s, n { anWorktrees = wls

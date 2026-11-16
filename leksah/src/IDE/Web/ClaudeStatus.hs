@@ -47,7 +47,9 @@ import qualified Data.Text as T
 import Data.Time (getCurrentTime)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Web.AgentNames (touchAgentNames)
+import IDE.Web.AgentNames (agentNames, touchAgentNames)
+import IDE.Web.AgentEvents (sePromptPending, sessionEvents)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou,
         claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel)
@@ -136,12 +138,25 @@ registerClaudeStatusPush h = do
 -- ('IDE.Web.AgentInfo.agentTitles' — passed in rather than imported, since that
 -- module reads this one's rows).  It is read every cycle, so a session that
 -- describes itself is renamed in every status surface within a tick.
-startClaudeStatusPoll :: IO (Map Text Text) -> IO ThreadId
-startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
+--
+-- @heldIO@ gives the sessions leksah itself holds as suspended or interrupted
+-- ('IDE.Web.AgentInfo.agentsHeld'): the Agents pane shows those as such, so a
+-- blocked background session among them is not counted as needing you here
+-- either — the two would disagree.
+startClaudeStatusPoll :: IO (Map Text Text) -> IO [Text] -> IO ThreadId
+startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
   where
     loop prev labels = do
       (st, labels') <- (`catch` \(_ :: SomeException) -> return (prev, labels)) $ do
-        live <- claudeLiveBySession
+        live0 <- claudeLiveBySession
+        -- A prompt was just submitted (the UserPromptSubmit hook): working
+        -- from this moment, though its session file may still say idle for a
+        -- little while.
+        events <- sessionEvents
+        nowP <- realToFrac <$> getPOSIXTime
+        let pending l = maybe False (sePromptPending 5 nowP) (M.lookup (clSession l) events)
+            live = M.map (\l -> if clStatus l == Just "idle" && pending l
+                                   then l { clStatus = Just "busy" } else l) live0
         -- Label the unnamed ones: one transcript head-read each, first time only.
         labels' <- foldM addLabel labels
           [ l | l <- M.elems live, clName l == Nothing
@@ -151,11 +166,18 @@ startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
         -- else says it is waiting: it counts as needing you here too, while
         -- it blocked recently ('backgroundNeedsYou').
         now <- getCurrentTime
-        blocked <- filter (\b -> backgroundNeedsYou now b && not (cbSession b `M.member` live))
+        held <- heldIO
+        blocked <- filter (\b -> backgroundNeedsYou now b && not (cbSession b `M.member` live)
+                                 && cbSession b `notElem` held)
                      <$> claudeBackgroundSessions
         -- The poll is where a session leksah did NOT launch (claude -c, the
         -- resume picker, one typed into a terminal) first gets its name.
-        names  <- touchAgentNames (M.keys live <> map cbSession blocked)
+        -- (Only the live ones are "seen running": that is what
+        -- touchAgentNames records, and what the interrupted-agent logic
+        -- reads.  A blocked background session's name is only looked up.)
+        names0 <- touchAgentNames (M.keys live)
+        known  <- agentNames
+        let names = names0 <> M.filterWithKey (\k _ -> k `elem` map cbSession blocked) known
         return (summarize names titles labels' (M.elems live) blocked, labels')
       when (st /= prev) $ do
         atomicWriteIORef statusRef st

@@ -172,6 +172,15 @@ usage = T.unlines
   , "                                     ~/.claude/settings.json (or DIR/.claude/) so"
   , "                                     sessions NOT launched from leksah register too"
   , "  leksah-cmd hooks write-script      (re)write ~/.leksah/worktree-hook.sh"
+  , "  leksah-cmd plugin install          install the leksah Claude Code plugin (in"
+  , "                                     ~/.claude/skills/leksah): EVERY session, wherever"
+  , "                                     it was started, then reports to leksah and has its"
+  , "                                     MCP tools; leksah-launched ones stop adding their"
+  , "                                     own copy (needs leksah running)"
+  , "  leksah-cmd plugin uninstall        remove it (only the files leksah wrote)"
+  , "  leksah-cmd plugin [status]         is it installed, and turned on?"
+  , "  leksah-cmd plugin write DIR        write it to a new or empty DIR, for one session's"
+  , "                                     claude --plugin-dir DIR"
   , "  leksah-cmd statusline              a Claude Code statusLine command (leksah sets it"
   , "                                     for the sessions it launches): passes the JSON on"
   , "                                     stdin to leksah (context use, cost, rate limits"
@@ -206,7 +215,12 @@ main = getArgs >>= \case
   -- not running or does not answer within a few seconds.
   ("agent":"hook":ev:_) -> (`catch` \(_ :: SomeException) -> return ()) $ do
     input <- BS.getContents
-    r <- timeout 4000000 . tryReply $
+    -- 1.5s at most: with the leksah plugin installed, EVERY Claude session on
+    -- the machine runs this hook, and the synchronous ones (SessionStart,
+    -- UserPromptSubmit, Stop…) wait for it.  leksah answers in a few ms; a
+    -- leksah that is wedged but still accepting connections must not stall
+    -- them all for long.
+    r <- timeout 1500000 . tryReply $
            ["agent", "hook", ev, T.unpack (decodeUtf8With lenientDecode input)]
     case r of
       Just (Just t) | not (T.null (T.strip t)) -> T.putStr t

@@ -26,6 +26,10 @@ module IDE.Web.Claude
   , claudeLiveBySession
   , ClaudeBackground(..)
   , claudeBackgroundSessions
+  , leksahPluginInstall
+  , leksahPluginUninstall
+  , leksahPluginStatus
+  , leksahPluginWrite
   , backgroundNeedsYou
   , backgroundStaleAge
   , claudeRemoveBackground
@@ -93,7 +97,7 @@ import Data.Aeson.Types (Pair, parseMaybe, FromJSON)
 import qualified Data.Aeson.Key as Key (fromText)
 import qualified Data.Aeson.KeyMap as KM (lookup)
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as BL (toStrict, writeFile)
+import qualified Data.ByteString.Lazy as BL (ByteString, toStrict, writeFile)
 import Data.Text.Encoding (decodeUtf8With, encodeUtf8)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Word (Word8)
@@ -101,11 +105,13 @@ import Numeric (showHex)
 
 import System.Directory
        (findExecutable, getHomeDirectory, doesDirectoryExist, doesFileExist,
-        listDirectory, getModificationTime, removeFile)
+        listDirectory, getModificationTime, removeFile, createDirectoryIfMissing,
+        removeDirectory, renameFile)
 import System.FilePath
        ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator, replaceExtension)
 import System.Info (os)
+import System.Environment (lookupEnv)
 import System.IO
        (withFile, IOMode(ReadMode), hIsEOF, hSeek,
         SeekMode(SeekFromEnd), hFileSize)
@@ -299,17 +305,31 @@ data ClaudeBackground = ClaudeBackground
   , cbPid     :: Maybe Int       -- ^ while its process is alive
   , cbLastActive :: Maybe UTCTime -- ^ when it last did anything: its transcript's
                                  --   mtime, else when it started
+  , cbStateAt :: Maybe UTCTime   -- ^ when its job last reported (its state
+                                 --   file's mtime — never its contents)
   } deriving (Eq, Show)
 
--- | A blocked background session that is waiting for YOU: no process, and it
--- blocked recently.  One left blocked for longer than 'backgroundStaleAge' was
--- most likely abandoned; it still shows in the Agents pane (Forget removes
--- it) but no longer counts as needing you — in the pane's sort order, or on
--- the status dot and menu-bar item.
+-- | A blocked background session that is waiting for YOU: no process, it
+-- blocked recently, and its conversation has not moved on since.
+--
+--   * One left blocked for longer than 'backgroundStaleAge' was most likely
+--     abandoned; it still shows in the Agents pane (Forget removes it) but no
+--     longer counts as needing you — in the pane's sort order, or on the
+--     status dot and menu-bar item.  When there is no telling how long ago it
+--     last did anything, it counts as stale too: a session nobody can date
+--     must not keep the dot red for good.
+--   * One whose transcript was written well after its job last reported
+--     ('cbStateAt') was taken up since — resumed in a pane, say, and
+--     answered — and the CLI's "blocked" is out of date.
 backgroundNeedsYou :: UTCTime -> ClaudeBackground -> Bool
 backgroundNeedsYou now b =
   cbState b == "blocked" && isNothing (cbPid b)
-    && maybe True (\t -> realToFrac (diffUTCTime now t) <= backgroundStaleAge) (cbLastActive b)
+    && maybe False (\t -> realToFrac (diffUTCTime now t) <= backgroundStaleAge) (cbLastActive b)
+    && not movedOn
+  where
+    movedOn = case (cbLastActive b, cbStateAt b) of
+      (Just act, Just st) -> realToFrac (diffUTCTime act st) > (60 :: Double)
+      _                   -> False
 
 -- | How long a blocked background session counts as needing you: a day.
 backgroundStaleAge :: Double
@@ -321,7 +341,8 @@ backgroundStaleAge = 24 * 3600
 -- fresh run in the background (one at a time) when something may have
 -- changed — so the first call after start-up returns @[]@ and the list fills
 -- in on the next poll.  Never throws: no @claude@, a failed run or unparsable
--- output keep the previous list.
+-- output keep the previous list (and the change that prompted the run still
+-- counts as unseen, so the next poll after 'backgroundTtl' tries again).
 --
 -- "May have changed": a background session's state lives in
 -- @~\/.claude\/jobs\/\<id\>\/state.json@, rewritten on every change.  Those
@@ -329,21 +350,34 @@ backgroundStaleAge = 24 * 3600
 -- format is undocumented; @claude agents --json@ is the interface) — and the
 -- CLI is run again when any of them (or the set of jobs) changes, at most
 -- every 'backgroundTtl'; with nothing changing, every 'backgroundBackstop'.
+-- They are only looked at when a run could start at all.
 claudeBackgroundSessions :: IO [ClaudeBackground]
 claudeBackgroundSessions = do
   now <- realToFrac <$> getPOSIXTime
-  fp <- jobsFingerprint
-  start <- atomicModifyIORef' backgroundRef $ \(at, running, seen, xs) ->
-    let due = now - at > backgroundBackstop || (fp /= seen && now - at > backgroundTtl)
-    in if not running && due
-         then ((at, True, seen, xs), True) else ((at, running, seen, xs), False)
-  when start . void . forkIO $ do
-    fresh <- (Just <$> (runAgentsJson >>= mapM withLastActive))
-               `catch` \(_ :: SomeException) -> return Nothing
-    done <- realToFrac <$> getPOSIXTime
-    atomicModifyIORef' backgroundRef $ \(_, _, _, xs) ->
-      ((done, False, fp, fromMaybe xs fresh), ())
-  (\(_, _, _, xs) -> xs) <$> readIORef backgroundRef
+  st0 <- readIORef backgroundRef
+  when (not (bsRunning st0) && now - bsAt st0 > backgroundTtl) $ do
+    fp <- jobsFingerprint
+    start <- atomicModifyIORef' backgroundRef $ \st ->
+      let due = now - bsAt st > backgroundBackstop
+                || (fp /= bsSeen st && now - bsAt st > backgroundTtl)
+      in if not (bsRunning st) && due then (st { bsRunning = True }, True) else (st, False)
+    when start . void . forkIO $ do
+      fresh <- (Just <$> (runAgentsJson >>= mapM (withTimes fp)))
+                 `catch` \(_ :: SomeException) -> return Nothing
+      done <- realToFrac <$> getPOSIXTime
+      atomicModifyIORef' backgroundRef $ \st -> (case fresh of
+        -- A failed run leaves the change it was for unseen: retried after
+        -- 'backgroundTtl', not left until the backstop.
+        Nothing -> st { bsAt = done, bsRunning = False }
+        Just xs ->
+          -- A session removed (Forget) while this run was in flight may
+          -- still be in its output: keep it out, until the CLI stops
+          -- listing it.
+          let listed = map cbId xs
+          in st { bsAt = done, bsRunning = False, bsSeen = fp
+                , bsList = filter ((`notElem` bsRemoved st) . cbId) xs
+                , bsRemoved = filter (`elem` listed) (bsRemoved st) }, ())
+  bsList <$> readIORef backgroundRef
  where
   jobsFingerprint = (`catch` \(_ :: SomeException) -> return []) $ do
     home <- getHomeDirectory
@@ -355,12 +389,15 @@ claudeBackgroundSessions = do
         let f = jobs </> i </> "state.json"
         e <- doesFileExist f
         if e then (\t -> [(i, t)]) <$> getModificationTime f else return [(i, posixSecondsToUTCTime 0)]
-  withLastActive b = do
+  -- When it last did anything (its transcript, else when it started), and
+  -- when its job last reported (its state file's mtime, from the fingerprint).
+  withTimes fp b = do
     t <- (`catch` \(_ :: SomeException) -> return Nothing) $ do
       p <- claudeTranscriptPath (cbDir b) (cbSession b)
       e <- doesFileExist p
       if e then Just <$> getModificationTime p else return Nothing
-    return b { cbLastActive = t <|> (posixSecondsToUTCTime . realToFrac <$> cbStarted b) }
+    return b { cbLastActive = t <|> (posixSecondsToUTCTime . realToFrac <$> cbStarted b)
+             , cbStateAt = lookup (T.unpack (cbId b)) fp }
   -- The output is read as BYTES (it is UTF-8 JSON; a String round trip
   -- through the locale would mangle any non-ASCII name or path), and under a
   -- timeout: a CLI stuck on a prompt or a network stall must not wedge the
@@ -391,7 +428,8 @@ claudeBackgroundSessions = do
         , cbDir     = maybe "" (dropTrailingPathSeparator . T.unpack) (objField "cwd" v)
         , cbStarted = (/ 1000) . fromInteger <$> objField "startedAt" v
         , cbPid     = objField "pid" v
-        , cbLastActive = Nothing }
+        , cbLastActive = Nothing
+        , cbStateAt = Nothing }
 
 -- | Remove background session @jobId@ from Claude Code's list (@claude rm@:
 -- it keeps the conversation, and deletes the session's worktree only when
@@ -404,17 +442,27 @@ claudeRemoveBackground jobId = (`catch` \(e :: SomeException) -> return (T.pack 
     Nothing  -> return "claude is not on PATH"
     Just exe -> do
       r <- timeout 30000000 (readProcessWithExitCode exe ["rm", T.unpack jobId] "")
-      atomicModifyIORef' backgroundRef (\(_, running, seen, xs) ->
-        ((0, running, seen, filter ((/= jobId) . cbId) xs), ()))
+      -- Out of the list at once, and kept out even if a run already in
+      -- flight still lists it; a fresh run is due straight away.
+      atomicModifyIORef' backgroundRef (\st ->
+        (st { bsAt = 0, bsList = filter ((/= jobId) . cbId) (bsList st)
+            , bsRemoved = jobId : bsRemoved st }, ()))
       return $ case r of
         Nothing -> "claude rm " <> jobId <> " timed out"
         Just (_, out, err) -> T.strip (T.pack (out <> err))
 
--- | (when the last run finished, whether one is running now, the jobs'
--- state-file mtimes it ran for, what it found)
+-- | The cache behind 'claudeBackgroundSessions'.
+data BackgroundState = BackgroundState
+  { bsAt      :: Double                 -- ^ when the last run finished
+  , bsRunning :: Bool                   -- ^ a run is in flight
+  , bsSeen    :: [(FilePath, UTCTime)]  -- ^ the jobs' state-file mtimes it ran for
+  , bsList    :: [ClaudeBackground]     -- ^ what it found
+  , bsRemoved :: [Text]                 -- ^ job ids Forget removed meanwhile
+  }
+
 {-# NOINLINE backgroundRef #-}
-backgroundRef :: IORef (Double, Bool, [(FilePath, UTCTime)], [ClaudeBackground])
-backgroundRef = unsafePerformIO (newIORef (0, False, [], []))
+backgroundRef :: IORef BackgroundState
+backgroundRef = unsafePerformIO (newIORef (BackgroundState 0 False [] [] []))
 
 -- | The least time between two runs of @claude agents --json@, however much
 -- changes.
@@ -788,8 +836,11 @@ claudeCommandLine cmd = do
   -- Local sessions get leksah's MCP server (IDE tools: diagnostics, open_file,
   -- build, hover, screenshot…) — see `leksah-cmd mcp`.  The config file points
   -- at a local binary, so remote (ssh://) dirs skip it.
-  mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag
-  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag d
+  -- Whether the leksah plugin brings the hooks and the MCP server instead
+  -- (installed, and not turned off for this project): worked out once.
+  plugin    <- if isRemotePath d then return False else leksahPluginEnabledFor (Just d)
+  mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag plugin
+  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag plugin d
   -- The agent's own name, when its session id is known at launch — so it can
   -- tell the user and other agents who it is.
   myName <- traverse agentNameFor ownSession
@@ -995,20 +1046,18 @@ worktreeNote =
 -- screenshot), (re)writing @~\/.leksah\/mcp.json@ so the recorded binary path
 -- stays fresh across rebuilds.  Empty when @leksah-cmd@ isn't on PATH (the
 -- session just runs without IDE tools).
-claudeMcpFlag :: IO Text
-claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
+claudeMcpFlag :: Bool -> IO Text
+claudeMcpFlag installed = (`catch` \(_ :: SomeException) -> return "") $
   findExecutable "leksah-cmd" >>= \case
     Nothing  -> return ""
     Just exe -> do
       home <- getHomeDirectory
       let path = home </> ".leksah" </> "mcp.json"
-      BL.writeFile path . encode $ object
-        [ "mcpServers" .= object
-            [ "leksah" .= object
-                [ "type"    .= ("stdio" :: Text)
-                , "command" .= exe
-                , "args"    .= (["mcp"] :: [Text]) ] ] ]
-      return (" --mcp-config " <> T.pack path)
+      -- (The installed leksah plugin brings this server to every session:
+      -- a second copy would double every tool.)
+      if installed then return "" else do
+        writeIfChanged path . encode $ object [ "mcpServers" .= leksahMcpServers exe ]
+        return (" --mcp-config " <> T.pack path)
 
 -- | The @--settings@ flag wiring a leksah-launched session to the worktree
 -- PostToolUse hook: every @git worktree add@\/@remove@ \/ @git switch@ a session
@@ -1019,72 +1068,299 @@ claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
 -- @leksah-cmd hooks install@); this just refreshes it and points a small
 -- settings JSON at it.  Empty when @leksah-cmd@ isn't on PATH.  @--settings@
 -- loads ADDITIONAL settings, so the user's own hooks keep working.
-claudeHooksFlag :: FilePath -> IO Text
-claudeHooksFlag dir = (`catch` \(_ :: SomeException) -> return "") $
-  findExecutable "leksah-cmd" >>= \case
-    Nothing  -> return ""
-    Just exe -> do
-      (ec, _, _) <- readProcessWithExitCode exe ["hooks", "write-script"] ""
-      case ec of
-        ExitSuccess -> do
-          home <- getHomeDirectory
-          statusLine <- leksahStatusLine exe <$> claudeUserStatusLine exe dir
-          let path   = home </> ".leksah" </> statusLineSettingsFile statusLine
-              script = home </> ".leksah" </> "worktree-hook.sh"
-          -- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
-          -- SessionStart keeps an agent's identity across /clear and /branch,
-          -- re-briefs it on a resume, registers the worktree it started in,
-          -- and (with UserPromptSubmit) gives it the title it gave itself;
-          -- UserPromptSubmit, Stop, Notification and SessionEnd make the
-          -- status surfaces update at once rather than at the next poll.  Each is `leksah-cmd agent hook EVENT`, which always
-          -- exits 0 quickly, so a hook can never hold up or fail a session.
-          --
-          -- The rest only REPORT, so they run async — they never hold a
-          -- session up: the tool call running now (PreToolUse /
-          -- PostToolUse[Failure]) and the files it edited, the approval a
-          -- session waits for (PermissionRequest), a turn that ended on an
-          -- API error (StopFailure), and where its shell went (CwdChanged).
-          -- PreToolUse above all: a synchronous hook there delays EVERY tool
-          -- call by the hook's run time.  A PostToolUse answer (another agent
-          -- edited the same file) reaches the session on its next turn.
-          -- (Async hooks can arrive out of order; 'recordToolStart' copes.)
-          let hookGroup :: Bool -> Text -> Value
-              hookGroup async ev = object [ "hooks" .=
-                [ object ([ "type"    .= ("command" :: Text)
-                          , "command" .= (shq (T.pack exe) <> " agent hook " <> ev)
-                          , "timeout" .= (5 :: Int) ]
-                          <> [ "async" .= True | async ]) ] ]
-              hookOn :: Bool -> Text -> Pair
-              hookOn async ev = Key.fromText ev .= [hookGroup async ev]
-              lifecycle = hookOn False
-              reporter  = hookGroup True
-          BL.writeFile path . encode $ object
-            [ "hooks" .= object
-                ([ "PostToolUse" .=
-                    [ object
-                        [ "matcher" .= ("Bash|EnterWorktree|ExitWorktree" :: Text)
-                        , "hooks" .=
-                            [ object [ "type"    .= ("command" :: Text)
-                                     , "command" .= script
-                                     , "timeout" .= (10 :: Int) ] ] ]
-                    , reporter "PostToolUse" ] ]
-                 -- (UserPromptSubmit is synchronous because its answer can
-                 -- carry the session's title.)
-                 <> map lifecycle [ "SessionStart", "UserPromptSubmit", "Stop"
-                                  , "Notification", "SessionEnd" ]
-                 <> map (hookOn True)
-                      -- (PostToolUse is registered above, with the
-                      -- worktree hook.)
-                      (filter (/= "PostToolUse") perToolHookEvents
-                       <> [ "PermissionRequest", "StopFailure", "CwdChanged"
-                          -- Its subagents, and a compaction in progress, for
-                          -- the activity line.  PreCompact MUST stay async:
-                          -- a synchronous PreCompact hook's stdout becomes
-                          -- instructions for the compaction summary.
-                          , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ]))
-            , "statusLine" .= statusLine ]
-          return (" --settings " <> T.pack path)
-        _ -> return ""
+claudeHooksFlag :: Bool -> FilePath -> IO Text
+claudeHooksFlag installed dir = (`catch` \(_ :: SomeException) -> return "") $
+  leksahHookTools >>= \case
+    Nothing -> return ""
+    Just (exe, script) -> do
+      home <- getHomeDirectory
+      statusLine <- leksahStatusLine exe <$> claudeUserStatusLine exe dir
+      -- One file per distinct content: running sessions may re-read their
+      -- --settings file, so a launch must never rewrite the one another
+      -- session is using into something different — with hooks for a
+      -- session where the plugin is off, without for one where it is on
+      -- (settings-statusline…), and per carried-over status-line options
+      -- ('statusLineSettingsFile').
+      let base = statusLineSettingsFile statusLine
+          path = home </> ".leksah"
+                   </> (if installed then "settings-statusline" <> drop (length ("hooks" :: String)) base
+                                     else base)
+      -- With the leksah plugin installed (`leksah-cmd plugin install`) every
+      -- session — leksah's included — already has the hooks: keep that copy
+      -- fresh, and leave them out here, or each event would arrive twice.
+      -- The status line is not something a plugin can carry, so it stays.
+      when installed $ do
+        dir <- leksahPluginInstallDir
+        writeLeksahPlugin dir exe script
+      writeIfChanged path . encode . object $
+        [ "hooks" .= leksahHooks exe script | not installed ]
+        <> [ "statusLine" .= statusLine ]
+      return (" --settings " <> T.pack path)
+
+-- | The two programs the hooks run: @leksah-cmd@ (its path), and the worktree
+-- PostToolUse script, which @leksah-cmd hooks write-script@ (re)writes.
+-- 'Nothing' without @leksah-cmd@ on PATH, or when the script can't be written.
+leksahHookTools :: IO (Maybe (FilePath, FilePath))
+leksahHookTools = findExecutable "leksah-cmd" >>= \case
+  Nothing  -> return Nothing
+  Just exe -> do
+    (ec, _, _) <- readProcessWithExitCode exe ["hooks", "write-script"] ""
+    home <- getHomeDirectory
+    return $ case ec of
+      ExitSuccess -> Just (exe, home </> ".leksah" </> "worktree-hook.sh")
+      _           -> Nothing
+
+-- | Every Claude Code hook leksah uses — for the @--settings@ file of the
+-- sessions it launches, and for the leksah plugin ('writeLeksahPlugin'), which
+-- carries the same table to sessions started anywhere.
+--
+-- The session-lifecycle hooks report to leksah ('IDE.Web.Agent.agentHook'):
+-- SessionStart keeps an agent's identity across /clear and /branch, re-briefs
+-- it on a resume, registers the worktree it started in, and (with
+-- UserPromptSubmit) gives it the title it gave itself; UserPromptSubmit, Stop,
+-- Notification and SessionEnd make the status surfaces update at once rather
+-- than at the next poll.  Each is `leksah-cmd agent hook EVENT`, which always
+-- exits 0 quickly, so a hook can never hold up or fail a session — also when
+-- leksah is not running.
+--
+-- The rest only REPORT, so they run async — they never hold a session up: the
+-- tool call running now (PreToolUse / PostToolUse[Failure]) and the files it
+-- edited, the approval a session waits for (PermissionRequest), a turn that
+-- ended on an API error (StopFailure), and where its shell went (CwdChanged).
+-- PreToolUse above all: a synchronous hook there delays EVERY tool call by the
+-- hook's run time.  A PostToolUse answer (another agent edited the same file)
+-- reaches the session on its next turn.  (Async hooks can arrive out of order;
+-- 'recordToolStart' copes.)
+--
+-- And the worktree PostToolUse hook (@script@): every @git worktree
+-- add@\/@remove@ \/ @git switch@ a session runs in Bash, and every worktree it
+-- enters or removes with Claude Code's own worktree tools, lands in the
+-- worktree registry.
+leksahHooks :: FilePath -> FilePath -> Value
+leksahHooks exe script = object $
+  [ "PostToolUse" .=
+      [ object
+          [ "matcher" .= ("Bash|EnterWorktree|ExitWorktree" :: Text)
+          , "hooks" .=
+              [ object [ "type"    .= ("command" :: Text)
+                       , "command" .= script
+                       , "timeout" .= (10 :: Int) ] ] ]
+      , reporter "PostToolUse" ] ]
+  -- (UserPromptSubmit is synchronous because its answer can carry the
+  -- session's title.)
+  <> map lifecycle [ "SessionStart", "UserPromptSubmit", "Stop"
+                   , "Notification", "SessionEnd" ]
+  <> map (hookOn True)
+       -- (PostToolUse is registered above, with the worktree hook.)
+       (filter (/= "PostToolUse") perToolHookEvents
+        <> [ "PermissionRequest", "StopFailure", "CwdChanged"
+           -- Its subagents, and a compaction in progress, for the activity
+           -- line.  PreCompact MUST stay async: a synchronous PreCompact
+           -- hook's stdout becomes instructions for the compaction summary.
+           , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ])
+  where
+    hookGroup :: Bool -> Text -> Value
+    hookGroup async ev = object [ "hooks" .=
+      [ object ([ "type"    .= ("command" :: Text)
+                , "command" .= (shq (T.pack exe) <> " agent hook " <> ev)
+                , "timeout" .= (5 :: Int) ]
+                <> [ "async" .= True | async ]) ] ]
+    hookOn :: Bool -> Text -> Pair
+    hookOn async ev = Key.fromText ev .= [hookGroup async ev]
+    lifecycle = hookOn False
+    reporter  = hookGroup True
+
+-- | Leksah's MCP server (@leksah-cmd mcp@ — IDE tools: diagnostics, open_file,
+-- build, hover, screenshot, the agent tools), as an @mcpServers@ object.
+leksahMcpServers :: FilePath -> Value
+leksahMcpServers exe = object
+  [ "leksah" .= object
+      [ "type"    .= ("stdio" :: Text)
+      , "command" .= exe
+      , "args"    .= (["mcp"] :: [Text]) ] ]
+
+--------------------------------------------------------------------------------
+-- The leksah plugin
+
+-- | Write the leksah Claude Code plugin into @dir@: the manifest, every hook
+-- ('leksahHooks'), and the MCP server ('leksahMcpServers').  Installed
+-- (`leksah-cmd plugin install`) as a skills-directory plugin, it gives EVERY
+-- session the same hooks and tools a leksah-launched one gets — `claude` in a
+-- plain terminal, the resume picker, a background session — so they all show
+-- up, and report, in leksah.  A marker file says leksah wrote it, so leksah
+-- only ever rewrites or removes its own.
+--
+-- Every session on the machine reads these files, and leksah calls this at
+-- each launch: each file is replaced atomically, and only when it changed
+-- ('writeIfChanged'), so a session starting meanwhile never reads half a file.
+writeLeksahPlugin :: FilePath -> FilePath -> FilePath -> IO ()
+writeLeksahPlugin dir exe script = do
+  createDirectoryIfMissing True (dir </> ".claude-plugin")
+  createDirectoryIfMissing True (dir </> "hooks")
+  writeIfChanged (dir </> ".claude-plugin" </> "plugin.json") . encode $ object
+    [ "name"        .= ("leksah" :: Text)
+    , "version"     .= ("1.0.0" :: Text)
+    , "description" .= ("Leksah IDE integration: reports every session's state, \
+                        \tools, edits, subagents and worktrees to Leksah, and \
+                        \gives it Leksah's MCP tools (diagnostics, build, \
+                        \open file, agents)." :: Text) ]
+  writeIfChanged (dir </> "hooks" </> "hooks.json") . encode $
+    object [ "hooks" .= leksahHooks exe script ]
+  writeIfChanged (dir </> ".mcp.json") . encode $
+    object [ "mcpServers" .= leksahMcpServers exe ]
+  writeIfChanged (dir </> leksahPluginMarker)
+    "Written by Leksah (leksah-cmd plugin install); refreshed when a leksah \
+    \launch of a Claude session finds it out of date.  Remove with: \
+    \leksah-cmd plugin uninstall\n"
+
+-- | The files 'writeLeksahPlugin' writes, relative to the plugin directory —
+-- all that 'leksahPluginUninstall' removes.
+leksahPluginFiles :: [FilePath]
+leksahPluginFiles =
+  [ ".claude-plugin" </> "plugin.json", "hooks" </> "hooks.json", ".mcp.json"
+  , leksahPluginMarker ]
+
+-- | Replace @path@ with @bytes@ — atomically (a temporary file renamed over
+-- it), and only when the content differs, so readers never see a partial
+-- file and an unchanged file is not touched at all.
+writeIfChanged :: FilePath -> BL.ByteString -> IO ()
+writeIfChanged path bytes = do
+  ex <- doesFileExist path
+  same <- if not ex then return False
+          else (== BL.toStrict bytes) <$> BS.readFile path
+  unless same $ do
+    let tmp = path <> ".tmp-leksah"
+    BL.writeFile tmp bytes
+    renameFile tmp path
+
+-- | Where the installed plugin lives: Claude Code's skills directory, where a
+-- plugin loads in every new session as @leksah\@skills-dir@ — no marketplace.
+leksahPluginInstallDir :: IO FilePath
+leksahPluginInstallDir = do
+  conf <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
+    Just d | not (null d) -> return d
+    _ -> (</> ".claude") <$> getHomeDirectory
+  return (conf </> "skills" </> "leksah")
+
+leksahPluginMarker :: FilePath
+leksahPluginMarker = ".leksah-generated"
+
+-- | Is the leksah plugin installed (leksah's own, by its marker) and not
+-- turned off — @enabledPlugins: {"leksah\@skills-dir": false}@ — for a
+-- session in @mdir@: the project's @.claude/settings.local.json@, then its
+-- @.claude/settings.json@, then the user's settings, the first that says.
+-- (Turned off for one project, leksah must give its sessions there the hooks
+-- and MCP server itself, or they would have none at all.)
+leksahPluginEnabledFor :: Maybe FilePath -> IO Bool
+leksahPluginEnabledFor mdir = (`catch` \(_ :: SomeException) -> return False) $ do
+  dir <- leksahPluginInstallDir
+  ours <- doesFileExist (dir </> leksahPluginMarker)
+  if not ours then return False else do
+    let conf = takeDirectory (takeDirectory dir)
+        files = [ d </> ".claude" </> f | Just d <- [mdir]
+                                        , f <- ["settings.local.json", "settings.json"] ]
+                <> [conf </> "settings.json"]
+    says <- forM files $ \f -> do
+      ex <- doesFileExist f
+      if not ex then return Nothing else do
+        v <- decodeStrict' <$> BS.readFile f
+        return (v >>= parseMaybe (withObject "settings" $ \o -> o .: "enabledPlugins"
+                    >>= withObject "enabledPlugins" (.: "leksah@skills-dir")))
+    return (listToMaybe (catMaybes' says) /= Just False)
+  where catMaybes' = foldr (\m acc -> maybe acc (: acc) m) []
+
+-- | @leksah-cmd plugin install@: write the plugin into Claude Code's skills
+-- directory.  It loads in sessions started from now on.
+leksahPluginInstall :: IO Text
+leksahPluginInstall = (`catch` \(e :: SomeException) -> return (T.pack (show e) <> "\n")) $
+  leksahHookTools >>= \case
+    Nothing -> return "leksah-cmd is not on leksah's PATH, so there is nothing for the plugin's hooks to run.\n"
+    Just (exe, script) -> do
+      dir <- leksahPluginInstallDir
+      ex <- doesDirectoryExist dir
+      ours <- doesFileExist (dir </> leksahPluginMarker)
+      if ex && not ours
+        then return $ T.pack dir <> " exists and is not leksah's: not touching it.\n"
+        else do
+          writeLeksahPlugin dir exe script
+          dup <- duplicateWorktreeHook
+          return $ "Installed the leksah plugin in " <> T.pack dir <> ".\n\
+            \Claude Code sessions started from now on — in any terminal — report to \
+            \leksah and have its MCP tools (sessions already running are unchanged).\n\
+            \Turn it off with `/plugin` (leksah@skills-dir), or remove it with \
+            \`leksah-cmd plugin uninstall`.\n" <> dup
+
+-- | @leksah-cmd plugin write DIR@: write the plugin to @DIR@ without installing
+-- it — for @claude --plugin-dir DIR@ (one session only), or to look at.
+leksahPluginWrite :: FilePath -> IO Text
+leksahPluginWrite dir = (`catch` \(e :: SomeException) -> return (T.pack (show e) <> "\n")) $
+  leksahHookTools >>= \case
+    Nothing -> return "leksah-cmd is not on leksah's PATH.\n"
+    Just (exe, script) -> do
+     -- Never into a directory with other things in it (`plugin write .` in a
+     -- project would replace its .mcp.json): a new or empty one, or one
+     -- leksah wrote before.
+     ex <- doesDirectoryExist dir
+     ours <- doesFileExist (dir </> leksahPluginMarker)
+     xs <- if ex then listDirectory dir else return []
+     if ex && not ours && not (null xs)
+      then return $ T.pack dir <> " is not empty and leksah did not write it: \
+                   \give a new (or empty) directory.\n"
+      else do
+        writeLeksahPlugin dir exe script
+        return $ "Wrote the leksah plugin to " <> T.pack dir
+               <> " (use it for one session with: claude --plugin-dir " <> T.pack dir <> ").\n"
+
+-- | @leksah-cmd plugin uninstall@: remove the plugin leksah installed (and
+-- nothing else).
+leksahPluginUninstall :: IO Text
+leksahPluginUninstall = (`catch` \(e :: SomeException) -> return (T.pack (show e) <> "\n")) $ do
+  dir <- leksahPluginInstallDir
+  ours <- doesFileExist (dir </> leksahPluginMarker)
+  if not ours
+    then return "The leksah plugin is not installed.\n"
+    else do
+      -- Only the files leksah wrote: anything else in that directory is
+      -- someone else's, and stays (with the directory, then).
+      forM_ leksahPluginFiles $ \f -> do
+        let p = dir </> f
+        e <- doesFileExist p
+        when e (removeFile p)
+      forM_ [dir </> "hooks", dir </> ".claude-plugin", dir] $ \d -> do
+        e <- doesDirectoryExist d
+        when e $ listDirectory d >>= \xs -> when (null xs) (removeDirectory d)
+      left <- doesDirectoryExist dir
+      return $ "Removed the leksah plugin from " <> T.pack dir
+               <> (if left then " (other files there were left alone)" else "")
+               <> ".  Sessions started from now on no longer load it; \
+                  \leksah-launched ones get leksah's hooks again from leksah itself.\n"
+
+-- | @leksah-cmd plugin status@.
+leksahPluginStatus :: IO Text
+leksahPluginStatus = do
+  dir <- leksahPluginInstallDir
+  ours <- doesFileExist (dir </> leksahPluginMarker)
+  on <- leksahPluginEnabledFor Nothing
+  dup <- if ours then duplicateWorktreeHook else return ""
+  return $ (case (ours, on) of
+    (False, _)    -> "not installed (leksah-cmd plugin install)\n"
+    (True, True)  -> "installed and enabled: " <> T.pack dir <> "\n"
+    (True, False) -> "installed but turned off (enabledPlugins: leksah@skills-dir = false): "
+                     <> T.pack dir <> "\n") <> dup
+
+-- | A note when the user's settings also carry the worktree hook that
+-- @leksah-cmd hooks install@ adds: with the plugin installed it runs twice
+-- after every Bash call (harmless, but wasted).  Not removed automatically —
+-- it is the user's settings file.
+duplicateWorktreeHook :: IO Text
+duplicateWorktreeHook = (`catch` \(_ :: SomeException) -> return "") $ do
+  conf <- takeDirectory . takeDirectory <$> leksahPluginInstallDir
+  let f = conf </> "settings.json"
+  ex <- doesFileExist f
+  has <- if ex then ("worktree-hook.sh" `BS.isInfixOf`) <$> BS.readFile f else return False
+  return $ if not has then "" else
+    "Note: " <> T.pack f <> " also runs leksah's worktree hook (from `leksah-cmd \
+    \hooks install`); the plugin has it too, so you can remove that entry.\n"
 
 -- | The @statusLine@ setting for the sessions leksah launches: @leksah-cmd
 -- statusline@, which hands the status-line JSON (context use, cost, rate
@@ -1364,7 +1640,10 @@ nativeShowLiveSession here sid = paneForSession sid >>= \case
     -- show: take it up in one — `claude --resume` resumes a background
     -- session in the foreground.
     background = claudeBackgroundSessions >>= \bgs ->
-      case [ b | b <- bgs, cbSession b == sid, isNothing (cbPid b), not (null (cbDir b)) ] of
+      -- Only a BLOCKED one — the kind the status surfaces list as needing
+      -- you; a finished or failed one is not "shown" by starting it again.
+      case [ b | b <- bgs, cbSession b == sid, cbState b == "blocked"
+               , isNothing (cbPid b), not (null (cbDir b)) ] of
         (b : _) -> runClaudeCmd (ClaudeResume (cbDir b) sid) >> return True
         []      -> return False
 
