@@ -1149,9 +1149,23 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                                            <> " -F '#{pane_id}'")
                         case r of
                           Right (ln : _) | p <- T.strip ln, not (T.null p) ->
-                              firePaneResolved p
+                              firePaneResolved (lid, p)
                           _ -> return ()
-            performEvent_ $ ffor paneResolvedE $ \p -> do
+            -- Act on the resolved pane only if its leaf is STILL the focused
+            -- one.  The resolve is a control-channel round trip, and two
+            -- reconciles in flight at once (one per leaf, as a cross-leaf
+            -- drop leaves them) otherwise chase each other forever: each one
+            -- focuses its leaf, that focusin writes 'lwFocused' back to it
+            -- (the other's landing having just moved it away), which starts
+            -- another reconcile for it — the active ring and the keyboard
+            -- flip between the two leaves every few frames.  A superseded
+            -- reconcile dropped here lets the newer one win.
+            performEvent_ $ ffor paneResolvedE $ \(lid, p) -> do
+              cur <- liftIO readFocusedContent
+              if fmap fst cur /= Just lid
+                then focusLog $ "[" <> T.unpack sessionId <> "] paneResolved pane="
+                       <> T.unpack p <> " for a leaf no longer focused -> skip"
+                else do
                 liftIO $ writeIORef activePaneRef (Just p)
                 -- Deterministic handoff when the pane's xterm isn't built yet
                 -- (a fresh ⌘D split): 'paneWidget' consumes this the moment

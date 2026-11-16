@@ -1,0 +1,686 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+-- | OpenAI Codex CLI sessions, as a second kind of agent beside Claude Code.
+--
+-- Codex has hooks shaped like Claude Code's (SessionStart, UserPromptSubmit,
+-- PreToolUse, PermissionRequest, PostToolUse, Stop, SessionEnd …, the same
+-- JSON on stdin), but nothing like Claude Code's @~\/.claude\/sessions\/\<pid\>.json@:
+-- no file says which sessions are running, or what they are doing.  So
+-- leksah's hooks keep one for it — @~\/.leksah\/codex-sessions\/\<pid\>.json@, in
+-- the same shape — and "IDE.Web.Claude" reads those beside Claude Code's, so a
+-- Codex session is one more live session to everything downstream (the status
+-- surfaces, the Agents pane, the flipper, pane lookup by process ancestry).
+--
+-- The hooks are installed once, into Codex's own @hooks.json@
+-- ('codexInstall'), and Codex runs them only after the user has trusted them in
+-- its @\/hooks@ screen.  The trust is tied to each hook's definition, so the
+-- command never changes: it is a wrapper script (@~\/.leksah\/codex-hook@) that
+-- leksah rewrites to point at the current @leksah-cmd@.
+--
+-- This module is FS/process only, and must not import "IDE.Web.Claude" (which
+-- imports it).
+module IDE.Web.Codex
+  ( codexAvailable
+  , codexHome
+    -- * Live sessions
+  , CodexLive(..)
+  , codexLiveRecords
+  , codexProcessOf
+  , isCodexProgram
+  , codexSessionStart
+  , codexClaimLaunch
+  , codexRememberLaunch
+  , codexSetStatus
+  , codexSessionEnd
+  , codexRecordFor
+    -- * Sessions leksah has seen
+  , isCodexSession
+  , codexTranscriptOf
+  , codexSessionDir
+  , codexStarted
+    -- * Installing the hooks
+  , codexHookEvents
+  , codexInstall
+  , codexUninstall
+  , codexStatus
+  , codexInstalled
+  , codexEnsureInstalled
+  , codexWriteScripts
+    -- * Transcripts (rollouts)
+  , isRollout
+  , rolloutTurns
+  , rolloutFirstPrompt
+    -- * Tool calls
+  , codexPatchFiles
+  ) where
+
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
+import Control.Exception (SomeException, catch)
+import Control.Monad (forM, unless, when)
+import Data.Aeson
+       (Value(..), (.=), (.:?), decodeStrict', encode, object, toJSON, withObject)
+import Data.Aeson.Types (parseMaybe)
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KM
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as BL
+import Data.Foldable (toList)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import Data.List (isPrefixOf, nub)
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Maybe (fromMaybe, isJust)
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Data.Time (getCurrentTime)
+import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
+import System.Directory
+       (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
+        findExecutable, getHomeDirectory, getPermissions, listDirectory,
+        removeFile, renameFile, setPermissions, setOwnerExecutable)
+import System.Environment (lookupEnv)
+import System.Exit (ExitCode(..))
+import System.FilePath ((</>), takeDirectory, takeExtension, takeFileName, dropTrailingPathSeparator)
+import System.IO
+       (IOMode(ReadMode), SeekMode(SeekFromEnd), hFileSize, hIsEOF, hSeek, withFile)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Process (readProcess, readProcessWithExitCode)
+import Text.Read (readMaybe)
+
+-- | Whether @codex@ is on PATH — cached once seen, like 'claudeAvailable'
+-- (it can be installed after leksah starts).
+{-# NOINLINE codexAvailableRef #-}
+codexAvailableRef :: IORef Bool
+codexAvailableRef = unsafePerformIO (newIORef False)
+
+codexAvailable :: IO Bool
+codexAvailable = readIORef codexAvailableRef >>= \case
+  True  -> return True
+  False -> do
+    found <- isJust <$> findExecutable "codex"
+    when found $ writeIORef codexAvailableRef True
+    return found
+
+-- | Codex's own directory: @$CODEX_HOME@, else @~\/.codex@.
+codexHome :: IO FilePath
+codexHome = lookupEnv "CODEX_HOME" >>= \case
+  Just d | not (null d) -> return d
+  _ -> (</> ".codex") <$> getHomeDirectory
+
+leksahDir :: IO FilePath
+leksahDir = (</> ".leksah") <$> getHomeDirectory
+
+--------------------------------------------------------------------------------
+-- Live sessions
+
+-- | One running Codex session, as leksah's hooks recorded it.
+data CodexLive = CodexLive
+  { cxPid        :: Int
+  , cxSession    :: Text
+  , cxDir        :: FilePath
+  , cxStatus     :: Text        -- ^ idle | busy | waiting
+  , cxWaitingFor :: Maybe Text
+  , cxTranscript :: Maybe FilePath
+  } deriving (Eq, Show)
+
+liveDir :: IO FilePath
+liveDir = (</> "codex-sessions") <$> leksahDir
+
+-- | Every hook-written live record (pid liveness is the reader's business —
+-- 'IDE.Web.Claude.claudeLiveBySession' checks it with one @ps@).
+codexLiveRecords :: IO [CodexLive]
+codexLiveRecords = readIORef recordsCache >>= \case
+  Just rs -> return rs
+  Nothing -> do
+    rs <- readRecordsFromDisk
+    writeIORef recordsCache (Just rs)
+    return rs
+
+-- | The records and the index are read on every status poll, for every
+-- session — mostly Claude ones that can never match — so they are kept in
+-- memory.  Only leksah writes them (its hook handler, its launch watcher, in
+-- this process), and every write drops the copy, so it is never stale.
+{-# NOINLINE recordsCache #-}
+recordsCache :: IORef (Maybe [CodexLive])
+recordsCache = unsafePerformIO (newIORef Nothing)
+
+{-# NOINLINE indexCache #-}
+indexCache :: IORef (Maybe (Map Text (FilePath, FilePath)))
+indexCache = unsafePerformIO (newIORef Nothing)
+
+removeRecordFile :: Int -> IO ()
+removeRecordFile pid = do
+  d <- liveDir
+  removeFile (d </> (show pid <> ".json")) `catch` \(_ :: SomeException) -> return ()
+  writeIORef recordsCache Nothing
+
+readRecordsFromDisk :: IO [CodexLive]
+readRecordsFromDisk = (`catch` \(_ :: SomeException) -> return []) $ do
+  d <- liveDir
+  ex <- doesDirectoryExist d
+  if not ex then return [] else do
+    fs <- filter ((== ".json") . takeExtension) <$> listDirectory d
+    concat <$> forM fs (\f -> maybe [] (: []) <$> readRecord (d </> f))
+
+readRecord :: FilePath -> IO (Maybe CodexLive)
+readRecord f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  v <- decodeStrict' <$> BS.readFile f
+  return $ v >>= parseMaybe (withObject "codex" $ \o -> do
+    p  <- o .:? "pid"
+    s  <- o .:? "sessionId"
+    cw <- o .:? "cwd"
+    st <- o .:? "status"
+    wf <- o .:? "waitingFor"
+    tr <- o .:? "transcript"
+    case (p, s) of
+      (Just p', Just s') -> return CodexLive
+        { cxPid = p', cxSession = s'
+        , cxDir = maybe "" (dropTrailingPathSeparator . T.unpack) cw
+        , cxStatus = fromMaybe "idle" st
+        , cxWaitingFor = mfilterT wf
+        , cxTranscript = T.unpack <$> mfilterT tr }
+      _ -> fail "no pid/session")
+  where mfilterT = (>>= \t -> if T.null t then Nothing else Just t)
+
+writeRecord :: CodexLive -> IO ()
+writeRecord r = do
+  d <- liveDir
+  createDirectoryIfMissing True d
+  now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime :: IO Double
+  atomicWrite (d </> (show (cxPid r) <> ".json")) . encode $ object
+    [ "pid" .= cxPid r, "sessionId" .= cxSession r, "cwd" .= cxDir r
+    , "status" .= cxStatus r, "waitingFor" .= cxWaitingFor r
+    , "transcript" .= cxTranscript r, "kind" .= ("codex" :: Text)
+    , "updatedAt" .= now ]
+  writeIORef recordsCache Nothing
+
+-- | Hooks arrive concurrently (from several sessions at once): one writer at a time.
+{-# NOINLINE recordLock #-}
+recordLock :: MVar ()
+recordLock = unsafePerformIO (newMVar ())
+
+-- | The live record for session @sid@, if one is open.
+codexRecordFor :: Text -> IO (Maybe CodexLive)
+codexRecordFor sid = (\rs -> case [ r | r <- rs, cxSession r == sid ] of
+                                (r : _) -> Just r
+                                []      -> Nothing) <$> codexLiveRecords
+
+-- | The codex process a hook runs under: the nearest ancestor of @pid@ (the
+-- hook client) whose program is Codex's (@codex@; nixpkgs' wrapper execs
+-- @.codex-wrapped@; npm's launcher runs @codex-\<target\>@).
+codexProcessOf :: Int -> IO (Maybe Int)
+codexProcessOf pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  out <- readProcess "ps" ["-Ao", "pid=,ppid=,args="] ""
+  let procs = M.fromList
+        [ (p, (q, exe)) | l <- lines out
+                        , (pT : qT : exe : _) <- [words l]
+                        , Just p <- [readMaybe pT], Just q <- [readMaybe qT] ]
+      go :: Int -> Int -> Maybe Int
+      go 0 _ = Nothing
+      go n p = case M.lookup p procs of
+        Just (q, exe) | isCodexProgram exe -> Just p
+                      | q > 1       -> go (n - 1) q
+        _ -> Nothing
+  return (go (14 :: Int) pid)
+
+-- | Is this program (a process's first argument) Codex's?
+isCodexProgram :: FilePath -> Bool
+isCodexProgram exe = let b = takeFileName exe
+                     in "codex" `isPrefixOf` b || ".codex" `isPrefixOf` b
+
+-- | A session started in codex process @pid@ (a new one, a resume, or the
+-- fresh id a @\/clear@ gives the same process): its record now says so.
+-- Answers the session that process was running before, if it was another.
+-- Records of processes that are gone are tidied away while we are here.
+codexSessionStart :: Int -> Text -> FilePath -> Maybe FilePath -> IO (Maybe Text)
+codexSessionStart pid sid cwd transcript = withMVar recordLock $ \_ -> do
+  rs <- codexLiveRecords
+  -- The process's previous session: its record, else what it last started
+  -- (a /clear can report the old session's end first, which takes its
+  -- record away — so the process's last session is remembered too).
+  remembered <- M.lookup pid <$> readIORef lastSessionOfPid
+  let prev = [ cxSession r | r <- rs, cxPid r == pid, cxSession r /= sid ]
+             <> [ o | Just o <- [remembered], o /= sid ]
+  alive <- livePids
+  mapM_ (removeRecordFile . cxPid)
+        [ r | r <- rs, cxPid r /= pid, not (M.null alive), cxPid r `M.notMember` alive ]
+  writeRecord CodexLive { cxPid = pid, cxSession = sid
+                        , cxDir = dropTrailingPathSeparator cwd
+                        , cxStatus = "idle", cxWaitingFor = Nothing
+                        , cxTranscript = transcript }
+  atomicModifyIORef' lastSessionOfPid (\m -> (M.insert pid sid m, ()))
+  mapM_ (rememberSession sid cwd) transcript
+  return (case prev of (p : _) -> Just p; [] -> Nothing)
+  where
+    livePids = (`catch` \(_ :: SomeException) -> return M.empty) $ do
+      out <- readProcess "ps" ["-Ao", "pid="] ""
+      return $ M.fromList [ (p, ()) | l <- lines out, Just p <- [readMaybe l :: Maybe Int] ]
+
+-- | What each codex process last started (see 'codexSessionStart').
+{-# NOINLINE lastSessionOfPid #-}
+lastSessionOfPid :: IORef (Map Int Text)
+lastSessionOfPid = unsafePerformIO (newIORef M.empty)
+
+-- | A leksah launch's codex process has appeared (see
+-- 'IDE.Web.Claude.watchCodexLaunch'): record it under its launch token —
+-- unless its SessionStart got there first, which is decided under the same
+-- lock the hooks write under, so neither can overwrite the other.
+codexClaimLaunch :: Int -> Text -> FilePath -> IO ()
+codexClaimLaunch pid tok cwd = withMVar recordLock $ \_ -> do
+  rs <- codexLiveRecords
+  unless (any ((== pid) . cxPid) rs) $ do
+    writeRecord CodexLive { cxPid = pid, cxSession = tok
+                          , cxDir = dropTrailingPathSeparator cwd
+                          , cxStatus = "idle", cxWaitingFor = Nothing
+                          , cxTranscript = Nothing }
+    atomicModifyIORef' lastSessionOfPid (\m -> (M.insert pid tok m, ()))
+
+-- | A leksah launch of a NEW Codex agent under token @tok@: remember it as a
+-- Codex agent that has not started a conversation yet ('codexStarted'), so
+-- resuming it later starts Codex afresh rather than Claude Code — or a
+-- @codex resume@ of an id Codex never had.
+codexRememberLaunch :: Text -> FilePath -> IO ()
+codexRememberLaunch tok cwd = do
+  m <- readIndex
+  unless (M.member tok m) $ rememberSession tok cwd ""
+
+-- | Has Codex session @sid@ got a conversation of its own to resume?  'False'
+-- for a launch token that never reached its first prompt.
+codexStarted :: Text -> IO Bool
+codexStarted sid = isJust <$> codexTranscriptOf sid
+
+-- | Session @sid@ is now @status@ (idle | busy | waiting), waiting for @what@.
+-- 'True' when that changed anything.  Nothing to change when no record is
+-- open for it (a session leksah never saw start — one that was already
+-- running when its hooks were trusted).
+codexSetStatus :: Text -> Text -> Maybe Text -> IO Bool
+codexSetStatus sid status what = withMVar recordLock $ \_ ->
+  codexRecordFor sid >>= \case
+    Just r | cxStatus r /= status || cxWaitingFor r /= what -> do
+      writeRecord r { cxStatus = status, cxWaitingFor = what }
+      return True
+    _ -> return False
+
+-- | Session @sid@ ended: its record goes.
+codexSessionEnd :: Text -> IO ()
+codexSessionEnd sid = withMVar recordLock $ \_ -> do
+  rs <- codexLiveRecords
+  mapM_ (removeRecordFile . cxPid) [ r | r <- rs, cxSession r == sid ]
+
+--------------------------------------------------------------------------------
+-- Sessions leksah has seen
+
+-- | Every Codex session leksah's hooks have seen start, with its rollout file
+-- and directory: what makes a session id a Codex one once it has exited (to
+-- resume it with @codex resume@, read its transcript).
+indexPath :: IO FilePath
+indexPath = (</> "codex-index.json") <$> leksahDir
+
+readIndex :: IO (Map Text (FilePath, FilePath))
+readIndex = readIORef indexCache >>= \case
+  Just m  -> return m
+  Nothing -> do
+    m <- readIndexFromDisk
+    writeIORef indexCache (Just m)
+    return m
+
+readIndexFromDisk :: IO (Map Text (FilePath, FilePath))
+readIndexFromDisk = (`catch` \(_ :: SomeException) -> return M.empty) $ do
+  p <- indexPath
+  v <- decodeStrict' <$> BS.readFile p
+  return . M.fromList $ case v of
+    Just (Object o) ->
+      [ (Key.toText k, (T.unpack tr, T.unpack cw))
+      | (k, e) <- KM.toList o
+      , Just (tr, cw) <- [parseMaybe (withObject "e" $ \x ->
+                              (,) <$> (fromMaybe "" <$> x .:? "transcript")
+                                  <*> (fromMaybe "" <$> x .:? "cwd")) e] ]
+    _ -> []
+
+rememberSession :: Text -> FilePath -> FilePath -> IO ()
+rememberSession sid cwd transcript = (`catch` \(_ :: SomeException) -> return ()) $ do
+  m <- readIndex
+  unless (M.lookup sid m == Just (transcript, cwd)) $ do
+    p <- indexPath
+    atomicWrite p . encode . object $
+      [ Key.fromText k .= object [ "transcript" .= tr, "cwd" .= cw ]
+      | (k, (tr, cw)) <- M.toList (M.insert sid (transcript, cwd) m) ]
+    writeIORef indexCache Nothing
+
+-- | Is @sid@ a Codex session (running now, or seen by leksah's hooks before)?
+isCodexSession :: Text -> IO Bool
+isCodexSession sid = do
+  live <- isJust <$> codexRecordFor sid
+  if live then return True else M.member sid <$> readIndex
+
+-- | Where a Codex session ran, if leksah knows.
+codexSessionDir :: Text -> IO (Maybe FilePath)
+codexSessionDir sid = codexRecordFor sid >>= \case
+  Just r | not (null (cxDir r)) -> return (Just (cxDir r))
+  _ -> (>>= \(_, cw) -> if null cw then Nothing else Just cw) . M.lookup sid <$> readIndex
+
+-- | A Codex session's rollout (its transcript), if leksah knows it.
+codexTranscriptOf :: Text -> IO (Maybe FilePath)
+codexTranscriptOf sid = codexRecordFor sid >>= \case
+  Just r | Just t <- cxTranscript r -> return (Just t)
+  -- (A launch that never started has an entry with no rollout.)
+  _ -> (>>= \(tr, _) -> if null tr then Nothing else Just tr) . M.lookup sid <$> readIndex
+
+--------------------------------------------------------------------------------
+-- Installing the hooks
+
+-- | The events leksah listens to.  All synchronous: Codex 0.146 skips a hook
+-- marked @async@ ("async hooks are not supported yet"), whatever its docs
+-- say, and it has no Interrupt event.  @leksah-cmd agent hook@ answers in
+-- milliseconds, and gives up after 1.5s when leksah is not answering, so a
+-- turn is never held up for long.
+codexHookEvents :: [Text]
+codexHookEvents =
+  [ "SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"
+  , "PreToolUse", "PostToolUse", "PermissionRequest"
+  , "PreCompact", "PostCompact", "SubagentStart", "SubagentStop" ]
+
+hookScript, mcpScript :: IO FilePath
+hookScript = (</> "codex-hook") <$> leksahDir
+mcpScript  = (</> "codex-mcp") <$> leksahDir
+
+-- | (Re)write the two wrapper scripts so they run the current @leksah-cmd@.
+-- 'False' without @leksah-cmd@ on PATH.  Called at every leksah launch of
+-- Codex, and by the install.
+codexWriteScripts :: IO Bool
+codexWriteScripts = findExecutable "leksah-cmd" >>= \case
+  Nothing  -> return False
+  Just exe -> do
+    d <- leksahDir
+    createDirectoryIfMissing True d
+    hs <- hookScript
+    ms <- mcpScript
+    -- The token a leksah launch set (see 'IDE.Web.Claude.claudeCommandLine')
+    -- rides along, so leksah can tie the session to the agent it started.
+    writeScript hs $ T.unlines
+      [ "#!/bin/sh"
+      , "# Written by leksah: Codex hooks report to the running leksah."
+      , "exec " <> shq (T.pack exe) <> " agent hook \"$1\" codex \"${LEKSAH_AGENT_TOKEN:-}\"" ]
+    writeScript ms $ T.unlines
+      [ "#!/bin/sh"
+      , "# Written by leksah: its MCP server (IDE tools) for Codex sessions."
+      , "exec " <> shq (T.pack exe) <> " mcp" ]
+    return True
+  where
+    writeScript p body = do
+      atomicWrite p (BL.fromStrict (TE.encodeUtf8 body))
+      perms <- getPermissions p
+      setPermissions p (setOwnerExecutable True perms)
+    shq t = "'" <> T.replace "'" "'\\''" t <> "'"
+
+hooksJson :: IO FilePath
+hooksJson = (</> "hooks.json") <$> codexHome
+
+rulesFile :: IO FilePath
+rulesFile = (</> "rules" </> "leksah.rules") <$> codexHome
+
+-- | Is a hook group one of leksah's (its command runs our wrapper)?
+ourGroup :: FilePath -> Value -> Bool
+ourGroup script = \case
+  Object g | Just (Array hs) <- KM.lookup "hooks" g ->
+    any (\case Object h | Just (String c) <- KM.lookup "command" h ->
+                            T.pack script `T.isPrefixOf` c
+               _ -> False) (toList hs)
+  _ -> False
+
+-- | Codex's @hooks.json@ — empty when there is none.  'Left' when there is
+-- one leksah cannot read as a JSON object (a trailing comma, a comment …):
+-- then it must not be written at all, or the user's own hooks would be lost.
+readHooks :: IO (Either Text (KM.KeyMap Value))
+readHooks = (`catch` \(e :: SomeException) -> return (Left (T.pack (show e)))) $ do
+  p <- hooksJson
+  ex <- doesFileExist p
+  if not ex then return (Right mempty) else do
+    v <- decodeStrict' <$> BS.readFile p
+    return $ case v of
+      Just (Object o) -> Right o
+      _ -> Left (T.pack p <> " is not a JSON object leksah can read — fix it \
+                \(or move it aside), and try again; leksah leaves it alone")
+
+-- | Merge leksah's hook groups into Codex's @hooks.json@ (the user's own
+-- entries stay), point the MCP server at leksah (through Codex's own
+-- @codex mcp add@ — leksah never edits @config.toml@ itself), and pre-approve
+-- the few @leksah-cmd@ commands leksah's notes ask an agent to run.
+codexInstall :: IO Text
+codexInstall = (`catch` \(e :: SomeException) -> return ("codex install failed: " <> T.pack (show e) <> "\n")) $ do
+  ok <- codexWriteScripts
+  if not ok then return "leksah-cmd is not on PATH, so there is nothing for Codex to run.\n" else do
+    script <- hookScript
+    readHooks >>= \case
+     Left err -> return ("Not installed: " <> err <> "\n")
+     Right top -> do
+      clearUninstalled
+      installInto script top
+
+-- | 'codexInstall', once @hooks.json@ has been read.
+installInto :: FilePath -> KM.KeyMap Value -> IO Text
+installInto script top = do
+    let existing = case KM.lookup "hooks" top of
+          Just (Object o) -> o
+          _               -> mempty
+        groupFor ev = object
+          [ "hooks" .= [ object
+              [ "type" .= ("command" :: Text)
+              , "command" .= (T.pack script <> " " <> ev)
+              , "timeout" .= (if ev == "SessionEnd" then 3 else 5 :: Int) ] ] ]
+        merged = foldr (\ev acc ->
+                   let k = Key.fromText ev
+                       others = case KM.lookup k acc of
+                         Just (Array gs) -> filter (not . ourGroup script) (toList gs)
+                         _               -> []
+                   in KM.insert k (toJSON (others <> [groupFor ev])) acc)
+                 existing codexHookEvents
+    p <- hooksJson
+    home <- codexHome
+    createDirectoryIfMissing True home
+    atomicWrite p (encode (Object (KM.insert "hooks" (Object merged) top)))
+    rules <- rulesFile
+    createDirectoryIfMissing True (home </> "rules")
+    atomicWrite rules . BL.fromStrict . TE.encodeUtf8 $ T.unlines
+      [ "# Written by leksah: the leksah-cmd commands its notes ask an agent to"
+      , "# run (they only tell the IDE what the agent is doing)."
+      , "# (`agent send` too: how a forked agent reports back to the one that"
+      , "# started it — a prompt there would stall that loop.)"
+      , "prefix_rule(pattern = [\"leksah-cmd\", \"agent\", [\"describe\", \"register\", \"done\", \"send\"]], decision = \"allow\")" ]
+    mcp <- mcpScript
+    mcpMsg <- codexCli ["mcp", "add", "leksah", "--", mcp] >>= \case
+      Right _  -> return "the leksah MCP server is registered (codex mcp add leksah)"
+      Left err -> return ("the MCP server could not be registered: " <> err)
+    return $ T.unlines
+      [ "Installed leksah's Codex hooks into " <> T.pack p <> ","
+      , mcpMsg <> ","
+      , "and allowed `leksah-cmd agent describe|register|done|send` (" <> T.pack rules <> ")."
+      , ""
+      , "Codex runs new hooks only once you trust them: start codex, type /hooks,"
+      , "and trust the leksah ones (" <> T.pack script <> ")." ]
+
+-- | Take leksah's hooks, MCP server and rules out of Codex again.
+codexUninstall :: IO Text
+codexUninstall = (`catch` \(e :: SomeException) -> return ("codex uninstall failed: " <> T.pack (show e) <> "\n")) $ do
+  script <- hookScript
+  readHooks >>= \case
+    Left err -> return ("Not uninstalled: " <> err <> "\n")
+    Right top -> do
+      let existing = case KM.lookup "hooks" top of
+            Just (Object o) -> o
+            _               -> mempty
+          kept = KM.mapMaybe (\case
+                   Array gs -> let gs' = filter (not . ourGroup script) (toList gs)
+                               in if null gs' then Nothing else Just (toJSON gs')
+                   v -> Just v) existing
+      p <- hooksJson
+      ex <- doesFileExist p
+      when ex $ atomicWrite p (encode (Object (KM.insert "hooks" (Object kept) top)))
+      rules <- rulesFile
+      removeFile rules `catch` \(_ :: SomeException) -> return ()
+      _ <- codexCli ["mcp", "remove", "leksah"]
+      -- Remembered, so the next Codex launch does not quietly put it all back
+      -- ('codexEnsureInstalled'); `codex install` forgets it again.
+      markUninstalled
+      return "Removed leksah's hooks, MCP server and rules from Codex.\n"
+
+-- | Are leksah's hooks in Codex's @hooks.json@ (all of them)?
+codexInstalled :: IO Bool
+codexInstalled = do
+  script <- hookScript
+  readHooks >>= \case
+    Left _ -> return False
+    Right top -> do
+      let have ev = case KM.lookup "hooks" top >>= \case Object o -> KM.lookup (Key.fromText ev) o
+                                                         _        -> Nothing of
+            Just (Array gs) -> any (ourGroup script) (toList gs)
+            _               -> False
+      return (all have codexHookEvents)
+
+-- | Install the hooks if they are missing — the first time leksah starts a
+-- Codex session — unless the user took them out (`leksah-cmd codex
+-- uninstall`).  'Just' the install's report when it did.
+codexEnsureInstalled :: IO (Maybe Text)
+codexEnsureInstalled = do
+  out <- uninstalledMarker >>= doesFileExist
+  if out then return Nothing else codexInstalled >>= \case
+    True  -> return Nothing
+    False -> Just <$> codexInstall
+
+uninstalledMarker :: IO FilePath
+uninstalledMarker = (</> "codex-uninstalled") <$> leksahDir
+
+markUninstalled, clearUninstalled :: IO ()
+markUninstalled = do
+  m <- uninstalledMarker
+  createDirectoryIfMissing True (takeDirectory m)
+  writeFile m "leksah-cmd codex uninstall: leksah does not reinstall its Codex hooks by itself\n"
+clearUninstalled = do
+  m <- uninstalledMarker
+  removeFile m `catch` \(_ :: SomeException) -> return ()
+
+-- | What is installed, and whether Codex has been told to trust it.
+codexStatus :: IO Text
+codexStatus = do
+  inst <- codexInstalled
+  script <- hookScript
+  cfg <- (</> "config.toml") <$> codexHome
+  trusted <- (`catch` \(_ :: SomeException) -> return 0) $ do
+    ex <- doesFileExist cfg
+    if not ex then return (0 :: Int) else do
+      t <- TE.decodeUtf8 <$> BS.readFile cfg
+      -- Codex keeps one [hooks.state."<source>:<event>:…"] table per trusted
+      -- hook, naming the file it came from; count the ones for hooks.json
+      -- that carry a trusted_hash.
+      let tables = T.splitOn "\n[" t
+      return (length [ () | tb <- tables, "hooks.state" `T.isPrefixOf` tb
+                          , "hooks.json" `T.isInfixOf` T.takeWhile (/= '\n') tb
+                          , "trusted_hash" `T.isInfixOf` tb ])
+  mcp <- either (const False) (const True) <$> codexCli ["mcp", "get", "leksah"]
+  avail <- codexAvailable
+  return $ T.unlines
+    [ "codex on PATH:     " <> yn avail
+    , "hooks installed:   " <> yn inst <> "  (" <> T.pack script <> ")"
+    , "hooks trusted:     " <> (if trusted >= length codexHookEvents then "yes"
+                                else if trusted == 0 then "no — run /hooks in codex and trust them"
+                                else T.pack (show trusted) <> " of " <> T.pack (show (length codexHookEvents))
+                                       <> " — run /hooks in codex")
+    , "MCP server:        " <> yn mcp ]
+  where yn b = if b then "yes" else "no"
+
+codexCli :: [String] -> IO (Either Text Text)
+codexCli args = (`catch` \(e :: SomeException) -> return (Left (T.pack (show e)))) $
+  findExecutable "codex" >>= \case
+    Nothing -> return (Left "codex is not on PATH")
+    Just c  -> do
+      (ec, out, err) <- readProcessWithExitCode c args ""
+      return $ case ec of
+        ExitSuccess -> Right (T.pack out)
+        _           -> Left (T.strip (T.pack (if null err then out else err)))
+
+--------------------------------------------------------------------------------
+-- Transcripts (rollouts)
+
+-- | Is this a Codex rollout (@rollout-\<time\>-\<id\>.jsonl@), rather than a
+-- Claude Code transcript?
+isRollout :: FilePath -> Bool
+isRollout = ("rollout-" `isPrefixOf`) . takeFileName
+
+-- | The conversation in the tail of a rollout, oldest first, as
+-- @(fromUser, text)@: what was typed into it (@user_message@ events — not
+-- the developer messages leksah's own briefing and Codex's instructions
+-- arrive as) and what the agent said (@agent_message@).
+rolloutTurns :: FilePath -> IO [(Bool, Text)]
+rolloutTurns path = (`catch` \(_ :: SomeException) -> return []) $ do
+  ls <- withFile path ReadMode $ \h -> do
+    size <- hFileSize h
+    let back = min size (512 * 1024)
+    hSeek h SeekFromEnd (negate back)
+    BS.lines <$> BS.hGet h (fromIntegral back)
+  return [ t | l <- ls, "\"event_msg\"" `BS.isInfixOf` l
+             , Just t <- [decodeStrict' l >>= parseMaybe turnP]
+             , not (T.null (T.strip (snd t))) ]
+  where
+    turnP = withObject "line" $ \o -> do
+      p  <- o .:? "payload"
+      case p of
+        Just (Object po) -> do
+          ty <- parseField po "type"
+          msg <- parseField po "message"
+          case (ty, msg) of
+            (Just ("user_message" :: Text), Just m)  -> return (True, m)
+            (Just "agent_message", Just m)           -> return (False, m)
+            _ -> fail "not a turn"
+        _ -> fail "no payload"
+    parseField po k = return (KM.lookup k po >>= \case String t -> Just t; _ -> Nothing)
+
+-- | The first thing typed into a rollout's session — its label until it says
+-- what it is.  Reads from the front, a bounded number of lines (the first
+-- line alone carries Codex's whole system prompt).
+rolloutFirstPrompt :: FilePath -> IO (Maybe Text)
+rolloutFirstPrompt path = (`catch` \(_ :: SomeException) -> return Nothing) $
+  withFile path ReadMode $ \h -> go h (60 :: Int)
+  where
+    go _ 0 = return Nothing
+    go h n = hIsEOF h >>= \case
+      True  -> return Nothing
+      False -> do
+        l <- BS.hGetLine h
+        if not ("\"user_message\"" `BS.isInfixOf` l) then go h (n - 1) else
+          case decodeStrict' l >>= parseMaybe (withObject "l" (.:? "payload")) of
+            Just (Just (Object po)) | Just (String m) <- KM.lookup "message" po
+                                    , not (T.null (T.strip m)) ->
+              return (Just (T.strip (T.takeWhile (/= '\n') m)))
+            _ -> go h (n - 1)
+
+--------------------------------------------------------------------------------
+-- Tool calls
+
+-- | The files a Codex @apply_patch@ call touches: its patch names each one on
+-- an @*** Add File:@ \/ @*** Update File:@ \/ @*** Delete File:@ \/ @*** Move to:@
+-- line.  The patch is wherever it is in the tool input (a string field).
+codexPatchFiles :: Value -> [FilePath]
+codexPatchFiles v = nub
+  [ T.unpack (T.strip p)
+  | s <- strings v, l <- T.lines s
+  , pre <- ["*** Add File:", "*** Update File:", "*** Delete File:", "*** Move to:"]
+  , Just p <- [T.stripPrefix pre l], not (T.null (T.strip p)) ]
+  where
+    strings = \case
+      String t -> [t]
+      Array xs -> concatMap strings (toList xs)
+      Object o -> concatMap strings (KM.elems o)
+      _        -> []
+
+--------------------------------------------------------------------------------
+
+atomicWrite :: FilePath -> BL.ByteString -> IO ()
+atomicWrite path bytes = do
+  ex <- doesFileExist path
+  same <- if not ex then return False else (== BL.toStrict bytes) <$> BS.readFile path
+  unless same $ do
+    let tmp = path <> ".tmp-leksah"
+    BL.writeFile tmp bytes
+    renameFile tmp path

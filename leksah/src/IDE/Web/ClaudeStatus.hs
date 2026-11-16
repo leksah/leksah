@@ -58,7 +58,7 @@ import IDE.Web.AgentEvents (sePromptPending, sessionEvents)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou,
-        claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel)
+        claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel, codexDiscover)
 
 -- | One live session, as a status surface shows it.
 data ClaudeStatusRow = ClaudeStatusRow
@@ -76,6 +76,7 @@ data ClaudeStatusRow = ClaudeStatusRow
                           --   ('backgroundNeedsYou': blocked, recently) — it
                           --   counts on every status surface, but is not a live
                           --   session (no pane; showing it resumes it)
+  , csrAgent   :: Text  -- ^ which CLI runs it: @claude@ or @codex@
   } deriving (Eq, Show)
 
 -- | The live sessions, worst state first.
@@ -154,6 +155,9 @@ startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
   where
     loop prev labels = do
       (st, labels') <- (`catch` \(_ :: SomeException) -> return (prev, labels)) $ do
+        -- Codex sessions not yet prompted have said nothing through their
+        -- hooks: find them in leksah's terminals first ('codexDiscover').
+        codexDiscover
         live0 <- claudeLiveBySession
         -- A prompt was just submitted (the UserPromptSubmit hook): working
         -- from this moment, though its session file may still say idle for a
@@ -260,6 +264,7 @@ summarize names titles labels ls bgs = ClaudeStatus
           _              -> "Running"
       , csrSession = clSession l
       , csrBackground = False
+      , csrAgent = clAgent l
       }
     bgTitle b = fromMaybe (T.take 8 (cbSession b)) $
       M.lookup (cbSession b) titles <|> cbName b
@@ -271,6 +276,7 @@ summarize names titles labels ls bgs = ClaudeStatus
       , csrDetail  = "Background session, blocked — waiting for you (open it to answer)"
       , csrSession = cbSession b
       , csrBackground = True
+      , csrAgent = "claude"
       }
 
 -- | One session in one line, as every list of them prints it: its name, then

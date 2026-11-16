@@ -181,6 +181,11 @@ usage = T.unlines
   , "  leksah-cmd plugin [status]         is it installed, and turned on?"
   , "  leksah-cmd plugin write DIR        write it to a new or empty DIR, for one session's"
   , "                                     claude --plugin-dir DIR"
+  , "  leksah-cmd codex install           install leksah's hooks and MCP server into Codex"
+  , "                                     (~/.codex/hooks.json, codex mcp add leksah); trust"
+  , "                                     the hooks once with /hooks in codex"
+  , "  leksah-cmd codex uninstall         take them out again (and keep them out)"
+  , "  leksah-cmd codex [status]          installed? trusted? MCP server registered?"
   , "  leksah-cmd statusline              a Claude Code statusLine command (leksah sets it"
   , "                                     for the sessions it launches): passes the JSON on"
   , "                                     stdin to leksah (context use, cost, rate limits"
@@ -213,7 +218,9 @@ main = getArgs >>= \case
   -- (stdin) goes to leksah, leksah's answer (SessionStart's extra context, or
   -- nothing) is printed, and it exits 0 whatever happens — also when leksah is
   -- not running or does not answer within a few seconds.
-  ("agent":"hook":ev:_) -> (`catch` \(_ :: SomeException) -> return ()) $ do
+  -- (Codex's hooks run it as `agent hook EVENT codex TOKEN`: see
+  -- IDE.Web.Codex.  The extra words ride along after the payload.)
+  ("agent":"hook":ev:rest) -> (`catch` \(_ :: SomeException) -> return ()) $ do
     input <- BS.getContents
     -- 1.5s at most: with the leksah plugin installed, EVERY Claude session on
     -- the machine runs this hook, and the synchronous ones (SessionStart,
@@ -221,7 +228,7 @@ main = getArgs >>= \case
     -- leksah that is wedged but still accepting connections must not stall
     -- them all for long.
     r <- timeout 1500000 . tryReply $
-           ["agent", "hook", ev, T.unpack (decodeUtf8With lenientDecode input)]
+           (["agent", "hook", ev, T.unpack (decodeUtf8With lenientDecode input)] <> rest)
     case r of
       Just (Just t) | not (T.null (T.strip t)) -> T.putStr t
       _                                        -> return ()
@@ -1106,6 +1113,7 @@ mcpTools =
       , ("role",   "string", "Start a fresh agent in this role (a Claude Code subagent definition in .claude/agents/; see list_agent_roles)")
       , ("fresh",  "boolean", "Do NOT inherit your conversation: a clean agent that knows only this prompt (and the project's CLAUDE.md)")
       , ("dir",    "string", "Working directory — only with fresh (a forked conversation stays in its own directory)")
+      , ("agent",  "string", "claude (default) or codex — codex starts a fresh OpenAI Codex agent")
       , ("place",  "string", "beside (default), below, or tab") ] ["prompt"]
   , mcpTool "find_agent"
       "Which agent in this IDE should take a piece of work? Ranks the running \
@@ -1288,6 +1296,7 @@ mcpCall params = do
         Nothing -> return (Left "missing required argument: prompt")
         Just p  -> sock $ ["agent", "fork"]
                        <> [ "--fresh" | mcpBool "fresh" args ]
+                       <> [ "--codex" | mcpText "agent" args == Just "codex" ]
                        <> maybe [] (\d -> ["--dir", T.unpack d]) (mcpText "dir" args)
                        <> maybe [] (\ro -> ["--as", T.unpack ro]) (mcpText "role" args)
                        <> case mcpText "place" args of

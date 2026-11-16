@@ -80,6 +80,7 @@ import IDE.Web.AgentInfo
        (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
         interruptedOffer, latestInterruption)
 import IDE.Web.Claude (ClaudeCmd(..), claudeRemoveBackground, runClaudeCmd)
+import IDE.Web.Codex (codexAvailable)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
         dimColor, fgColor, hoverColor)
@@ -205,6 +206,14 @@ agentsWidget ctx mruNamesD = do
           activeProjectDir >>= \case
             Nothing -> toast "Open a project first: a new agent starts in the active project"
             Just d  -> runClaudeCmd (ClaudeNew d) >> refresh
+        cxAvail <- liftIO codexAvailable
+        cxE <- if cxAvail
+                 then actionBtn "⊕" "Start a new Codex agent in the active project, in its own tab"
+                 else return never
+        performEvent_ $ ffor cxE $ \_ -> liftIO . void . forkIO $
+          activeProjectDir >>= \case
+            Nothing -> toast "Open a project first: a new agent starts in the active project"
+            Just d  -> runClaudeCmd (CodexNew d) >> refresh
         teamE <- actionBtn "👥" "Open the Team pane: a bio card for every agent"
         performEvent_ $ liftIO (requestKeymapCommand CommandShowTeam) <$ teamE
         h <- actionBtn "⟳" "Re-read the agent list"

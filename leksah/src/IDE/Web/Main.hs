@@ -6827,11 +6827,11 @@ main showMenubar macTitlebar wid ctx = mdo
             -- Off the frame thread: this spawns tmux processes, and resuming a
             -- closed session means waiting for it to come up.
             void . forkIO $ case choice of
-              AINewSession dir -> do
+              AINewSession cx dir -> do
                   -- A brand-new session has no id yet, so there is nothing to
                   -- bind or to send to; start it and leave the payload for the
                   -- user to re-send once it is up (its pane gets focus).
-                  runClaudeCmd (ClaudeNew dir)
+                  runClaudeCmd (if cx then CodexNew dir else ClaudeNew dir)
               AISessionChoice row -> do
                   -- Explicitly choosing a session makes it this pane's default
                   -- (an unchanged default writes nothing).
@@ -9347,6 +9347,7 @@ main showMenubar macTitlebar wid ctx = mdo
               STClaudeResume d i' -> runClaudeCmd (ClaudeResume d i')
               STClaudeFork d i'   -> runClaudeCmd (ClaudeResumeFork d i')
               STClaudeAsk f       -> runClaudeCmd (ClaudeAsk f)
+              STCodexNew d        -> runClaudeCmd (CodexNew d)
               STRunCmd keep d ks nm c -> runInTerminal keep d ks nm c
             -- A terminal-family item (a plain shell, or a claude command): a
             -- real split of the active pane running the command.
@@ -9392,6 +9393,7 @@ main showMenubar macTitlebar wid ctx = mdo
               STClaudeResume d i' -> Just (claudeSpec (ClaudeResume d i'))
               STClaudeFork d i'   -> Just (claudeSpec (ClaudeResumeFork d i'))
               STClaudeAsk f       -> Just (claudeSpec (ClaudeAsk f))
+              STCodexNew d        -> Just (claudeSpec (CodexNew d))
               STRunCmd keep d ks _ c | not ("ssh://" `T.isPrefixOf` T.pack d) -> Just $ do
                   let dir = dropTrailingPathSeparator d
                   full <- prefixedCmdLine dir c
@@ -9474,6 +9476,7 @@ main showMenubar macTitlebar wid ctx = mdo
                   STClaudeResume d i' -> placeClaude activePid (ClaudeResume d i')
                   STClaudeFork d i'   -> placeClaude activePid (ClaudeResumeFork d i')
                   STClaudeAsk f       -> placeClaude activePid (ClaudeAsk f)
+                  STCodexNew d        -> placeClaude activePid (CodexNew d)
                   -- A command split mirrors 'runInTerminal''s window: prefix
                   -- applied, and a shell kept always (keep) or only after a
                   -- FAILING command, so errors stay visible but a clean run

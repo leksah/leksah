@@ -121,6 +121,8 @@ agentCard acts mustD startOpen nD = mdo
           elClass "div" "agent-card-avatar" $ do
             void $ elDynHtmlAttr' "span" ("class" =: "agent-card-face") (faceOf <$> nD)
             elDynAttr "span" (badgeAttrs <$> nD) . dynText $ glyphOf . anState <$> nD
+            -- And which CLI it is, on the other side.
+            void $ elDynHtmlAttr' "span" ("class" =: "agent-card-agent") (agentGlyph . anAgent <$> nD)
           divClass "agent-card-head" $ do
             -- 1: name (or the rename field), badges, state, age
             d' <- divClass "agent-card-line agent-card-line1" $ do
@@ -313,6 +315,20 @@ badgeAttrs, managerAttrs, roleAttrs, stateAttrs, ageAttrs, line3Attrs, branchAtt
   prAttrs, parentAttrs, childrenAttrs, sinceAttrs, cwdAttrs, editsAttrs
   :: AgentNode -> Map Text Text
 badgeAttrs n = "class" =: "agent-card-badge" <> "style" =: ("color:" <> colourOf (anState n))
+-- | The badge on the left of the face: which CLI the agent runs in — Codex's
+-- prompt (@>_@) or Claude Code's spark.  Drawn, not typed: a font glyph sits on
+-- its baseline (an underscore lowest of all), so it never lines up with the
+-- state glyph opposite; these are centred in their box by construction.
+agentGlyph :: Text -> Text
+agentGlyph "codex" =
+  "<svg viewBox=\"0 0 10 10\" fill=\"none\" stroke=\"#10a37f\" stroke-width=\"1.6\" \
+  \stroke-linecap=\"round\" stroke-linejoin=\"round\"><title>Codex agent</title>\
+  \<polyline points=\"1.5,2.5 4.5,5 1.5,7.5\"/><line x1=\"5.5\" y1=\"7.5\" x2=\"8.8\" y2=\"7.5\"/></svg>"
+agentGlyph _ =
+  "<svg viewBox=\"0 0 10 10\" fill=\"none\" stroke=\"#d97757\" stroke-width=\"1.5\" \
+  \stroke-linecap=\"round\"><title>Claude Code agent</title>\
+  \<line x1=\"5\" y1=\"1\" x2=\"5\" y2=\"9\"/><line x1=\"1\" y1=\"5\" x2=\"9\" y2=\"5\"/>\
+  \<line x1=\"2.2\" y1=\"2.2\" x2=\"7.8\" y2=\"7.8\"/><line x1=\"7.8\" y1=\"2.2\" x2=\"2.2\" y2=\"7.8\"/></svg>"
 managerAttrs n = if anManager n then "class" =: "agent-card-tag agent-card-tag-manager"
                                 else hidden
 roleAttrs n = maybe hidden (const ("class" =: "agent-card-tag")) (anRole n)
@@ -489,6 +505,24 @@ agentCardCss = do
     "padding" -: "1px 2px"
     "border-radius" -: "7px"
     "background" -: "var(--leksah-bg)"
+  -- The same box as the state badge opposite (13px tall: 11px line + 1px
+  -- padding each way), its drawing centred in it.
+  ".agent-card .agent-card-agent" ? do
+    "position" -: "absolute"
+    "left" -: "-3px"
+    "bottom" -: "-3px"
+    "box-sizing" -: "border-box"
+    "width" -: "13px"
+    "height" -: "13px"
+    "display" -: "flex"
+    "align-items" -: "center"
+    "justify-content" -: "center"
+    "border-radius" -: "7px"
+    "background" -: "var(--leksah-bg)"
+  ".agent-card .agent-card-agent svg" ? do
+    "display" -: "block"
+    "width" -: "9px"
+    "height" -: "9px"
   ".agent-card .agent-card-head" ? do
     "flex" -: "1 1 auto"
     "min-width" -: "0"

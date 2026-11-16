@@ -56,6 +56,7 @@ import IDE.Web.Claude
         claudeLiveOwners, claudeSessionLabel, claudeSessionsFor,
         paneCurrentPath)
 import IDE.Web.AgentNames (agentNames)
+import IDE.Web.Codex (codexAvailable)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.Widget.Terminal (TmuxPane(..), TmuxWindow(..))
@@ -77,13 +78,14 @@ data AIRow = AIRow
 -- may not exist).
 data AIChoice
   = AISessionChoice AIRow
-  | AINewSession FilePath  -- ^ start a new session in this directory
+  | AINewSession Bool FilePath  -- ^ start a new session in this directory
+                               --   (a Codex one when 'True')
   deriving (Eq, Ord, Show)
 
 -- | A stable key per row, for the overlay's keyed list.
 choiceKey :: AIChoice -> Text
 choiceKey (AISessionChoice r) = arSession r
-choiceKey (AINewSession d)    = "new:" <> T.pack d
+choiceKey (AINewSession cx d) = (if cx then "newcodex:" else "new:") <> T.pack d
 
 --
 -- Which pane are we talking about
@@ -287,8 +289,9 @@ aiPickerChoices app tree mref = do
       sids = maybe ordered (\d -> d : filter (/= d) ordered) mdflt
   rows  <- mapM (row names titles mdflt live) sids
   mnew  <- maybe (return Nothing) (paneProjectDir app tree) mref
+  codex <- codexAvailable
   let newRow = case mnew of
-        Just d  -> [AINewSession d]
+        Just d  -> AINewSession False d : [ AINewSession True d | codex ]
         -- No directory to anchor a new session to (an untitled pane, no
         -- workspace): offering it would be a lie, so don't.
         Nothing -> []

@@ -40,6 +40,7 @@ module IDE.Web.Claude
   , runClaudeCmd
   , claudeCommandLine
   , claudeLatestActivity
+  , codexDiscover
   , describeToolUse
   , claudeProcessOf
   , claudePaneSessions
@@ -127,7 +128,11 @@ import System.Process
 import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
-import IDE.App (appUi, getGlobalApp)
+import IDE.App (appNote, appUi, getGlobalApp)
+import IDE.Web.Codex
+       (CodexLive(..), codexLiveRecords, codexEnsureInstalled, codexWriteScripts,
+        codexClaimLaunch, codexRememberLaunch, codexStarted, isCodexProgram,
+        codexTranscriptOf, rolloutFirstPrompt)
 import IDE.Reactive (readCell)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.DemoAgents (demoShowAgent)
@@ -202,6 +207,9 @@ data ClaudeLive = ClaudeLive
                                 --   Code's daemon, shown in whichever terminal
                                 --   is attached to it — see
                                 --   'claudePaneSessions'); else interactive
+  , clAgent      :: Text        -- ^ which CLI runs it: @claude@, or @codex@ (a
+                                --   record leksah's own hooks keep — see
+                                --   "IDE.Web.Codex")
   } deriving (Eq, Show)
 
 -- | Every Claude Code session running right now.
@@ -226,7 +234,7 @@ claudeLiveSessions = claudeSessionFiles >>= dropContinued
 dropContinued :: [ClaudeLive] -> IO [ClaudeLive]
 dropContinued ls = (`catch` \(_ :: SomeException) -> return ls) $ do
   checked <- readIORef continuationChecked
-  let fresh = [ l | l <- ls, clSession l `S.notMember` checked ]
+  let fresh = [ l | l <- ls, clAgent l == "claude", clSession l `S.notMember` checked ]
   unless (null fresh) $ do
     atomicModifyIORef' continuationChecked
       (\c -> (foldr (S.insert . clSession) c fresh, ()))
@@ -264,10 +272,19 @@ continuedFrom l = (`catch` \(_ :: SomeException) -> return Nothing) $ do
       return [ T.pack (takeBaseName f) | not (null says) ]
     return (listToMaybe (concat hits))
 
--- | Every @~\/.claude\/sessions\/*.json@ as a 'ClaudeLive' (pid liveness and
--- continuations not considered yet).
+-- | Every @~\/.claude\/sessions\/*.json@ as a 'ClaudeLive', and every Codex
+-- session leksah's hooks keep a record of ("IDE.Web.Codex") — pid liveness and
+-- continuations not considered yet.
 claudeSessionFiles :: IO [ClaudeLive]
-claudeSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
+claudeSessionFiles = (<>) <$> claudeOwnSessionFiles <*> (map fromCodex <$> codexLiveRecords)
+  where
+    fromCodex r = ClaudeLive
+      { clPid = cxPid r, clSession = cxSession r, clDir = cxDir r, clName = Nothing
+      , clStatus = Just (cxStatus r), clWaitingFor = cxWaitingFor r
+      , clJob = Nothing, clKind = Nothing, clAgent = "codex" }
+
+claudeOwnSessionFiles :: IO [ClaudeLive]
+claudeOwnSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
   home <- getHomeDirectory
   let sdir = home </> ".claude" </> "sessions"
   ex <- doesDirectoryExist sdir
@@ -287,7 +304,8 @@ claudeSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
                 , clStatus     = mfilter (not . T.null) (v >>= objField "status")
                 , clWaitingFor = mfilter (not . T.null) (v >>= objField "waitingFor")
                 , clJob        = mfilter (not . T.null) (v >>= objField "jobId")
-                , clKind       = mfilter (not . T.null) (v >>= objField "kind") } ]
+                , clKind       = mfilter (not . T.null) (v >>= objField "kind")
+                , clAgent      = "claude" } ]
           _ -> []
 
 -- | One background session (@claude --bg@, or one dispatched from @claude
@@ -733,7 +751,10 @@ data ClaudeCmd
                                        --   the dir seeded with a free-form task
                                        --   prompt (the Stage-4 task queue)
   | ClaudeAgent        AgentSpec       -- ^ one agent forking another — see
-                                       --   "IDE.Web.Agent"
+                                       --   "IDE.Web.Agent" (a Codex one too,
+                                       --   with 'asCodex')
+  | CodexNew           FilePath        -- ^ @codex@ — a fresh Codex session
+  | CodexResume        FilePath Text   -- ^ @codex resume <id>@
 
 -- | A child agent an agent asked for: what to run, and who asked.
 --
@@ -759,6 +780,7 @@ data AgentSpec = AgentSpec
                             --   its notes and permissions intact
   , asManager :: Bool       -- ^ it is the workspace's manager: 'managerNote',
                             --   and the wider allow-list that job needs
+  , asCodex   :: Bool       -- ^ run Codex rather than Claude Code ('codexCommandLine')
   } deriving (Eq, Show)
 
 -- | A fresh RFC 4122 version-4 UUID, the shape @claude --session-id@ wants.
@@ -822,7 +844,18 @@ claudeCommandLine (ClaudeNew d) = do
   claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Nothing
     , asParent = Nothing, asRoleNote = Nothing, asResume = False
-    , asManager = False }
+    , asManager = False, asCodex = False }
+claudeCommandLine (CodexNew d) = do
+  tok <- newAgentSessionId
+  codexCommandLine AgentSpec
+    { asDir = d, asSession = tok, asFrom = Nothing, asPrompt = Nothing
+    , asParent = Nothing, asRoleNote = Nothing, asResume = False
+    , asManager = False, asCodex = True }
+claudeCommandLine (CodexResume d i) = codexCommandLine AgentSpec
+    { asDir = d, asSession = i, asFrom = Nothing, asPrompt = Nothing
+    , asParent = Nothing, asRoleNote = Nothing, asResume = True
+    , asManager = False, asCodex = True }
+claudeCommandLine (ClaudeAgent s) | asCodex s = codexCommandLine s
 claudeCommandLine (ClaudePrompt d p) = do
   -- Pinned for the same reason, and so a queued task's agent has a name (and
   -- an Agents-pane identity) from the moment it starts.  The run key keeps the
@@ -831,7 +864,7 @@ claudeCommandLine (ClaudePrompt d p) = do
   claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Just p
     , asParent = Nothing, asRoleNote = Nothing, asResume = False
-    , asManager = False }
+    , asManager = False, asCodex = False }
 claudeCommandLine cmd = do
   let d = dropTrailingPathSeparator dir
   mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
@@ -925,6 +958,92 @@ claudeCommandLine cmd = do
             <> maybe [] ((:[]) . shq) (asPrompt s) )
     key = T.pack (dropTrailingPathSeparator dir) <> "#" <> keyTag
 
+-- | The command line for a Codex agent.  Codex cannot be told its session id,
+-- so 'asSession' is a TOKEN standing in for it: the launch exports it as
+-- @LEKSAH_AGENT_TOKEN@, the hooks hand it back with the session's real id at
+-- SessionStart, and leksah then moves everything it knows from the token to
+-- that id ('IDE.Web.Agent.agentHook').  The run key keeps the
+-- @\<dir\>#claude#\<id\>@ shape every AI-pane lookup parses, so a Codex pane
+-- is an agent pane everywhere.  (On a resume the token is the real id.)
+--
+-- What a leksah launch tells a Claude session on its command line (its name,
+-- who started it, the worktree note …) reaches a Codex one from its
+-- SessionStart hook instead, so the line itself is just @codex@.  The first
+-- launch installs leksah's hooks into Codex if they are missing — and Codex
+-- runs them only after the user trusts them in @/hooks@.
+codexCommandLine :: AgentSpec -> IO (FilePath, Text, Text)
+codexCommandLine s = do
+  let d = dropTrailingPathSeparator (asDir s)
+  mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
+  unless (isRemotePath d) $ do
+    _ <- codexWriteScripts
+    codexEnsureInstalled >>= mapM_ (\msg ->
+      getGlobalApp >>= mapM_ (\app -> appNote app msg))
+  -- Resuming an agent that never reached its first prompt has nothing to
+  -- resume (its id is still the launch token): start Codex afresh under it.
+  started <- if asResume s then codexStarted (asSession s) else return False
+  unless started $ codexRememberLaunch (asSession s) d
+  let line = T.unwords $
+        [ "env", "LEKSAH_AGENT_TOKEN=" <> asSession s, "codex" ]
+        <> [ x | started, x <- ["resume", asSession s] ]
+        <> maybe [] ((:[]) . shq) (asPrompt s)
+      key = T.pack d <> "#claude#" <> asSession s
+  return (d, key, maybe line (\p -> p <> " " <> line) mbPrefix)
+
+-- | Codex processes in leksah's terminals that no record covers yet: record
+-- each straight away, so it shows up like any other agent.  Codex's TUI
+-- reports SessionStart only when the first prompt is sent, so without this a
+-- fresh Codex pane — leksah's own launches, and a @codex@ typed into a
+-- terminal — would be invisible until then.  Run by the status poll (every
+-- few seconds), so it also finds the ones launched by a leksah that has
+-- since restarted.
+--
+-- Each is recorded under the token its launch exported (read from the
+-- process's own environment: @LEKSAH_AGENT_TOKEN@, see 'codexCommandLine'),
+-- else under a fresh one; its real id takes over at SessionStart, which
+-- carries the name and the agent record across ('IDE.Web.Agent.codexHook').
+-- Only top-level interactive codex processes count — not its helpers, nor
+-- @codex exec@ and the other subcommands.
+codexDiscover :: IO ()
+codexDiscover = (`catch` \(_ :: SomeException) -> return ()) $ do
+  procs <- readProcessArgs
+  recs  <- codexLiveRecords
+  let parents = fst <$> procs
+      covered = S.fromList (map cxPid recs)
+      prog p = maybe "" (takeWhile (/= ' ') . snd) (M.lookup p procs)
+      interactive args = case drop 1 (words args) of
+        (w : _) | w `elem` [ "exec", "e", "review", "login", "logout", "mcp", "plugin"
+                           , "mcp-server", "app-server", "remote-control", "app"
+                           , "completion", "update", "doctor", "sandbox", "debug"
+                           , "apply", "a", "archive", "delete", "unarchive", "cloud"
+                           , "exec-server", "features", "help", "execpolicy" ] -> False
+        _ -> True
+      cands = [ p | (p, (q, args)) <- M.toList procs
+                  , isCodexProgram (takeWhile (/= ' ') args), interactive args
+                  , not (isCodexProgram (prog q))       -- not one of its helpers
+                  , p `S.notMember` covered ]
+  unless (null cands) $ do
+    panes <- livePanePids
+    forM_ cands $ \cp ->
+      case [ pane | (_, _, pane, pp) <- panes, pp `elem` (cp : pidAncestors parents cp) ] of
+        [] -> return ()                                  -- not in a leksah terminal
+        (pane : _) -> do
+          tok <- processToken cp >>= maybe newAgentSessionId return
+          dir <- fromMaybe "" <$> paneCurrentPath pane
+          codexRememberLaunch tok dir
+          codexClaimLaunch cp tok dir
+
+-- | The @LEKSAH_AGENT_TOKEN@ in a process's environment, if it has one.
+processToken :: Int -> IO (Maybe Text)
+processToken pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  envText <- if os == "darwin"
+    then T.pack <$> readProcess "ps" ["-E", "-ww", "-o", "command=", "-p", show pid] ""
+    else T.map (\c -> if c == '\0' then ' ' else c) . decodeUtf8With lenientDecode
+           <$> BS.readFile ("/proc/" <> show pid <> "/environ")
+  return $ listToMaybe
+    [ t | w <- T.words envText, Just t <- [T.stripPrefix "LEKSAH_AGENT_TOKEN=" w]
+        , not (T.null t) ]
+
 -- | Single-quote for the shell tmux runs the window command through, so a
 -- multi-word argument (a seeded prompt, the system-prompt suffix) reaches
 -- @claude@ as one argument.
@@ -946,8 +1065,8 @@ appendSystemPrompt notes
 -- turn in the parent's conversation even if it had gone idle.
 agentNote :: Text -> Text -> Text
 agentNote parent me = T.unlines
-  [ "You are a Claude Code agent in a Leksah IDE terminal pane, started by \
-    \another agent (Claude Code session " <> parent <> ") that is working \
+  [ "You are a coding agent in a Leksah IDE terminal pane, started by \
+    \another agent (session " <> parent <> ") that is working \
     \alongside you."
   , ""
   , "When you finish, say so — that marks you done in the IDE's Agents pane \
@@ -968,7 +1087,7 @@ agentNote parent me = T.unlines
 -- | What the manager agent is for, and how it goes about it.
 managerNote :: Text
 managerNote = T.unlines
-  [ "You are the MANAGER of the Claude Code agents running in this Leksah IDE. \
+  [ "You are the MANAGER of the coding agents (Claude Code and Codex sessions) running in this Leksah IDE. \
     \Your job is to keep the team effective — not to do the coding yourself. \
     \The user talks to you; you get the work to the right agent."
   , ""
@@ -1757,7 +1876,9 @@ sendToSession sid txt = paneForSession sid >>= \case
 -- holds no prompt yet.
 claudeSessionLabel :: FilePath -> Text -> IO (Maybe Text)
 claudeSessionLabel dir sid = (`catch` \(_ :: SomeException) -> return Nothing) $
-  claudeTranscriptPath dir sid >>= fmap snd . scanHead
+  codexTranscriptOf sid >>= \case
+    Just r  -> rolloutFirstPrompt r          -- a Codex session
+    Nothing -> claudeTranscriptPath dir sid >>= fmap snd . scanHead
 
 -- | Copy a session id to the system clipboard (best-effort).
 copySessionId :: Text -> IO ()
