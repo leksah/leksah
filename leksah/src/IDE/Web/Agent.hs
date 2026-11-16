@@ -71,7 +71,7 @@ module IDE.Web.Agent
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (catch, SomeException)
-import Control.Monad (filterM, forM, when)
+import Control.Monad (filterM, forM, when, void)
 
 import Data.Char (isAlphaNum)
 import Data.List (sortOn)
@@ -85,7 +85,7 @@ import Data.Aeson
        (Object, Value(..), decodeStrict', encode, object, parseJSON, withObject,
         (.:), (.:?), (.=))
 import Data.Foldable (toList)
-import Data.Aeson.Types (parseMaybe)
+import Data.Aeson.Types (Pair, parseMaybe)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (toStrict)
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
@@ -105,8 +105,9 @@ import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
         moveAgentRecord, recordAgentFork, setAgentManager, setAgentRole,
-        setAgentSuspended, acknowledgeInterrupted)
+        setAgentSuspended, acknowledgeInterrupted, titleForClaude)
 import IDE.Web.AgentHost (RanOn)
+import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
        (adoptContinuation, agentNameFor, agentNames, renameAgent,
         resolveAgentName, touchAgentNames)
@@ -117,12 +118,13 @@ import IDE.Web.Claude
         claudeCommandLine, claudeLiveBySession,
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
-        showLiveSession, showLiveSessionHere, showTmuxPane, showTmuxPaneWith, claudeProcessOf, nameNote, agentNote,
+        showLiveSession, showLiveSessionHere, showTmuxPaneWith, claudeProcessOf, nameNote, agentNote,
         managerNote, describeToolUse, claudePaneSessions)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seTool, perToolHookEvents, editedRecently, eventsFor, sessionEvents,
         recordCwd, recordEdit, recordFailure, recordPermission,
-        recordToolEnd, recordToolStart, recordTurnEnd)
+        recordToolEnd, recordToolStart, recordTurnEnd, recordPromptSubmit,
+        recordSubagentStart, recordSubagentStop, recordCompacting, recordSessionEnd)
 import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
@@ -362,14 +364,16 @@ liveDetail l = case clStatus l of
 
 -- | @agent events SID@: what the hooks have told leksah about a session — the
 -- tool running now, a pending approval, the last API error, where its shell
--- is, and the files it edited.
+-- is, whether it is compacting, its subagents, and the files it edited.
 agentEvents :: Text -> IO Text
 agentEvents sid = do
   e <- eventsFor sid
   let row k = maybe (k <> "\t-") (\(t, _) -> k <> "\t" <> t)
   return . T.unlines $
     [ row "tool" (seTool e), row "approval" (sePermission e), row "error" (seError e)
-    , "cwd\t" <> maybe "-" T.pack (seCwd e) ]
+    , "cwd\t" <> maybe "-" T.pack (seCwd e)
+    , "compacting\t" <> maybe "-" (const "yes") (seCompacting e) ]
+    <> [ "subagent\t" <> kind <> " " <> aid | (aid, (kind, _)) <- seSubagents e ]
     <> [ "edited\t" <> T.pack f | (f, _) <- seEdits e ]
 
 -- | 'liveDetail', sharpened by what the hooks have said
@@ -899,8 +903,45 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
           _ <- adoptContinuation o new
           moveAgentRecord (src /= "clear") o new
         _ -> return ()
+      -- A session that starts in a linked worktree (`claude --worktree`, a
+      -- background session's isolation) is working there; off the hook's
+      -- critical path — it is synchronous, and this runs git.
+      when (source `elem` ["startup", "resume", "fork"]) $
+        mapM_ (\d -> void . forkIO $ ensureSessionWorktree new (T.unpack d)) (field "cwd")
+      -- After a compaction the session starts again with source "compact".
+      when (source == "compact") $ recordCompacting new False
       pokeClaudeStatus
-      if source == "startup" then return "" else briefing new
+      notes <- if source == "startup" then return [] else briefing new
+      -- The title it gave itself (agent describe), as its Claude Code
+      -- session title too — sessionTitle applies on startup/resume/fork.
+      title <- if source `elem` ["startup", "resume", "fork"]
+                 then titleForClaude new (field "session_title") else return Nothing
+      return (hookOutput "SessionStart"
+                ([ "additionalContext" .= T.intercalate "\n\n" notes | not (null notes) ]
+                 <> [ "sessionTitle" .= t | Just t <- [title] ]))
+    -- A prompt was submitted (by the user, or `agent send --submit`): a new
+    -- turn starts — the status surfaces should say "working" at once, not at
+    -- the next poll (the session file says so a moment later; look again
+    -- then) — and its own title follows it into Claude Code.
+    ("UserPromptSubmit", Just s) -> do
+      recordPromptSubmit s
+      void . forkIO $ threadDelay 400000 >> pokeClaudeStatus
+      title <- titleForClaude s (field "session_title")
+      return (hookOutput "UserPromptSubmit" [ "sessionTitle" .= t | Just t <- [title] ])
+    -- Its subagents (the Agent tool), for the activity line.  An empty type is
+    -- one of Claude Code's own internal agents (prompt suggestions, /btw).
+    ("SubagentStart", Just s) -> do
+      case (field "agent_id", field "agent_type") of
+        (Just aid, Just kind) | not (T.null kind) -> recordSubagentStart s aid kind
+        _ -> return ()
+      return ""
+    ("SubagentStop", Just s) -> mapM_ (recordSubagentStop s) (field "agent_id") >> return ""
+    -- Compacting its conversation, which can take a while and otherwise looks
+    -- like nothing at all.  (PreCompact's stdout would become instructions
+    -- for the summary: this hook runs async, and answers nothing anyway.)
+    ("PreCompact", Just s) -> recordCompacting s True >> return ""
+    ("PostCompact", Just s) -> recordCompacting s False >> return ""
+    ("SessionEnd", Just s) -> recordSessionEnd s >> pokeClaudeStatus >> return ""
     -- What it is doing this moment (the activity line), and what it changed.
     ("PreToolUse", Just s) -> do
       recordToolStart s (field "tool_use_id") (describeToolUse toolName toolInput)
@@ -958,14 +999,17 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       roleText <- case (minfo >>= aiRole, minfo) of
         (Just ro, Just i) -> either (const Nothing) (Just . roleNote) <$> findAgentRole (aiDir i) ro
         _                 -> return Nothing
-      let notes = [ nameNote name | not (T.null name) ]
-               <> [ agentNote p sid | Just p <- [minfo >>= aiParent] ]
-               <> maybe [] (: []) roleText
-               <> [ managerNote | maybe False aiManager minfo ]
-      return $ if null notes then "" else TE.decodeUtf8 . BL.toStrict . encode $ object
-        [ "hookSpecificOutput" .= object
-            [ "hookEventName" .= ("SessionStart" :: Text)
-            , "additionalContext" .= T.intercalate "\n\n" notes ] ]
+      return $ [ nameNote name | not (T.null name) ]
+            <> [ agentNote p sid | Just p <- [minfo >>= aiParent] ]
+            <> maybe [] (: []) roleText
+            <> [ managerNote | maybe False aiManager minfo ]
+
+    -- A hook's answer: nothing at all when there is nothing to say, else
+    -- @{"hookSpecificOutput": {"hookEventName": EV, …}}@.
+    hookOutput :: Text -> [Pair] -> Text
+    hookOutput _ [] = ""
+    hookOutput evName ps = TE.decodeUtf8 . BL.toStrict . encode $ object
+      [ "hookSpecificOutput" .= object (("hookEventName" .= evName) : ps) ]
 
 -- | Which @(session, file, other session)@ overlaps have been pointed out
 -- already — each once.

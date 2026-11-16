@@ -37,6 +37,7 @@ module IDE.Web.WorktreeRegistry
   , worktreeMainRoot
     -- * Writing
   , registerWorktree
+  , ensureSessionWorktree
   , recordBranchMove
     -- * Reading
   , worktreesForRoot
@@ -48,6 +49,7 @@ module IDE.Web.WorktreeRegistry
 
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import Control.Exception (catch, try, SomeException)
+import Control.Monad (unless, void)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
@@ -287,6 +289,26 @@ registerWorktree path0 mbranch msession mrole note via = do
                  <> " as " <> roleText role
                  <> maybe " (no session)" (\s -> " for session " <> T.take 8 s) msession
         in (M.insert path w3 m, reply)
+
+-- | A session STARTED in a linked worktree — `claude --worktree`, a background
+-- session isolated into @.claude/worktrees/@, or a plain `claude` run in a
+-- worktree checkout — is working there: register it (the SessionStart hook's
+-- path; no tool call is ever made to enter such a worktree, so the
+-- PostToolUse hook never sees it).  Only when the session has no claim on it
+-- yet, so a note it registered itself is never overwritten.  @dir@ may be a
+-- subdirectory of the worktree.  Quiet: not a worktree, or already
+-- claimed, is the common case.
+ensureSessionWorktree :: Text -> FilePath -> IO ()
+ensureSessionWorktree sid dir =
+  gitOut dir ["rev-parse", "--show-toplevel"] >>= \case
+    Nothing  -> return ()
+    Just top -> do
+      let path = dropTrailingPathSeparator (T.unpack top)
+      known <- worktreeInfo path
+      let claimed = maybe False (any ((== Just sid) . scSession) . wiClaims) known
+      unless claimed . void $
+        registerWorktree path Nothing (Just sid) (Just RoleWorking)
+          "working here (the session started in this worktree)" "hook"
 
 -- | Append a branch move WITHOUT touching claims — the PostToolUse hook's
 -- @git switch@\/@git checkout@ path, where clobbering a session's carefully
