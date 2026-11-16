@@ -27,6 +27,11 @@ module IDE.Web.AgentEvents
   , recordSubagentStop
   , recordCompacting
   , recordSessionEnd
+  , TaskInfo(..)
+  , recordTaskCreated
+  , recordTaskActive
+  , recordTaskStatus
+  , seTaskSummary
   , recordEdit
   , recordCwd
   , editedRecently
@@ -34,7 +39,8 @@ module IDE.Web.AgentEvents
 
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (nub)
-import Data.Maybe (isNothing, listToMaybe)
+import Data.Maybe (fromMaybe, isNothing, listToMaybe)
+import qualified Data.Text as T
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text (Text)
@@ -65,10 +71,19 @@ data SessionEvents = SessionEvents
   , seSubEnded   :: [Text]                -- ^ agent_ids that have finished (the
                                           --   last few): see 'recordSubagentStart'
   , sePromptAt   :: Maybe Double          -- ^ when the last prompt was submitted
+  , seTasks      :: [(Text, TaskInfo)]    -- ^ its task list (Claude Code's Task
+                                          --   tools), by task id, in order
+  } deriving (Eq, Show)
+
+-- | One task of a session's task list.
+data TaskInfo = TaskInfo
+  { tiSubject :: Text
+  , tiActive  :: Maybe Text  -- ^ its "doing" form ("Running the tests"), if given
+  , tiStatus  :: Text        -- ^ pending | in_progress | completed
   } deriving (Eq, Show)
 
 none :: SessionEvents
-none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing [] Nothing [] Nothing
+none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing [] Nothing [] Nothing []
 
 -- | The tool call running now: the newest of those still running.
 seTool :: SessionEvents -> Maybe (Text, Double)
@@ -222,6 +237,45 @@ recordCompacting sid on = update sid $ \now e ->
 recordSessionEnd :: Text -> IO ()
 recordSessionEnd sid = update sid $ \_ e ->
   e { seRunning = [], sePermission = Nothing, seSubagents = [], seCompacting = Nothing }
+
+-- | A task was created (TaskCreated).
+recordTaskCreated :: Text -> Text -> Text -> IO ()
+recordTaskCreated sid tid subject = update sid $ \_ e ->
+  e { seTasks = take 100 $ case lookup tid (seTasks e) of
+        Just t  -> [ (k, if k == tid then t { tiSubject = subject } else v) | (k, v) <- seTasks e ]
+        Nothing -> seTasks e <> [(tid, TaskInfo subject Nothing "pending")] }
+
+-- | The TaskCreate call's "doing" form, for the task with this subject (the
+-- TaskCreated hook does not carry it).
+recordTaskActive :: Text -> Text -> Text -> IO ()
+recordTaskActive sid subject active = update sid $ \_ e ->
+  e { seTasks = [ (k, if tiSubject v == subject && isNothing (tiActive v)
+                         then v { tiActive = Just active } else v)
+                | (k, v) <- seTasks e ] }
+
+-- | A task's status changed (a TaskUpdate call, or TaskCompleted); "deleted"
+-- takes it off the list.
+recordTaskStatus :: Text -> Text -> Text -> IO ()
+recordTaskStatus sid tid status = update sid $ \_ e ->
+  e { seTasks = if status == "deleted"
+        then filter ((/= tid) . fst) (seTasks e)
+        else [ (k, if k == tid then v { tiStatus = status } else v) | (k, v) <- seTasks e ] }
+
+-- | Its task list in a few words, while it is not all done: @[3/7] Running
+-- the tests@ — done of all, then what it is on now (the task in progress,
+-- else the next one).
+seTaskSummary :: SessionEvents -> Maybe Text
+seTaskSummary e
+  | null ts || done == length ts = Nothing
+  | otherwise = Just $ "[" <> tshow done <> "/" <> tshow (length ts) <> "]"
+                  <> maybe "" (" " <>) current
+  where
+    ts = map snd (seTasks e)
+    done = length (filter ((== "completed") . tiStatus) ts)
+    current = listToMaybe
+      ([ fromMaybe (tiSubject t) (tiActive t) | t <- ts, tiStatus t == "in_progress" ]
+       <> [ tiSubject t | t <- ts, tiStatus t == "pending" ])
+    tshow = T.pack . show
 
 -- | It edited these files (kept to the 100 most recent).
 recordEdit :: Text -> [FilePath] -> IO ()

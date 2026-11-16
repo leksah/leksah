@@ -85,7 +85,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentEvents
-       (SessionEvents(..), seCompactingAt, seSubagentsAt, seTool, sessionEvents)
+       (SessionEvents(..), seCompactingAt, seSubagentsAt, seTaskSummary, seTool, sessionEvents)
 import IDE.Web.AgentUsage (SessionUsage, sessionUsage)
 import IDE.Web.AgentHost (Host(..), RanOn(..), currentHost, diedWithHost, ranOnFor)
 import IDE.Web.AgentNames
@@ -208,6 +208,9 @@ data AgentNode = AgentNode
   , anEdits    :: [FilePath]  -- ^ files it edited (the hooks saw), newest first
   , anError    :: Maybe Text  -- ^ the API error its last turn ended on
   , anCwd      :: Maybe FilePath -- ^ where its shell is, when that is not 'anDir'
+  , anApproval :: Maybe Text    -- ^ the approval it is waiting for (live, and
+                                --   blocked on a permission prompt), in a few
+                                --   words: the card offers Approve / Deny
   , anBackground :: Maybe Text  -- ^ a Claude Code BACKGROUND session's id (the
                                 --   short one @claude rm@\/@attach@ take), for a
                                 --   row that came from @claude agents@
@@ -802,7 +805,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anBorn     = Nothing
   , anParentName = Nothing
   , anChildNames = map (\(DemoAgent _ _ _ _ _ _ _ _ _ _ nm _ _) -> fromMaybe "" nm) kids
-  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
+  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
   , anChildren = map demoNode kids
   }
 #else
@@ -891,10 +894,14 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         nSubs = length running
         subsText = T.pack (show nSubs) <> (if nSubs == 1 then " subagent" else " subagents")
                    <> " (" <> T.intercalate ", " subs <> ")"
-        activity
+        activity1
           | maybe False (seCompactingAt posix) e = Just "Compacting the conversation…"
           | nSubs == 0 = activity0
           | otherwise = Just $ maybe (subsText <> " running") (<> " · " <> subsText) activity0
+        -- Its task list's progress leads: "[3/7] Running the tests · Bash: …".
+        activity = case e >>= seTaskSummary of
+          Nothing -> activity1
+          Just ts -> Just (maybe ts ((ts <> " · ") <>) activity1)
     return (s, n { anWorktrees = wls
                  , anName = M.findWithDefault (anName n) s names
                  , anBio = i >>= aiBio
@@ -905,6 +912,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
                  , anError = if anLive n then fst <$> recentErr else Nothing
                  , anEdits = maybe [] (map fst . seEdits) e
                  , anUsage = M.lookup s usage
+                 , anApproval = if anLive n && anState n == "waiting"
+                                  then fst <$> (e >>= sePermission) else Nothing
                  , anCwd = e >>= seCwd >>= \c ->
                      if dropTrailingPathSeparator c == dropTrailingPathSeparator (anDir n)
                        then Nothing else Just c })
@@ -960,7 +969,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anWorktrees = []
       , anBio = Nothing, anManager = False, anBorn = Nothing
       , anParentName = Nothing, anChildNames = []
-      , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
+      , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
       , anChildren = [] }
 
     -- A background session with no process, as a row: not live (a click
@@ -1003,7 +1012,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         , anWorktrees = []
         , anBio = Nothing, anManager = False, anBorn = Nothing
         , anParentName = Nothing, anChildNames = []
-        , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing
+        , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anApproval = Nothing
         , anChildren = [] }
 
     -- Stored agents that are NOT running: either exited (their transcript's mtime
@@ -1047,7 +1056,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
           , anChildren = [] }
       let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
           interrupted i = isNothing (aiSuspended i) && isInterrupted posix i
@@ -1093,7 +1102,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 
