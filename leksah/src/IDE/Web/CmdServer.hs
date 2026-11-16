@@ -71,7 +71,7 @@ import GHC.Conc.Sync (listThreads, threadLabel)
 import GHC.Stack.CloneStack (cloneThreadStack, decode, StackEntry(..))
 import Data.List (isPrefixOf, isInfixOf)
 import Control.Lens ((^.), (%~), (.~))
-import Control.Monad (filterM, forM_, forever, void, when, (<=<))
+import Control.Monad (filterM, forM, forM_, forever, void, when, (<=<))
 
 import Data.IORef (IORef, newIORef)
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
@@ -122,7 +122,12 @@ import IDE.Problems.Types
 import IDE.Reactive (modifyCell, readCell)
 import IDE.Web.Model
        (AIPaneRef(..), TabKey(..), WindowId(..), activeWindow, paneAISession,
-        webWindows, wwActive, wwWide0)
+        webWindows, wwActive, wwWide0, LeksahWindow(..), PaneContent(..),
+        PaneKind(..), leksahWindows)
+import IDE.Web.Widget.Terminal
+       (windowAgents, moveWindowToAgents, sessionNamed, moveTmuxWindow)
+import IDE.Web.ReplTmux (agentsSessionName)
+import IDE.Web.NewLwRequest (beginConversion, endConversion)
 import IDE.Workspace
        (activeProject, prDir, projectForPath, projectOpenPath,
         setProjectCmdPrefix, workspaceActivatePackage, workspacePinProject,
@@ -163,6 +168,56 @@ import IDE.Web.ScreenshotRequest (requestScreenshot)
 import IDE.Web.NewWindowRequest (requestNewWindow, requestRaiseWindow)
 import IDE.Web.Heartbeat (lastBeatAge)
 import IDE.Web.SnapRequest (requestSnapPane)
+
+-- | @agent gather [NAME…]@: move the tabs of agents that live in tmux
+-- sessions of their own (everything started before the shared Agents session
+-- existed) into it — all of them, or only those of the named agents.  A tab
+-- qualifies when every one of its panes is a tmux window holding an agent
+-- (a tab mixing an agent with a shell or an editor stays put).  Each tab's
+-- windows move, then the tab is repointed at the Agents session, under one
+-- conversion guard so the reconcile never sees a window in a session its tab
+-- doesn't name; the tab's terminal reattaches by itself.  A tab whose windows
+-- don't ALL move gets the moved ones put back, so it is never split between
+-- two sessions.  Emptied sessions go away with their last window.
+gatherAgents :: App -> [Text] -> IO Text
+gatherAgents app only = do
+    lws <- view leksahWindows <$> readCell (appUi app)
+    results <- fmap concat . forM (Map.toList lws) $ \(lwi, lw) ->
+      case (lwSession lw, Map.elems (lwPanes lw)) of
+        (Just s, pcs@(_ : _)) | not ("ssh://" `T.isPrefixOf` s)
+                              , Just ws@(w0 : _) <- traverse tmuxWin pcs -> do
+          agents <- mapM windowAgents ws
+          home0 <- sessionNamed w0 agentsSessionName
+          let names = concat agents
+              wanted = null only || any (`elem` only') (map T.toLower names)
+          if any null agents || not wanted || home0 == Just s then return [] else do
+            beginConversion
+            r <- forM ws $ \w -> (,) w <$> moveWindowToAgents w
+            res <- case [ h | (_, Just h) <- r ] of
+              hs@(home : _) | length hs == length ws -> do
+                modifyCell (appUi app) $ leksahWindows %~
+                  Map.adjust (\l -> l { lwSession = Just home }) lwi
+                return [Right names]
+              _ -> do
+                mapM_ (\(w, _) -> moveTmuxWindow w s) [ m | m@(_, Just _) <- r ]
+                return [Left names]
+            endConversion
+            return res
+        _ -> return []
+    let moved  = concat [ n | Right n <- results ]
+        failed = concat [ n | Left n <- results ]
+    return . T.unlines $
+      [ if null moved
+          then "No agent tabs moved: they are all in the Agents session already"
+                 <> (if null only then "" else ", or aren't the ones named") <> "."
+          else "Moved into the Agents session: " <> T.intercalate ", " moved <> "." ]
+      <> [ "Could not move (tmux refused; left where they were): "
+             <> T.intercalate ", " failed <> "." | not (null failed) ]
+  where
+    only' = map T.toLower only
+    tmuxWin pc = case pcKind pc of
+      PaneTmux w -> Just w
+      _          -> Nothing
 
 -- | The control socket both sides agree on: @~/.leksah/cmd.sock@ for the
 -- default instance, @~/.leksah/cmd-\<port\>.sock@ under a non-default
@@ -876,6 +931,9 @@ handleConn app conn = do
           _ -> reply ("agent rename: give a new name (and, from outside an agent, "
                       <> "which agent)\n\n" <> agentUsage)
         ("roles" : _) -> agentRoleList cwd >>= reply
+        -- Move agents started before the shared Agents session existed
+        -- (each in a session of its own) into it.
+        ("gather" : names) -> gatherAgents app names >>= reply
         -- Answer the permission prompt an agent is blocked on (what the
         -- Agents pane's Approve / Deny buttons do).
         -- A person's decision: refused when the caller is itself a Claude
@@ -1071,6 +1129,8 @@ handleConn app conn = do
       , "  refresh SID           ask it to rewrite its title, description and bio"
       , "  events SID            what its hooks reported: tool, approval, error, edits"
       , "  manager [start]       who the team's manager is / start (or resume) it"
+      , "  gather [NAME...]       move agents' tabs living in sessions of their own"
+      , "                        (from before the shared Agents tmux session) into it"
       , "  me                    the session id of the caller"
       , "  (SID: a session id, a unique prefix of one, or the agent's name)"
       , "  status SID            one line: state, detail, pane, dir"

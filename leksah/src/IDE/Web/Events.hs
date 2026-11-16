@@ -81,9 +81,12 @@ makePrisms ''GrepEvents
 -- shell rang the bell (Claude Code's "needs input / done" signal — caught here
 -- for the *viewed* window, which tmux's alert-bell hook skips), or the attached
 -- tmux client exited (the session ended, e.g. the last window's shell exited) —
--- the tab should close rather than linger showing "[exited]".
+-- the tab should close rather than linger showing "[exited]".  A bell carries
+-- the tmux @#{pane_id}@ that rang when the widget knows it (control-mode
+-- panes do): with several agents' tabs on one session, the session alone
+-- doesn't say whose it was.
 data TerminalEvents
-  = TerminalTitle Text | TerminalGoto Loc | TerminalBell | TerminalExited
+  = TerminalTitle Text | TerminalGoto Loc | TerminalBell (Maybe Text) | TerminalExited
   -- | A control-mode tab saw a window created/closed: the Terminals tree and
   -- tab row should refresh now, not on the next 2s/10s poll.
   | TerminalTreeChanged
