@@ -165,54 +165,54 @@ jobs:
           echo "package breakout" >> cabal.project
           echo "    ghc-options: -Werror=missing-methods -Werror=missing-fields" >> cabal.project
           cat >> cabal.project <<EOF
-          constraints: monoidal-containers >=0.6.2.0
-          constraints: any.haskell-gi-overloading ==0.0
-          constraints: any.happy ==2.1.7
-          constraints: extra >=1.8
-          constraints: semialign <1.4
-          constraints: any.haskell-gi ==0.26.16
-          allow-newer: which:base
-          allow-newer: which:template-haskell
-          allow-newer: text-replace:base
-          allow-newer: text-replace:optparse-applicative
-          allow-newer: text-replace:text
-          allow-newer: constraints-extras:base
-          allow-newer: constraints-extras:template-haskell
-          allow-newer: monoidal-containers:base
-          allow-newer: monoidal-containers:aeson
-          allow-newer: monoidal-containers:these
-          allow-newer: reflex:base
-          allow-newer: reflex:template-haskell
-          allow-newer: reflex:these
-          allow-newer: reflex:profunctors
-          allow-newer: reflex-dom-core:base
-          allow-newer: reflex-dom-core:template-haskell
-          allow-newer: reflex-dom-core:aeson
-          allow-newer: reflex-dom-core:these
-          allow-newer: reflex-dom-core:lens
-          allow-newer: reflex-dom-svg:base
-          allow-newer: reflex-dom-svg:containers
-          allow-newer: reflex-dom-svg:lens
-          allow-newer: reflex-dom-svg:reflex
-          allow-newer: reflex-dom-svg:reflex-dom-core
-          allow-newer: patch:base
-          allow-newer: patch:these
-          allow-newer: brittany:base
-          allow-newer: brittany:strict
-          allow-newer: brittany:aeson
-          allow-newer: data-tree-print:base
-          allow-newer: network-bsd:network
-          allow-newer: monad-control:transformers-compat
-          allow-newer: *:base
-          allow-newer: *:bytestring
-          allow-newer: *:containers
-          allow-newer: *:template-haskell
-          allow-newer: *:time
-          allow-newer: *:mmorph
-          allow-newer: *:monoidal-containers
-          allow-newer: *:witherable
-          allow-newer: *:semialign
-          allow-newer: *:aeson
+          constraints:                 monoidal-containers >=0.6.2.0
+          constraints:                 any.haskell-gi-overloading ==0.0
+          constraints:                 any.happy ==2.1.7
+          constraints:                 extra >=1.8
+          constraints:                 semialign <1.4
+          constraints:                 any.haskell-gi ==0.26.16
+          allow-newer:                 which:base
+          allow-newer:                 which:template-haskell
+          allow-newer:                 text-replace:base
+          allow-newer:                 text-replace:optparse-applicative
+          allow-newer:                 text-replace:text
+          allow-newer:                 constraints-extras:base
+          allow-newer:                 constraints-extras:template-haskell
+          allow-newer:                 monoidal-containers:base
+          allow-newer:                 monoidal-containers:aeson
+          allow-newer:                 monoidal-containers:these
+          allow-newer:                 reflex:base
+          allow-newer:                 reflex:template-haskell
+          allow-newer:                 reflex:these
+          allow-newer:                 reflex:profunctors
+          allow-newer:                 reflex-dom-core:base
+          allow-newer:                 reflex-dom-core:template-haskell
+          allow-newer:                 reflex-dom-core:aeson
+          allow-newer:                 reflex-dom-core:these
+          allow-newer:                 reflex-dom-core:lens
+          allow-newer:                 reflex-dom-svg:base
+          allow-newer:                 reflex-dom-svg:containers
+          allow-newer:                 reflex-dom-svg:lens
+          allow-newer:                 reflex-dom-svg:reflex
+          allow-newer:                 reflex-dom-svg:reflex-dom-core
+          allow-newer:                 patch:base
+          allow-newer:                 patch:these
+          allow-newer:                 brittany:base
+          allow-newer:                 brittany:strict
+          allow-newer:                 brittany:aeson
+          allow-newer:                 data-tree-print:base
+          allow-newer:                 network-bsd:network
+          allow-newer:                 monad-control:transformers-compat
+          allow-newer:                 *:base
+          allow-newer:                 *:bytestring
+          allow-newer:                 *:containers
+          allow-newer:                 *:template-haskell
+          allow-newer:                 *:time
+          allow-newer:                 *:mmorph
+          allow-newer:                 *:monoidal-containers
+          allow-newer:                 *:witherable
+          allow-newer:                 *:semialign
+          allow-newer:                 *:aeson
 
           source-repository-package
             type:     git
@@ -225,17 +225,39 @@ jobs:
             tag:      e57a114c5121b8fecf9eece3ee196d28120e908a
             subdir:   reflex-dom-core
 
-          index-state: 2026-11-14T01:29:20Z
-          allow-newer:
-            reflex:primitive, reflex-dom-core:primitive, vado:*, reflex-dom-svg:text
-
-          constraints: dependent-sum-template >=0.2.0.1
+          index-state:                 2026-11-14T01:29:20Z
 
           package reflex
             tests: False
 
           package reflex-dom-core
             tests: False
+
+          package reflex
+            ghc-options: -finfo-table-map
+
+          package reflex-dom-core
+            ghc-options: -finfo-table-map
+
+          package jsaddle
+            ghc-options: -finfo-table-map
+
+          package jsaddle-wkwebview
+            ghc-options: -finfo-table-map
+
+          if arch ( javascript )
+            constraints: ghcjs-dom -jsffi, reflex-dom-core -jsffi
+
+          if impl ( ghc >= 9.6 )
+            allow-newer:
+              , reflex:primitive
+              , reflex-dom-core:primitive
+              , vado:*
+              , reflex-dom-svg:text
+
+            constraints: dependent-sum-template >=0.2.0.1
+
+          write-ghc-environment-files: never
 
           package jsaddle-dom
             ghc-options: +RTS -M10G -RTS
