@@ -97,7 +97,7 @@ import Data.Aeson.Types (Pair, parseMaybe, FromJSON)
 import qualified Data.Aeson.Key as Key (fromText)
 import qualified Data.Aeson.KeyMap as KM (lookup)
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Lazy as BL (writeFile)
+import qualified Data.ByteString.Lazy as BL (ByteString, toStrict, writeFile)
 import Data.Text.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Word (Word8)
@@ -106,7 +106,7 @@ import Numeric (showHex)
 import System.Directory
        (findExecutable, getHomeDirectory, doesDirectoryExist, doesFileExist,
         listDirectory, getModificationTime, removeFile, createDirectoryIfMissing,
-        removeDirectoryRecursive)
+        removeDirectory, renameFile)
 import System.FilePath
        ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator, replaceExtension)
@@ -794,8 +794,11 @@ claudeCommandLine cmd = do
   -- Local sessions get leksah's MCP server (IDE tools: diagnostics, open_file,
   -- build, hover, screenshot…) — see `leksah-cmd mcp`.  The config file points
   -- at a local binary, so remote (ssh://) dirs skip it.
-  mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag
-  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag
+  -- Whether the leksah plugin brings the hooks and the MCP server instead
+  -- (installed, and not turned off for this project): worked out once.
+  plugin    <- if isRemotePath d then return False else leksahPluginEnabledFor (Just d)
+  mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag plugin
+  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag plugin
   -- The agent's own name, when its session id is known at launch — so it can
   -- tell the user and other agents who it is.
   myName <- traverse agentNameFor ownSession
@@ -1001,18 +1004,18 @@ worktreeNote =
 -- screenshot), (re)writing @~\/.leksah\/mcp.json@ so the recorded binary path
 -- stays fresh across rebuilds.  Empty when @leksah-cmd@ isn't on PATH (the
 -- session just runs without IDE tools).
-claudeMcpFlag :: IO Text
-claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
+claudeMcpFlag :: Bool -> IO Text
+claudeMcpFlag installed = (`catch` \(_ :: SomeException) -> return "") $
   findExecutable "leksah-cmd" >>= \case
     Nothing  -> return ""
     Just exe -> do
       home <- getHomeDirectory
       let path = home </> ".leksah" </> "mcp.json"
-      BL.writeFile path . encode $ object [ "mcpServers" .= leksahMcpServers exe ]
       -- (The installed leksah plugin brings this server to every session:
       -- a second copy would double every tool.)
-      installed <- leksahPluginInstalled
-      return (if installed then "" else " --mcp-config " <> T.pack path)
+      if installed then return "" else do
+        writeIfChanged path . encode $ object [ "mcpServers" .= leksahMcpServers exe ]
+        return (" --mcp-config " <> T.pack path)
 
 -- | The @--settings@ flag wiring a leksah-launched session to the worktree
 -- PostToolUse hook: every @git worktree add@\/@remove@ \/ @git switch@ a session
@@ -1023,23 +1026,28 @@ claudeMcpFlag = (`catch` \(_ :: SomeException) -> return "") $
 -- @leksah-cmd hooks install@); this just refreshes it and points a small
 -- settings JSON at it.  Empty when @leksah-cmd@ isn't on PATH.  @--settings@
 -- loads ADDITIONAL settings, so the user's own hooks keep working.
-claudeHooksFlag :: IO Text
-claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
+claudeHooksFlag :: Bool -> IO Text
+claudeHooksFlag installed = (`catch` \(_ :: SomeException) -> return "") $
   leksahHookTools >>= \case
     Nothing -> return ""
     Just (exe, script) -> do
       home <- getHomeDirectory
-      let path = home </> ".leksah" </> "hooks.json"
+      -- Two files, each always with the same content: running sessions may
+      -- re-read their --settings file, so a launch must never rewrite the
+      -- one another session is using into something different (with hooks
+      -- for a session where the plugin is off, without for one where it is
+      -- on).
+      let path = home </> ".leksah"
+                   </> (if installed then "settings-statusline.json" else "hooks.json")
       userStatusLine <- claudeUserStatusLine
       -- With the leksah plugin installed (`leksah-cmd plugin install`) every
       -- session — leksah's included — already has the hooks: keep that copy
       -- fresh, and leave them out here, or each event would arrive twice.
       -- The status line is not something a plugin can carry, so it stays.
-      installed <- leksahPluginInstalled
       when installed $ do
         dir <- leksahPluginInstallDir
         writeLeksahPlugin dir exe script
-      BL.writeFile path . encode . object $
+      writeIfChanged path . encode . object $
         [ "hooks" .= leksahHooks exe script | not installed ]
         <> [ "statusLine" .= leksahStatusLine exe userStatusLine ]
       return (" --settings " <> T.pack path)
@@ -1136,24 +1144,49 @@ leksahMcpServers exe = object
 -- plain terminal, the resume picker, a background session — so they all show
 -- up, and report, in leksah.  A marker file says leksah wrote it, so leksah
 -- only ever rewrites or removes its own.
+--
+-- Every session on the machine reads these files, and leksah calls this at
+-- each launch: each file is replaced atomically, and only when it changed
+-- ('writeIfChanged'), so a session starting meanwhile never reads half a file.
 writeLeksahPlugin :: FilePath -> FilePath -> FilePath -> IO ()
 writeLeksahPlugin dir exe script = do
   createDirectoryIfMissing True (dir </> ".claude-plugin")
   createDirectoryIfMissing True (dir </> "hooks")
-  BL.writeFile (dir </> ".claude-plugin" </> "plugin.json") . encode $ object
+  writeIfChanged (dir </> ".claude-plugin" </> "plugin.json") . encode $ object
     [ "name"        .= ("leksah" :: Text)
     , "version"     .= ("1.0.0" :: Text)
     , "description" .= ("Leksah IDE integration: reports every session's state, \
                         \tools, edits, subagents and worktrees to Leksah, and \
                         \gives it Leksah's MCP tools (diagnostics, build, \
                         \open file, agents)." :: Text) ]
-  BL.writeFile (dir </> "hooks" </> "hooks.json") . encode $
+  writeIfChanged (dir </> "hooks" </> "hooks.json") . encode $
     object [ "hooks" .= leksahHooks exe script ]
-  BL.writeFile (dir </> ".mcp.json") . encode $
+  writeIfChanged (dir </> ".mcp.json") . encode $
     object [ "mcpServers" .= leksahMcpServers exe ]
-  writeFile (dir </> leksahPluginMarker)
-    "Written by Leksah (leksah-cmd plugin install); rewritten at every leksah \
-    \launch of a Claude session.  Remove with: leksah-cmd plugin uninstall\n"
+  writeIfChanged (dir </> leksahPluginMarker)
+    "Written by Leksah (leksah-cmd plugin install); refreshed when a leksah \
+    \launch of a Claude session finds it out of date.  Remove with: \
+    \leksah-cmd plugin uninstall\n"
+
+-- | The files 'writeLeksahPlugin' writes, relative to the plugin directory —
+-- all that 'leksahPluginUninstall' removes.
+leksahPluginFiles :: [FilePath]
+leksahPluginFiles =
+  [ ".claude-plugin" </> "plugin.json", "hooks" </> "hooks.json", ".mcp.json"
+  , leksahPluginMarker ]
+
+-- | Replace @path@ with @bytes@ — atomically (a temporary file renamed over
+-- it), and only when the content differs, so readers never see a partial
+-- file and an unchanged file is not touched at all.
+writeIfChanged :: FilePath -> BL.ByteString -> IO ()
+writeIfChanged path bytes = do
+  ex <- doesFileExist path
+  same <- if not ex then return False
+          else (== BL.toStrict bytes) <$> BS.readFile path
+  unless same $ do
+    let tmp = path <> ".tmp-leksah"
+    BL.writeFile tmp bytes
+    renameFile tmp path
 
 -- | Where the installed plugin lives: Claude Code's skills directory, where a
 -- plugin loads in every new session as @leksah\@skills-dir@ — no marketplace.
@@ -1168,22 +1201,28 @@ leksahPluginMarker :: FilePath
 leksahPluginMarker = ".leksah-generated"
 
 -- | Is the leksah plugin installed (leksah's own, by its marker) and not
--- turned off (@enabledPlugins: {"leksah\@skills-dir": false}@ in the user's
--- settings)?
-leksahPluginInstalled :: IO Bool
-leksahPluginInstalled = (`catch` \(_ :: SomeException) -> return False) $ do
+-- turned off — @enabledPlugins: {"leksah\@skills-dir": false}@ — for a
+-- session in @mdir@: the project's @.claude/settings.local.json@, then its
+-- @.claude/settings.json@, then the user's settings, the first that says.
+-- (Turned off for one project, leksah must give its sessions there the hooks
+-- and MCP server itself, or they would have none at all.)
+leksahPluginEnabledFor :: Maybe FilePath -> IO Bool
+leksahPluginEnabledFor mdir = (`catch` \(_ :: SomeException) -> return False) $ do
   dir <- leksahPluginInstallDir
   ours <- doesFileExist (dir </> leksahPluginMarker)
   if not ours then return False else do
     let conf = takeDirectory (takeDirectory dir)
-    let f = conf </> "settings.json"
-    ex <- doesFileExist f
-    disabled <- if not ex then return False else do
-      v <- decodeStrict' <$> BS.readFile f
-      return $ (v >>= parseMaybe (withObject "settings" $ \o -> o .: "enabledPlugins"
+        files = [ d </> ".claude" </> f | Just d <- [mdir]
+                                        , f <- ["settings.local.json", "settings.json"] ]
+                <> [conf </> "settings.json"]
+    says <- forM files $ \f -> do
+      ex <- doesFileExist f
+      if not ex then return Nothing else do
+        v <- decodeStrict' <$> BS.readFile f
+        return (v >>= parseMaybe (withObject "settings" $ \o -> o .: "enabledPlugins"
                     >>= withObject "enabledPlugins" (.: "leksah@skills-dir")))
-               == Just False
-    return (not disabled)
+    return (listToMaybe (catMaybes' says) /= Just False)
+  where catMaybes' = foldr (\m acc -> maybe acc (: acc) m) []
 
 -- | @leksah-cmd plugin install@: write the plugin into Claude Code's skills
 -- directory.  It loads in sessions started from now on.
@@ -1199,11 +1238,12 @@ leksahPluginInstall = (`catch` \(e :: SomeException) -> return (T.pack (show e) 
         then return $ T.pack dir <> " exists and is not leksah's: not touching it.\n"
         else do
           writeLeksahPlugin dir exe script
+          dup <- duplicateWorktreeHook
           return $ "Installed the leksah plugin in " <> T.pack dir <> ".\n\
             \Claude Code sessions started from now on — in any terminal — report to \
             \leksah and have its MCP tools (sessions already running are unchanged).\n\
             \Turn it off with `/plugin` (leksah@skills-dir), or remove it with \
-            \`leksah-cmd plugin uninstall`.\n"
+            \`leksah-cmd plugin uninstall`.\n" <> dup
 
 -- | @leksah-cmd plugin write DIR@: write the plugin to @DIR@ without installing
 -- it — for @claude --plugin-dir DIR@ (one session only), or to look at.
@@ -1212,8 +1252,18 @@ leksahPluginWrite dir = (`catch` \(e :: SomeException) -> return (T.pack (show e
   leksahHookTools >>= \case
     Nothing -> return "leksah-cmd is not on leksah's PATH.\n"
     Just (exe, script) -> do
-      writeLeksahPlugin dir exe script
-      return $ "Wrote the leksah plugin to " <> T.pack dir
+     -- Never into a directory with other things in it (`plugin write .` in a
+     -- project would replace its .mcp.json): a new or empty one, or one
+     -- leksah wrote before.
+     ex <- doesDirectoryExist dir
+     ours <- doesFileExist (dir </> leksahPluginMarker)
+     xs <- if ex then listDirectory dir else return []
+     if ex && not ours && not (null xs)
+      then return $ T.pack dir <> " is not empty and leksah did not write it: \
+                   \give a new (or empty) directory.\n"
+      else do
+        writeLeksahPlugin dir exe script
+        return $ "Wrote the leksah plugin to " <> T.pack dir
                <> " (use it for one session with: claude --plugin-dir " <> T.pack dir <> ").\n"
 
 -- | @leksah-cmd plugin uninstall@: remove the plugin leksah installed (and
@@ -1225,22 +1275,47 @@ leksahPluginUninstall = (`catch` \(e :: SomeException) -> return (T.pack (show e
   if not ours
     then return "The leksah plugin is not installed.\n"
     else do
-      removeDirectoryRecursive dir
-      return $ "Removed " <> T.pack dir <> ".  Sessions started from now on no \
-               \longer load it; leksah-launched ones get leksah's hooks again \
-               \from leksah itself.\n"
+      -- Only the files leksah wrote: anything else in that directory is
+      -- someone else's, and stays (with the directory, then).
+      forM_ leksahPluginFiles $ \f -> do
+        let p = dir </> f
+        e <- doesFileExist p
+        when e (removeFile p)
+      forM_ [dir </> "hooks", dir </> ".claude-plugin", dir] $ \d -> do
+        e <- doesDirectoryExist d
+        when e $ listDirectory d >>= \xs -> when (null xs) (removeDirectory d)
+      left <- doesDirectoryExist dir
+      return $ "Removed the leksah plugin from " <> T.pack dir
+               <> (if left then " (other files there were left alone)" else "")
+               <> ".  Sessions started from now on no longer load it; \
+                  \leksah-launched ones get leksah's hooks again from leksah itself.\n"
 
 -- | @leksah-cmd plugin status@.
 leksahPluginStatus :: IO Text
 leksahPluginStatus = do
   dir <- leksahPluginInstallDir
   ours <- doesFileExist (dir </> leksahPluginMarker)
-  on <- leksahPluginInstalled
-  return $ case (ours, on) of
+  on <- leksahPluginEnabledFor Nothing
+  dup <- if ours then duplicateWorktreeHook else return ""
+  return $ (case (ours, on) of
     (False, _)    -> "not installed (leksah-cmd plugin install)\n"
     (True, True)  -> "installed and enabled: " <> T.pack dir <> "\n"
     (True, False) -> "installed but turned off (enabledPlugins: leksah@skills-dir = false): "
-                     <> T.pack dir <> "\n"
+                     <> T.pack dir <> "\n") <> dup
+
+-- | A note when the user's settings also carry the worktree hook that
+-- @leksah-cmd hooks install@ adds: with the plugin installed it runs twice
+-- after every Bash call (harmless, but wasted).  Not removed automatically —
+-- it is the user's settings file.
+duplicateWorktreeHook :: IO Text
+duplicateWorktreeHook = (`catch` \(_ :: SomeException) -> return "") $ do
+  conf <- takeDirectory . takeDirectory <$> leksahPluginInstallDir
+  let f = conf </> "settings.json"
+  ex <- doesFileExist f
+  has <- if ex then ("worktree-hook.sh" `BS.isInfixOf`) <$> BS.readFile f else return False
+  return $ if not has then "" else
+    "Note: " <> T.pack f <> " also runs leksah's worktree hook (from `leksah-cmd \
+    \hooks install`); the plugin has it too, so you can remove that entry.\n"
 
 -- | The @statusLine@ setting for the sessions leksah launches: @leksah-cmd
 -- statusline@, which hands the status-line JSON (context use, cost, rate

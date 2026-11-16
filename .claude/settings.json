@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -x \"$HOME/.leksah/worktree-hook.sh\" ] && \"$HOME/.leksah/worktree-hook.sh\" || true",
+            "command": "[ ! -e \"$HOME/.claude/skills/leksah/.leksah-generated\" ] && [ -x \"$HOME/.leksah/worktree-hook.sh\" ] && \"$HOME/.leksah/worktree-hook.sh\" || true",
             "timeout": 10
           }
         ]

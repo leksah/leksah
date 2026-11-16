@@ -416,7 +416,9 @@ handleConn app conn = do
       ("plugin" : "uninstall" : _) -> leksahPluginUninstall >>= reply
       ("plugin" : "write" : dir : _) | not (T.null dir) ->
         leksahPluginWrite (cwd </> T.unpack dir) >>= reply
-      ("plugin" : _)               -> leksahPluginStatus >>= reply
+      ("plugin" : rest) | rest `elem` [[], ["status"]] -> leksahPluginStatus >>= reply
+      ("plugin" : _) -> reply
+        "plugin: install | uninstall | status | write DIR  (leksah must be running)\n"
 
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point
