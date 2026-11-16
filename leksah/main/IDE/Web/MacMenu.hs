@@ -45,6 +45,7 @@ import IDE.Config (currentConfig)
 import IDE.Reactive (modifyCell, readCell)
 import IDE.Web.Model (WindowId(..), activeWindow, webWindows)
 import IDE.Workspace (projectOpenPath)
+import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.Claude (showLiveSession)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeRowLabel,
@@ -278,8 +279,10 @@ macToggleState tag = do
 -- | Push a 'ClaudeStatus' into the menu-bar status item: the aggregate state
 -- (which shape\/colour the icon draws), how many sessions are in that state (drawn
 -- beside the icon when it isn't green), the summary line for its tooltip, and one
--- menu row per session as @state \\t title \\t tooltip \\t session id@ — tooltip
--- newlines escaped as @\\n@, since a raw one would end the row.
+-- menu row per session as @state \\t title \\t tooltip \\t session id \\t face@ —
+-- tooltip newlines escaped as @\\n@, since a raw one would end the row; @face@
+-- is the agent's animal face ('agentFaceSvg', on one line), drawn beside the
+-- state shape in its menu row, or empty for a session with no name yet.
 --
 -- Called only when the status CHANGES (see 'registerClaudeStatusPush'), so the
 -- native menu is rebuilt on real state changes rather than 20 times a minute.
@@ -298,6 +301,9 @@ pushClaudeStatusToMenuBar st =
           <> (if T.null (csrDir r) then "" else "  ·  " <> baseName (csrDir r))
       , T.intercalate "\\n" [ csrDir r, csrDetail r, csrSession r ]
       , csrSession r
+      , if T.null (csrName r) then ""
+          else T.map (\c -> if c == '\t' || c == '\n' || c == '\r' then ' ' else c)
+                     (agentFaceSvg (csrName r))
       ]
     ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
                   | otherwise      = t

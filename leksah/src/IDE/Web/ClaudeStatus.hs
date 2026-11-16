@@ -24,6 +24,7 @@ module IDE.Web.ClaudeStatus
   , claudeStatusNow
   , registerClaudeStatusPush
   , claudeStatusTooltip
+  , claudeStatusRowsJson
   , claudeStatusGlyph
   , claudeRowLabel
   , pokeClaudeStatus
@@ -36,6 +37,8 @@ import System.Timeout (timeout)
 import Control.Exception (catch, SomeException)
 import Control.Monad (foldM, void, when)
 
+import qualified Data.Aeson as A
+import qualified Data.ByteString.Lazy as BL
 import Data.IORef
        (IORef, newIORef, readIORef, atomicModifyIORef', atomicWriteIORef)
 import Data.List (sortOn)
@@ -44,9 +47,11 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Text.Encoding (decodeUtf8)
 import Data.Time (getCurrentTime)
 import System.IO.Unsafe (unsafePerformIO)
 
+import IDE.Web.AgentFace (agentFaceDataUri)
 import IDE.Web.AgentNames (agentNames, touchAgentNames)
 import IDE.Web.AgentEvents (sePromptPending, sessionEvents)
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -290,4 +295,27 @@ claudeStatusTooltip st = T.intercalate "\n" (csSummary st : map line (csRows st)
   where
     line r = claudeStatusGlyph (csrState r) <> " " <> claudeRowLabel r
                <> (if T.null (csrDir r) then "" else "  ·  " <> baseName (csrDir r))
+    baseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')
+
+-- | The rows as the in-page status light's hover list draws them (see
+-- @statusLightJs@ in "IDE.Web.Main"): a JSON array, one object per session,
+-- in 'csRows' order — the same order and the same 'claudeRowLabel' the
+-- menu-bar item's menu uses.  @face@ is the animal's face as a @data:@ URI
+-- ('agentFaceDataUri'), empty for a session with no name yet; @name@ and
+-- @title@ are 'claudeRowLabel''s two halves (so the page can set the name in
+-- bold); @tip@ is the row's hover text (full directory, what it is doing).
+claudeStatusRowsJson :: ClaudeStatus -> Text
+claudeStatusRowsJson st =
+    decodeUtf8 . BL.toStrict . A.encode $ map row (csRows st)
+  where
+    row r = A.object
+      [ "state" A..= csrState r
+      , "label" A..= claudeRowLabel r
+      , "name"  A..= csrName r
+      , "title" A..= csrTitle r
+      , "dir"   A..= baseName (csrDir r)
+      , "tip"   A..= T.intercalate "\n" (filter (not . T.null) [csrDir r, csrDetail r])
+      , "sid"   A..= csrSession r
+      , "face"  A..= (if T.null (csrName r) then "" else agentFaceDataUri (csrName r))
+      ]
     baseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')
