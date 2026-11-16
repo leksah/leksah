@@ -122,7 +122,7 @@ agentCardActions toast refresh = CardActions
       Right _  -> refresh
     -- A copy of its conversation, beside it — the user asked, so (unlike an
     -- agent's own fork) the new pane is brought up to type into.
-  , caAnswer = \n yes -> agentAnswerApproval (anSession n) yes >>= toast . T.strip >> refresh
+  , caAnswer = \n yes -> agentAnswerApproval (anSession n) yes (anApproval n) >>= toast . T.strip >> refresh
   , caBranch = \n -> forkAgent (emptyForkRequest (anDir n)) { frFrom = Just (anSession n) }
       >>= \case
         Left err       -> toast err

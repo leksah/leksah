@@ -933,10 +933,12 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       -- A session leksah did not launch (`claude` in a terminal, with the
       -- leksah plugin) never got leksah's --append-system-prompt notes: give
       -- them now, so it knows its name, to register worktrees, and the rest.
+      -- (After /clear, a compaction or a resume too: their SessionStart is
+      -- where a session's context is rebuilt.)
       plain <- maybe (return False) (fmap not . launchedByLeksah . fst) proc
-      notes <- if source == "startup"
-                 then if plain then plainSessionNotes new else return []
-                 else briefing new
+      base <- if source == "startup" then return [] else briefing new
+      extra <- if plain then plainSessionNotes new (source == "startup") else return []
+      let notes = base <> extra
       -- The title it gave itself (agent describe), as its Claude Code
       -- session title too — sessionTitle applies on startup/resume/fork.
       title <- if source `elem` ["startup", "resume", "fork"]
@@ -1043,10 +1045,13 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
             <> maybe [] (: []) roleText
             <> [ managerNote | maybe False aiManager minfo ]
 
-    plainSessionNotes sid = do
-      names <- touchAgentNames [sid]
-      let name = M.findWithDefault "" sid names
-      return ([ nameNote name | not (T.null name) ] <> [ worktreeNote, planHtmlNote ])
+    -- (The name only at startup: 'briefing' already gives it otherwise.  And
+    -- the worktree note without "pre-approved": only leksah's own launches
+    -- pre-approve `leksah-cmd agent register`.)
+    plainSessionNotes sid withName = do
+      name <- agentNameFor sid
+      return ([ nameNote name | withName, not (T.null name) ]
+              <> [ T.replace " — pre-approved, it never prompts" "" worktreeNote, planHtmlNote ])
 
     -- A hook's answer: nothing at all when there is nothing to say, else
     -- @{"hookSpecificOutput": {"hookEventName": EV, …}}@.
@@ -1097,26 +1102,53 @@ approvalText name inp = case parseMaybe (.: "command") inp of
 -- to proceed?"): a stale click must never type into whatever is on screen
 -- now.  Approve picks option 1 ("Yes" — never the "always allow" or
 -- "switch to auto mode" ones); Deny is Esc, which tells Claude no.
-agentAnswerApproval :: Text -> Bool -> IO Text
-agentAnswerApproval sid yes = paneForSession sid >>= \case
+--
+-- Two checks before a key is sent:
+--
+--   * the pane shows a permission prompt at all — any kind (Bash, an edit, a
+--     fetch …): its numbered options start "1. Yes" and it ends "Esc to
+--     cancel";
+--   * it is the prompt being answered: @expected@ (what the card showed;
+--     else what leksah last recorded for this session) must appear in it —
+--     so a second click, or a card one refresh behind, never approves the
+--     NEXT prompt, which nobody has seen yet.
+agentAnswerApproval :: Text -> Bool -> Maybe Text -> IO Text
+agentAnswerApproval sid yes mexpected = paneForSession sid >>= \case
   Nothing -> return "Its pane can't be found, so there is nothing to answer.\n"
   Just (_, _, pane) -> do
     -- (The whole screen: 'tmuxOut' keeps only the first line.)
     screen <- tmuxStdoutOn LocalServer ["capture-pane", "-p", "-t", T.unpack pane]
-    if not ("Do you want to proceed?" `T.isInfixOf` screen)
-      then return "It is not asking for approval right now.\n"
-      else do
+    recorded <- fmap fst . sePermission <$> eventsFor sid
+    let flat = T.unwords (T.words screen)
+        asking = "1. Yes" `T.isInfixOf` screen && "Esc to cancel" `T.isInfixOf` screen
+        expected = mexpected <|> recorded
+        matches = maybe True (\e -> approvalKey e `T.isInfixOf` flat) expected
+    if not asking then return "It is not asking for approval right now.\n"
+    else if not matches then return
+      "The approval on screen is not the one shown — look at its pane before answering.\n"
+    else do
         ok <- sendKeysTo pane [if yes then "1" else "Escape"]
         name <- agentNameFor sid
         return $ if not ok then "tmux would not deliver the answer.\n"
                  else (if yes then "Approved for " else "Denied for ") <> name <> ".\n"
+  where
+    -- The part of an approval's text ('approvalText': "Bash: CMD", "Edit
+    -- FILE", "Fetch URL" …) that its prompt shows: what follows the tool's
+    -- name, whitespace-normalised, its first 40 characters (a long command
+    -- wraps on screen).
+    approvalKey t =
+      let body = case T.breakOn ": " t of
+                   (_, rest) | not (T.null rest) -> T.drop 2 rest
+                   _ -> T.drop 1 (T.dropWhile (/= ' ') t)
+      in T.take 40 (T.unwords (T.words body))
 
 -- | Did leksah launch this claude process?  Its command line carries leksah's
--- --append-system-prompt notes then (every leksah launch adds them).
+-- appended notes then — every leksah launch adds 'worktreeNote', whose
+-- wording is leksah's own (a user's own --append-system-prompt is not it).
 launchedByLeksah :: Int -> IO Bool
 launchedByLeksah pid = (`catch` \(_ :: SomeException) -> return True) $ do
   (_, out, _) <- readProcessWithExitCode "ps" ["-o", "args=", "-p", show pid] ""
-  return ("--append-system-prompt" `T.isInfixOf` T.pack out)
+  return ("register_worktree MCP tool" `T.isInfixOf` T.pack out)
 
 -- | The session each claude process (by pid) last started — how a SessionStart
 -- for a NEW id in the same process is recognised as the same agent.

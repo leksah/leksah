@@ -37,6 +37,7 @@ module IDE.Web.AgentEvents
   , editedRecently
   ) where
 
+import Control.Applicative ((<|>))
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (nub)
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
@@ -73,6 +74,9 @@ data SessionEvents = SessionEvents
   , sePromptAt   :: Maybe Double          -- ^ when the last prompt was submitted
   , seTasks      :: [(Text, TaskInfo)]    -- ^ its task list (Claude Code's Task
                                           --   tools), by task id, in order
+  , seTaskEarly  :: [(Text, Text)]        -- ^ statuses (by task id) and doing
+                                          --   forms (by "@" <> subject) that
+                                          --   arrived before their task did
   } deriving (Eq, Show)
 
 -- | One task of a session's task list.
@@ -83,7 +87,7 @@ data TaskInfo = TaskInfo
   } deriving (Eq, Show)
 
 none :: SessionEvents
-none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing [] Nothing [] Nothing []
+none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing [] Nothing [] Nothing [] []
 
 -- | The tool call running now: the newest of those still running.
 seTool :: SessionEvents -> Maybe (Text, Double)
@@ -236,30 +240,48 @@ recordCompacting sid on = update sid $ \now e ->
 -- | The session ended (SessionEnd): nothing of it is running any more.
 recordSessionEnd :: Text -> IO ()
 recordSessionEnd sid = update sid $ \_ e ->
-  e { seRunning = [], sePermission = Nothing, seSubagents = [], seCompacting = Nothing }
+  e { seRunning = [], sePermission = Nothing, seSubagents = [], seCompacting = Nothing
+    , seTasks = [], seTaskEarly = [] }
 
 -- | A task was created (TaskCreated).
+--
+-- The hooks are async, so the call that set its status (TaskUpdate) or its
+-- doing form (TaskCreate) may have been reported first: those were kept
+-- ('seTaskEarly') and apply now.  The newest 100 tasks are kept.
 recordTaskCreated :: Text -> Text -> Text -> IO ()
 recordTaskCreated sid tid subject = update sid $ \_ e ->
-  e { seTasks = take 100 $ case lookup tid (seTasks e) of
-        Just t  -> [ (k, if k == tid then t { tiSubject = subject } else v) | (k, v) <- seTasks e ]
-        Nothing -> seTasks e <> [(tid, TaskInfo subject Nothing "pending")] }
+  let early = seTaskEarly e
+      st = fromMaybe "pending" (lookup tid early)
+      act = lookup ("@" <> subject) early
+      new = TaskInfo subject act st
+      ts = case lookup tid (seTasks e) of
+        Just t  -> [ (k, if k == tid then t { tiSubject = subject
+                                             , tiActive = tiActive t <|> act } else v)
+                   | (k, v) <- seTasks e ]
+        Nothing -> seTasks e <> [(tid, new)]
+  in e { seTasks = lastN 100 ts
+       , seTaskEarly = filter (\(k, _) -> k /= tid && k /= "@" <> subject) early }
+  where lastN n xs = drop (length xs - n) xs
 
 -- | The TaskCreate call's "doing" form, for the task with this subject (the
 -- TaskCreated hook does not carry it).
 recordTaskActive :: Text -> Text -> Text -> IO ()
 recordTaskActive sid subject active = update sid $ \_ e ->
-  e { seTasks = [ (k, if tiSubject v == subject && isNothing (tiActive v)
-                         then v { tiActive = Just active } else v)
-                | (k, v) <- seTasks e ] }
+  if any ((== subject) . tiSubject . snd) (seTasks e)
+    then e { seTasks = [ (k, if tiSubject v == subject && isNothing (tiActive v)
+                                then v { tiActive = Just active } else v)
+                       | (k, v) <- seTasks e ] }
+    else e { seTaskEarly = take 50 (("@" <> subject, active) : seTaskEarly e) }
 
 -- | A task's status changed (a TaskUpdate call, or TaskCompleted); "deleted"
 -- takes it off the list.
 recordTaskStatus :: Text -> Text -> Text -> IO ()
 recordTaskStatus sid tid status = update sid $ \_ e ->
-  e { seTasks = if status == "deleted"
-        then filter ((/= tid) . fst) (seTasks e)
-        else [ (k, if k == tid then v { tiStatus = status } else v) | (k, v) <- seTasks e ] }
+  if not (any ((== tid) . fst) (seTasks e))
+    then e { seTaskEarly = take 50 ((tid, status) : filter ((/= tid) . fst) (seTaskEarly e)) }
+    else e { seTasks = if status == "deleted"
+               then filter ((/= tid) . fst) (seTasks e)
+               else [ (k, if k == tid then v { tiStatus = status } else v) | (k, v) <- seTasks e ] }
 
 -- | Its task list in a few words, while it is not all done: @[3/7] Running
 -- the tests@ — done of all, then what it is on now (the task in progress,
