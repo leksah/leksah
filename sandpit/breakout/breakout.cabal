@@ -1,6 +1,7 @@
 cabal-version:      3.4
 name:               breakout
 version:            0.1.0.0
+tested-with:        ghc ==9.14.1
 license:            MIT
 license-file:       LICENSE
 author:             Hamish Mackenzie
@@ -14,15 +15,16 @@ description:
   the terminal (jsaddle-terminal) and renders in an IDE iframe; compiled with
   the GHC JS backend it runs directly in a browser page (the website demo
   plays it at /try/breakout/).
+category:           Game
 build-type:         Simple
 
 executable breakout
   main-is:            Main.hs
   hs-source-dirs:     app
-  build-depends:      base
-                    , containers
-                    , ghcjs-dom
-                    , jsaddle
+  build-depends:      base >=4.18 && <4.23
+                    , containers >=0.6 && <0.9
+                    , ghcjs-dom >=0.9 && <0.11
+                    , jsaddle >=0.9.8 && <0.10
                     , reflex
                     , reflex-dom-core
                     , text
@@ -33,7 +35,7 @@ executable breakout
   if impl(ghcjs) || arch(javascript)
     build-depends:    jsaddle-warp >=0.9.4.0 && <0.10
   else
-    build-depends:    jsaddle-terminal
+    build-depends:    jsaddle-terminal >=0.1 && <0.2
   ghc-options:        -Wall
   -- The JS backend's RTS is single-threaded; asking for -threaded there
   -- panics GHC ("The RTS for rts:threaded-nodebug is missing").

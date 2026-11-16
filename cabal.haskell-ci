@@ -1,0 +1,40 @@
+-- Settings for haskell-ci (github.com/haskell-CI/haskell-ci), which writes
+-- .github/workflows/haskell-ci.yml.  Regenerate after changing this file,
+-- cabal.project or any package's tested-with:
+--
+--   nix run .#haskell-ci -- regenerate
+--
+-- (built from haskell-ci's GitHub master by nix/haskell-ci.nix: Hackage's
+-- release predates GHC 9.14).
+
+distribution: noble
+
+-- exe:leksah on Linux is the GTK4 / WebKitGTK 6.0 front end (gi-gtk4,
+-- gi-webkit via jsaddle-webkitgtk); the gi-* packages need the libraries'
+-- headers and their GObject-introspection data at build time — including
+-- ATK, which gi-webkit 6.0.5 still depends on although GTK4 itself does not
+-- (so the GTK/WebKit dev packages don't bring it in).
+apt: libgtk-4-dev libwebkitgtk-6.0-dev libjavascriptcoregtk-6.0-dev libsoup-3.0-dev libatk1.0-dev libgraphene-1.0-dev libharfbuzz-dev libgirepository1.0-dev pkg-config
+
+haddock: False
+benchmarks: False
+
+-- haskell-ci rebuilds cabal.project for the CI job and leaves these out; keep
+-- them in step with cabal.project (the index-state above all, or CI solves
+-- against whatever Hackage has that day).
+raw-project
+  index-state: 2026-11-14T01:29:20Z
+  allow-newer: reflex:primitive, reflex-dom-core:primitive, vado:*, reflex-dom-svg:text
+  constraints: dependent-sum-template >=0.2.0.1
+  package reflex
+    tests: False
+  package reflex-dom-core
+    tests: False
+  -- jsaddle-dom's generated modules outgrow haskell-ci's default per-GHC
+  -- heap cap (+RTS -M3G, in program-default-options); a later -M wins.
+  package jsaddle-dom
+    ghc-options: +RTS -M10G -RTS
+
+-- First get the build green; tighten these once it is.
+error-unused-packages: False
+error-incomplete-patterns: False

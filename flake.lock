@@ -214,6 +214,23 @@
         "type": "github"
       }
     },
+    "haskell-ci-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791639805,
+        "narHash": "sha256-qMtDv1EeZtEEl60TpCiTGJB8GDZiarUwk4CUde6M2Kg=",
+        "owner": "haskell-CI",
+        "repo": "haskell-ci",
+        "rev": "941ebb39e98f77f74a71068ac650b8e5042d26de",
+        "type": "github"
+      },
+      "original": {
+        "owner": "haskell-CI",
+        "ref": "941ebb39e9",
+        "repo": "haskell-ci",
+        "type": "github"
+      }
+    },
     "haskellNix": {
       "inputs": {
         "HTTP": "HTTP",
@@ -799,6 +816,7 @@
         "ffcabal-src": "ffcabal-src",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
+        "haskell-ci-src": "haskell-ci-src",
         "haskellNix": "haskellNix",
         "hls-github": "hls-github",
         "hyper-linux": "hyper-linux_2",

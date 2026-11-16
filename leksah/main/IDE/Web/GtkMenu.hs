@@ -124,7 +124,7 @@ openFilePanel win = postGUIAsync $ do
   Gtk.fileDialogOpen d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
     \_ res ->
       try (Gtk.fileDialogOpenFinish d res) >>= \case
-        Right file -> Gio.fileGetPath file >>= mapM_ deliverOpenedFile
+        Right mfile -> forM_ mfile $ \file -> Gio.fileGetPath file >>= mapM_ deliverOpenedFile
         Left (_ :: SomeException) -> return ()  -- dismissed
 
 -- | The Add Project… dialog's Browse button.  GTK4 has @fileDialogOpen@ OR
@@ -142,13 +142,13 @@ pickPathPanel win mode tok = postGUIAsync $ do
       Gtk.fileDialogSelectFolder d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
         \_ res ->
           try (Gtk.fileDialogSelectFolderFinish d res) >>= \case
-            Right file -> Gio.fileGetPath file >>= mapM_ (deliverPickedPath tok)
+            Right mfile -> forM_ mfile $ \file -> Gio.fileGetPath file >>= mapM_ (deliverPickedPath tok)
             Left (_ :: SomeException) -> return ()  -- dismissed
     _ ->
       Gtk.fileDialogOpen d (Just win) (Nothing :: Maybe Gio.Cancellable) . Just $
         \_ res ->
           try (Gtk.fileDialogOpenFinish d res) >>= \case
-            Right file -> Gio.fileGetPath file >>= mapM_ (deliverPickedPath tok)
+            Right mfile -> forM_ mfile $ \file -> Gio.fileGetPath file >>= mapM_ (deliverPickedPath tok)
             Left (_ :: SomeException) -> return ()
 
 -- | Translate a key spec like @\"cmd+ctrl+s\"@ to a GTK accelerator string.
