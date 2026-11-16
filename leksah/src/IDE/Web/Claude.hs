@@ -114,6 +114,7 @@ import IDE.Reactive (readCell)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.DemoAgents (demoShowAgent)
 import IDE.Web.Model (WebUi(_leksahWindows))
+import IDE.Web.AgentEvents (perToolHookEvents)
 import IDE.Web.AgentNames
        (adoptContinuation, agentContinuations, agentNameFor, sessionOfRunKey)
 import IDE.Web.ReplTmux
@@ -913,8 +914,10 @@ claudeHooksFlag = (`catch` \(_ :: SomeException) -> return "") $
                     , reporter "PostToolUse" ] ]
                  <> map lifecycle ["SessionStart", "Stop", "Notification", "SessionEnd"]
                  <> map (hookOn True)
-                      [ "PreToolUse", "PostToolUseFailure", "PermissionRequest"
-                      , "StopFailure", "CwdChanged" ]) ]
+                      -- (PostToolUse is registered above, with the
+                      -- worktree hook.)
+                      (filter (/= "PostToolUse") perToolHookEvents
+                       <> [ "PermissionRequest", "StopFailure", "CwdChanged" ])) ]
           return (" --settings " <> T.pack path)
         _ -> return ""
 

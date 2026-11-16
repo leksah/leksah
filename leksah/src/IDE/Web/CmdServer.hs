@@ -797,14 +797,16 @@ handleConn app conn = do
       other         -> reply $ "leksah-cmd: unknown command: "
                                   <> T.unwords other <> "\n\n" <> usage
 
-    -- One @agent@ verb.  Every one of them starts by asking WHO is calling:
+    -- One @agent@ verb.  Every one of them (but @hook@, below) starts by
+    -- asking WHO is calling:
     -- the client's pid walked up to the @claude@ process above it, if any.  That
     -- is what lets `agent fork` take no arguments (fork me, beside me), `agent
     -- list` mark "(you)", and a child's report reach the right parent.
     -- A Claude Code hook (`leksah-cmd agent hook EVENT`, its JSON as the next
     -- argument): see 'agentHook'.  The reply is what the hook prints.  Ahead
-    -- of the WHO lookup below — a `ps` walk a hook never needs, and hooks run
-    -- on every tool call (PreToolUse holds the call until it answers).
+    -- of the WHO lookup — a `ps` walk a hook never needs (agentHook finds the
+    -- claude process itself, for the one event that uses it), and hooks come
+    -- several times a turn; Stop and SessionStart are synchronous.
     agentVerb mpid _ ("hook" : ev : raw : _) = agentHook mpid ev raw >>= reply
     agentVerb mpid cwd args = do
       me <- maybe (return Nothing) sessionOwningPid mpid

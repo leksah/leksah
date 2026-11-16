@@ -82,7 +82,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
-import IDE.Web.AgentEvents (SessionEvents(..), sessionEvents)
+import IDE.Web.AgentEvents (SessionEvents(..), seTool, sessionEvents)
 import IDE.Web.AgentHost (Host(..), RanOn(..), currentHost, diedWithHost, ranOnFor)
 import IDE.Web.AgentNames
        (agentContinuations, agentLastSeen, agentNames, holdAgentNames)

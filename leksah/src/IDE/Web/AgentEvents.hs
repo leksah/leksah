@@ -10,6 +10,8 @@
 -- from the transcript and the CLI's session file.
 module IDE.Web.AgentEvents
   ( SessionEvents(..)
+  , seTool
+  , perToolHookEvents
   , sessionEvents
   , eventsFor
   , recordToolStart
@@ -24,6 +26,7 @@ module IDE.Web.AgentEvents
 
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (nub)
+import Data.Maybe (isNothing, listToMaybe)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text (Text)
@@ -33,18 +36,39 @@ import System.IO.Unsafe (unsafePerformIO)
 
 -- | One session's live facts.  Times are POSIX seconds.
 data SessionEvents = SessionEvents
-  { seTool       :: Maybe (Text, Double)  -- ^ the tool call running now
+  { seRunning    :: [(Maybe Text, (Text, Double))]
+                                          -- ^ the tool calls running now, newest
+                                          --   first, by tool_use_id (parallel
+                                          --   calls overlap)
   , sePermission :: Maybe (Text, Double)  -- ^ the approval it is waiting for
   , seError      :: Maybe (Text, Double)  -- ^ the API error its turn ended on
   , seEdits      :: [(FilePath, Double)]  -- ^ files it edited, newest first
   , seCwd        :: Maybe FilePath        -- ^ where its shell is now
-  , seToolId     :: Maybe Text            -- ^ 'seTool''s tool_use_id, if known
   , seEnded      :: [Text]                -- ^ tool_use_ids that have finished
                                           --   (the last few): see 'recordToolStart'
+  , seTurnEnd    :: Maybe Double          -- ^ when its last turn ended (Stop /
+                                          --   StopFailure)
   } deriving (Eq, Show)
 
 none :: SessionEvents
-none = SessionEvents Nothing Nothing Nothing [] Nothing Nothing []
+none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing
+
+-- | The tool call running now: the newest of those still running.
+seTool :: SessionEvents -> Maybe (Text, Double)
+seTool = fmap snd . listToMaybe . seRunning
+
+-- | The hook events that come once per tool call — several times a turn.
+-- They are registered async (they must never hold a tool call up) and
+-- handled on the cheap path ("IDE.Web.Agent".'agentHook').  One list, so
+-- adding a per-tool event can't quietly put it on the slow path.
+perToolHookEvents :: [Text]
+perToolHookEvents = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
+
+-- | How long after a turn ends a tool START is taken to be a late report
+-- from that turn rather than the next one's first call: the next turn needs a
+-- new prompt and a model response first, which takes longer than this.
+lateStartGrace :: Double
+lateStartGrace = 1.5
 
 {-# NOINLINE eventsRef #-}
 eventsRef :: IORef (Map Text SessionEvents)
@@ -63,30 +87,37 @@ update sid f = do
     (M.insert sid (f now (M.findWithDefault none sid m)) m, ())
 
 -- | A tool call starting (PreToolUse).  A new call also means the turn is
--- going again: no error stands, and any approval was answered.
+-- going again: no error stands.
 --
--- The hooks are ASYNC (they never hold a tool call up), so for a quick tool
--- its PostToolUse report can arrive first: a start whose @tool_use_id@ has
--- already finished is ignored, or the row would say "running …" until the
--- next event.
+-- The hooks are ASYNC (they never hold a tool call up), so they can arrive in
+-- any order.  A start is ignored when it is a late report: its @tool_use_id@
+-- has already finished (a quick tool's PostToolUse overtook it), or the turn
+-- ended moments ago (a call that got no PostToolUse at all — interrupted,
+-- denied).  Otherwise the row would say "running …" until the next event.
+-- It leaves the approval alone: PermissionRequest for this very call may have
+-- overtaken it.
 recordToolStart :: Text -> Maybe Text -> Text -> IO ()
 recordToolStart sid uid what = update sid $ \now e ->
-  if maybe False (`elem` seEnded e) uid then e
-  else e { seTool = Just (what, now), seToolId = uid
-         , seError = Nothing, sePermission = Nothing }
+  let finished = maybe False (`elem` seEnded e) uid
+      afterTurn = maybe False (\t -> now - t < lateStartGrace) (seTurnEnd e)
+  in if finished || afterTurn then e
+     else e { seRunning = (uid, (what, now))
+                          : filter (\(u, _) -> isNothing u || u /= uid) (seRunning e)
+            , seError = Nothing }
 
 -- | A tool call finished, one way or the other (PostToolUse /
--- PostToolUseFailure).  Clears the running tool only when it is THIS call (or
--- either id is unknown): with parallel calls, another may still be running.
-recordToolEnd :: Text -> Maybe Text -> IO ()
-recordToolEnd sid uid = update sid $ \_ e ->
-  let mine = case (uid, seToolId e) of
-        (Just u, Just t) -> u == t
-        _                -> True
-  in e { seTool = if mine then Nothing else seTool e
-       , seToolId = if mine then Nothing else seToolId e
-       , sePermission = Nothing
-       , seEnded = take 32 (maybe id (:) uid (seEnded e)) }
+-- PostToolUseFailure); @what@ is its approval text ('recordPermission''s
+-- key).  Only that call stops running — with parallel calls the others carry
+-- on — and the approval clears only if it was for this call.  A report with
+-- no id (older Claude Code) clears every running call, as before.
+recordToolEnd :: Text -> Maybe Text -> Text -> IO ()
+recordToolEnd sid uid what = update sid $ \_ e ->
+  e { seRunning = case uid of
+        Just u  -> filter ((/= Just u) . fst) (seRunning e)
+        Nothing -> []
+    , sePermission = if (fst <$> sePermission e) == Just what then Nothing
+                     else sePermission e
+    , seEnded = take 32 (maybe id (:) uid (seEnded e)) }
 
 -- | Waiting for the user to approve this (PermissionRequest).
 recordPermission :: Text -> Text -> IO ()
@@ -95,12 +126,13 @@ recordPermission sid what = update sid $ \now e -> e { sePermission = Just (what
 -- | The turn ended on an API error (StopFailure).
 recordFailure :: Text -> Text -> IO ()
 recordFailure sid err = update sid $ \now e ->
-  e { seError = Just (err, now), seTool = Nothing, seToolId = Nothing, sePermission = Nothing }
+  e { seError = Just (err, now), seRunning = [], sePermission = Nothing
+    , seTurnEnd = Just now }
 
 -- | The turn ended normally (Stop): nothing is running, nothing is waiting.
 recordTurnEnd :: Text -> IO ()
-recordTurnEnd sid = update sid $ \_ e ->
-  e { seTool = Nothing, seToolId = Nothing, sePermission = Nothing, seError = Nothing }
+recordTurnEnd sid = update sid $ \now e ->
+  e { seRunning = [], sePermission = Nothing, seError = Nothing, seTurnEnd = Just now }
 
 -- | It edited these files (kept to the 100 most recent).
 recordEdit :: Text -> [FilePath] -> IO ()

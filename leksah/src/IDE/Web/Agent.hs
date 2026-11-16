@@ -119,7 +119,8 @@ import IDE.Web.Claude
         showLiveSession, showLiveSessionHere, showTmuxPane, showTmuxPaneWith, claudeProcessOf, nameNote, agentNote,
         managerNote, describeToolUse, claudePaneSessions)
 import IDE.Web.AgentEvents
-       (SessionEvents(..), editedRecently, eventsFor, sessionEvents, recordCwd, recordEdit, recordFailure, recordPermission,
+       (SessionEvents(..), seTool, perToolHookEvents, editedRecently, eventsFor, sessionEvents,
+        recordCwd, recordEdit, recordFailure, recordPermission,
         recordToolEnd, recordToolStart, recordTurnEnd)
 import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.NewLwRequest (requestNewLw)
@@ -852,7 +853,8 @@ transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 --     launcher (claude -c, the resume picker) would not otherwise have.
 --   * Stop, Notification, SessionEnd: the status surfaces look again now.
 --
--- Every event is logged, one line, to @~\/.leksah\/agent-hooks.log@.
+-- Every event but the per-tool ones ('perToolHookEvents') is logged, one line,
+-- to @~\/.leksah\/agent-hooks.log@.
 agentHook :: Maybe Int -> Text -> Text -> IO Text
 agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
   let v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
@@ -861,12 +863,13 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       obj k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Object
       toolName = fromMaybe "" (field "tool_name")
       toolInput = fromMaybe mempty (obj "tool_input")
-  -- The per-tool events come several times a turn, and PreToolUse holds the
-  -- tool call until this answers: they skip the claude-process lookup (a
-  -- `ps` walk, ~100ms) — only SessionStart uses it — and the log line.
-  let perTool = ev `elem` ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
-  proc <- if perTool then return Nothing else maybe (return Nothing) claudeProcessOf mpid
-  if perTool then return ()
+  -- Only SessionStart needs to know which claude process is calling (a `ps`
+  -- walk, ~100ms): every other event skips the lookup, and Stop — a
+  -- synchronous hook at the end of every turn — answers at once.  The
+  -- per-tool events, several a turn, are not logged either.
+  proc <- if ev == "SessionStart" then maybe (return Nothing) claudeProcessOf mpid
+                                  else return Nothing
+  if ev `elem` perToolHookEvents then return ()
     else logHook ev proc [sid, field "source", field "reason", field "notification_type"
                          , field "error", field "tool_name"]
   case (ev, sid) of
@@ -894,9 +897,10 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
     ("PreToolUse", Just s) -> do
       recordToolStart s (field "tool_use_id") (describeToolUse toolName toolInput)
       return ""
-    ("PostToolUseFailure", Just s) -> recordToolEnd s (field "tool_use_id") >> return ""
+    ("PostToolUseFailure", Just s) ->
+      recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput) >> return ""
     ("PostToolUse", Just s) -> do
-      recordToolEnd s (field "tool_use_id")
+      recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput)
       let files = editedFiles toolName toolInput (v >>= parseMaybe (withObject "hook" (.: "tool_response")))
       if null files then return "" else do
         recordEdit s files
