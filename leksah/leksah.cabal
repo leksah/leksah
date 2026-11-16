@@ -36,6 +36,9 @@ extra-source-files:
     main/webkitgtk/Main.hs
     main/webview2/Main.hs
     main/ghcjs/Main.hs
+    -- The JS backend's IDE.Utils.Process: same module name as the native one
+    -- in src/, so sdist only picks up that one.
+    src-ghcjs-stub/IDE/Utils/Process.hs
 
 source-repository head
     type: git
@@ -232,6 +235,8 @@ library
         IDE.Web.Widget.Workspace
     hs-source-dirs: src
     other-modules:
+        Paths_leksah
+    autogen-modules:
         Paths_leksah
     default-language: Haskell2010
     default-extensions: ViewPatterns
