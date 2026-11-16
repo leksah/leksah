@@ -149,7 +149,9 @@ import IDE.Web.AgentInfo (describeAgent)
 import IDE.Web.AgentUsage (recordStatusLine)
 import IDE.Web.WorktreeRegistry
        (ClaimRole, parseRole, recordBranchMove, registerWorktree)
-import IDE.Web.Claude (sessionOwningPid, showLiveSession)
+import IDE.Web.Claude
+       (leksahPluginInstall, leksahPluginStatus, leksahPluginUninstall, leksahPluginWrite,
+        sessionOwningPid, showLiveSession)
 
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.Handoff (handoffEnabled, requestHandoff)
@@ -408,6 +410,15 @@ handleConn app conn = do
       -- "IDE.Web.AgentUsage".  Runs after every assistant message: O(1), and
       -- the reply is empty (the client prints the user's own status line).
       ("statusline" : raw : _) -> recordStatusLine raw >> reply ""
+      -- The leksah Claude Code plugin: every session, wherever it was started,
+      -- gets leksah's hooks and MCP tools (see 'leksahPluginInstall').
+      ("plugin" : "install" : _)   -> leksahPluginInstall >>= reply
+      ("plugin" : "uninstall" : _) -> leksahPluginUninstall >>= reply
+      ("plugin" : "write" : dir : _) | not (T.null dir) ->
+        leksahPluginWrite (cwd </> T.unpack dir) >>= reply
+      ("plugin" : rest) | rest `elem` [[], ["status"]] -> leksahPluginStatus >>= reply
+      ("plugin" : _) -> reply
+        "plugin: install | uninstall | status | write DIR  (leksah must be running)\n"
 
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point
