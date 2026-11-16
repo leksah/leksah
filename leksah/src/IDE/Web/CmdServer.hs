@@ -73,8 +73,7 @@ import Data.List (isPrefixOf, isInfixOf)
 import Control.Lens ((^.), (%~), (.~))
 import Control.Monad (filterM, forM_, forever, void, when, (<=<))
 
-import Data.Foldable (toList)
-import Data.IORef (IORef, newIORef, writeIORef)
+import Data.IORef (IORef, newIORef)
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import System.Timeout (timeout)
 import Text.Read (readMaybe)
@@ -87,7 +86,7 @@ import Data.Text.Encoding (encodeUtf8, decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 
 import System.Directory
-       (getHomeDirectory, removeFile, doesFileExist, doesDirectoryExist,
+       (getHomeDirectory, removeFile, doesFileExist,
         createDirectoryIfMissing)
 import System.Exit (ExitCode(..))
 import System.FilePath (isRelative, (</>))
@@ -871,10 +870,14 @@ handleConn app conn = do
         ("roles" : _) -> agentRoleList cwd >>= reply
         -- Answer the permission prompt an agent is blocked on (what the
         -- Agents pane's Approve / Deny buttons do).
+        -- A person's decision: refused when the caller is itself a Claude
+        -- session — an agent must never approve another agent's actions.
+        ("approve" : _) | Just _ <- me -> reply notForAgents
+        ("deny" : _)    | Just _ <- me -> reply notForAgents
         ("approve" : who : _) | not (T.null who) -> withAgent who $ \sid ->
-            agentAnswerApproval sid True >>= reply
+            agentAnswerApproval sid True Nothing >>= reply
         ("deny" : who : _) | not (T.null who) -> withAgent who $ \sid ->
-            agentAnswerApproval sid False >>= reply
+            agentAnswerApproval sid False Nothing >>= reply
         ("events" : who : _) | not (T.null who) -> withAgent who $ \sid ->
             agentEvents sid >>= reply
         -- Ending an agent's process on purpose, keeping the agent; and
@@ -915,6 +918,9 @@ handleConn app conn = do
                   reply (r <> "\n")
         _ -> reply agentUsage
       where
+        -- (No string gap: this module goes through CPP, which eats them.)
+        notForAgents = "agent approve/deny: only a person can answer an approval"
+                       <> " — not another agent.\n"
         withAgent who k = resolveAgent who >>= \case
           Left err  -> reply ("agent: " <> err <> "\n")
           Right sid -> k sid
@@ -1055,6 +1061,8 @@ handleConn app conn = do
       , "  me                    the session id of the caller"
       , "  (SID: a session id, a unique prefix of one, or the agent's name)"
       , "  status SID            one line: state, detail, pane, dir"
+      , "  approve SID / deny SID  answer the permission prompt it is blocked on"
+      , "                        (a person only: refused when run by an agent)"
       , "  wait SID [--timeout S]  block until SID is idle/waiting (client-side)"
       , "  read SID [--last N]   SID's last N answers, newest last"
       , "  send SID [--submit] TEXT   type TEXT into SID (--submit presses Enter)"

@@ -92,7 +92,7 @@ import IDE.Web.AgentNames
        (agentContinuations, agentLastSeen, agentNames, holdAgentNames)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou, claudeBackgroundSessions,
-        claudeFindTranscript, claudeLatestActivity,
+        claudeFindTranscript, claudeLatestActivity, paneForSession,
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
@@ -501,6 +501,23 @@ blank sid dir = AgentInfo
 --------------------------------------------------------------------------------
 -- liveness: which agents were running, and which of them were interrupted
 
+-- | Can leksah reach session @sid@'s pane (to answer its prompt)?  A @ps@
+-- walk, so remembered for 30s per session.
+paneReachable :: Text -> IO Bool
+paneReachable sid = do
+  now <- posixNow
+  cached <- M.lookup sid <$> readIORef reachRef
+  case cached of
+    Just (t, ok) | now - t < 30 -> return ok
+    _ -> do
+      ok <- isJust <$> (paneForSession sid `catch` \(_ :: SomeException) -> return Nothing)
+      atomicModifyIORef' reachRef (\m -> (M.insert sid (now, ok) m, ()))
+      return ok
+
+{-# NOINLINE reachRef #-}
+reachRef :: IORef (Map Text (Double, Bool))
+reachRef = unsafePerformIO (newIORef M.empty)
+
 -- | How long an interrupted agent is offered back (by its card, and by "Resume
 -- all") before it becomes an ordinary exited one — the same week its name is
 -- reserved for ("IDE.Web.AgentNames").
@@ -899,9 +916,18 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           | nSubs == 0 = activity0
           | otherwise = Just $ maybe (subsText <> " running") (<> " · " <> subsText) activity0
         -- Its task list's progress leads: "[3/7] Running the tests · Bash: …".
-        activity = case e >>= seTaskSummary of
+        -- (Only while it works: an abandoned, half-done list must not stand
+        -- in for an idle agent's own description for good.)
+        working = anState n `elem` ["busy", "shell", "waiting"]
+        activity = case if working then e >>= seTaskSummary else Nothing of
           Nothing -> activity1
           Just ts -> Just (maybe ts ((ts <> " · ") <>) activity1)
+        pending = if anLive n && anState n == "waiting"
+                    then fst <$> (e >>= sePermission) else Nothing
+    -- Approve / Deny only where they can work: a pane leksah can reach (not
+    -- a `claude` in iTerm, say).  Looked up only for a session that waits on
+    -- an approval, and remembered a while.
+    reachable <- maybe (return False) (const (paneReachable s)) pending
     return (s, n { anWorktrees = wls
                  , anName = M.findWithDefault (anName n) s names
                  , anBio = i >>= aiBio
@@ -912,8 +938,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
                  , anError = if anLive n then fst <$> recentErr else Nothing
                  , anEdits = maybe [] (map fst . seEdits) e
                  , anUsage = M.lookup s usage
-                 , anApproval = if anLive n && anState n == "waiting"
-                                  then fst <$> (e >>= sePermission) else Nothing
+                 , anApproval = if reachable then pending else Nothing
                  , anCwd = e >>= seCwd >>= \c ->
                      if dropTrailingPathSeparator c == dropTrailingPathSeparator (anDir n)
                        then Nothing else Just c })
