@@ -19,17 +19,14 @@ apt: libgtk-4-dev libwebkitgtk-6.0-dev libjavascriptcoregtk-6.0-dev libsoup-3.0-
 haddock: False
 benchmarks: False
 
--- haskell-ci rebuilds cabal.project for the CI job and leaves these out; keep
--- them in step with cabal.project (the index-state above all, or CI solves
--- against whatever Hackage has that day).
+-- haskell-ci writes its own cabal.project for the CI job (pointing at the
+-- unpacked sdists).  Copy EVERY field of ours into it — index-state, the
+-- conditional allow-newer/constraints blocks, package stanzas — so nothing
+-- has to be repeated here by hand.
+copy-fields: all
+
+-- CI-only additions to that cabal.project.
 raw-project
-  index-state: 2026-11-14T01:29:20Z
-  allow-newer: reflex:primitive, reflex-dom-core:primitive, vado:*, reflex-dom-svg:text
-  constraints: dependent-sum-template >=0.2.0.1
-  package reflex
-    tests: False
-  package reflex-dom-core
-    tests: False
   -- jsaddle-dom's generated modules outgrow haskell-ci's default per-GHC
   -- heap cap (+RTS -M3G, in program-default-options); a later -M wins.
   package jsaddle-dom
