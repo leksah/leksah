@@ -178,6 +178,7 @@ library
         IDE.Web.AISession
         IDE.Web.Agent
         IDE.Web.AgentEvents
+        IDE.Web.AgentUsage
         IDE.Web.AgentFace
         IDE.Web.AgentInfo
         IDE.Web.AgentHost

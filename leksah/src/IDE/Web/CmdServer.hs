@@ -146,6 +146,7 @@ import IDE.Web.Agent
         agentResume, agentRoleList, agentSend, agentStatus, agentSuspend,
         emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent)
 import IDE.Web.AgentInfo (describeAgent)
+import IDE.Web.AgentUsage (recordStatusLine)
 import IDE.Web.WorktreeRegistry
        (ClaimRole, parseRole, recordBranchMove, registerWorktree)
 import IDE.Web.Claude (sessionOwningPid, showLiveSession)
@@ -401,6 +402,12 @@ handleConn app conn = do
                     (if T.null prefix then Nothing else Just prefix)
                 reply $ "Command prefix for " <> T.pack fp <> ": "
                         <> (if T.null prefix then "(cleared)" else prefix) <> "\n"
+
+      -- statusline JSON: a Claude Code session's status-line data (context
+      -- use, cost, rate limits), forwarded by `leksah-cmd statusline` — see
+      -- "IDE.Web.AgentUsage".  Runs after every assistant message: O(1), and
+      -- the reply is empty (the client prints the user's own status line).
+      ("statusline" : raw : _) -> recordStatusLine raw >> reply ""
 
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point

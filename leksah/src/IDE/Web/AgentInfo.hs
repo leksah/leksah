@@ -83,6 +83,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import IDE.Paths (sidecarPath)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentEvents (SessionEvents(..), seTool, sessionEvents)
+import IDE.Web.AgentUsage (SessionUsage, sessionUsage)
 import IDE.Web.AgentHost (Host(..), RanOn(..), currentHost, diedWithHost, ranOnFor)
 import IDE.Web.AgentNames
        (agentContinuations, agentLastSeen, agentNames, holdAgentNames)
@@ -202,6 +203,8 @@ data AgentNode = AgentNode
   , anBackground :: Maybe Text  -- ^ a Claude Code BACKGROUND session's id (the
                                 --   short one @claude rm@\/@attach@ take), for a
                                 --   row that came from @claude agents@
+  , anUsage    :: Maybe SessionUsage -- ^ its context use, cost and rate limits,
+                                --   from its status line ("IDE.Web.AgentUsage")
   , anChildren :: [AgentNode] -- ^ the agents it forked
   } deriving (Eq, Show)
 
@@ -751,7 +754,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anBorn     = Nothing
   , anParentName = Nothing
   , anChildNames = map (\(DemoAgent _ _ _ _ _ _ _ _ _ _ nm _ _) -> fromMaybe "" nm) kids
-  , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
+  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
   , anChildren = map demoNode kids
   }
 #else
@@ -822,6 +825,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   -- and the files it edited and where its shell went.
   names  <- agentNames
   events <- sessionEvents
+  usage  <- sessionUsage
   decorated <- forM (liveNodes <> filter ((`notElem` bgIds) . fst) exited <> bgNodes)
                  $ \(s, n) -> do
     wls <- worktreeClaimLines now s
@@ -841,6 +845,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
                  , anActivity = if anLive n then activity else anActivity n
                  , anError = if anLive n then fst <$> recentErr else Nothing
                  , anEdits = maybe [] (map fst . seEdits) e
+                 , anUsage = M.lookup s usage
                  , anCwd = e >>= seCwd >>= \c ->
                      if dropTrailingPathSeparator c == dropTrailingPathSeparator (anDir n)
                        then Nothing else Just c })
@@ -896,7 +901,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anWorktrees = []
       , anBio = Nothing, anManager = False, anBorn = Nothing
       , anParentName = Nothing, anChildNames = []
-      , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
+      , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
       , anChildren = [] }
 
     -- A background session with no process, as a row: not live (a click
@@ -939,7 +944,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         , anWorktrees = []
         , anBio = Nothing, anManager = False, anBorn = Nothing
         , anParentName = Nothing, anChildNames = []
-        , anEdits = [], anError = Nothing, anCwd = Nothing
+        , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing
         , anChildren = [] }
 
     -- Stored agents that are NOT running: either exited (their transcript's mtime
@@ -983,7 +988,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
           , anChildren = [] }
       let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
           interrupted i = isNothing (aiSuspended i) && isInterrupted posix i
@@ -1029,7 +1034,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anBackground = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 
