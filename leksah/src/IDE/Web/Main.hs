@@ -342,7 +342,7 @@ import IDE.Web.ProjectRecents
        (addRecentEntry, emptyProjectRecents, setProjectRecents)
 import IDE.Web.Widget.AddServer (addServerDialog)
 import IDE.Web.Widget.RemoteSettings (remoteSettingsDialog)
-import IDE.Web.Widget.Flipper (flipperCss, flipperWidget)
+import IDE.Web.Widget.Flipper (flipperCss, flipperWidget, overlayKeysJs)
 import IDE.Web.Widget.AIPicker (aiPickerCss, aiChoiceLabel, aiPickerKeysJs)
 import IDE.Web.Widget.Grep (grepCss, grepWidget, runGrep)
 import IDE.Web.Widget.Keymap (keymapWidget)
@@ -3289,6 +3289,68 @@ barFocusJs = T.unlines
   , "  upd();"
   , "})();"
   ]
+
+-- | The tab flipper's extras over 'overlayKeysJs' (installed alongside it,
+-- see 'flipperKeysJs'): a click on the title remembers where it was, for
+-- 'flipAtTitleJs', and arms the flipper's keys AT ONCE — the flipper opens a
+-- Haskell round trip later, and a key pressed in between would otherwise
+-- reach the focused terminal.  If it doesn't open after all, the arming lapses
+-- by itself.  A click on an item disarms them at once, as Enter and Escape do.
+-- Not in narrow mode, where the title tap opens the flipper full-width.
+flipperTitleJs :: Text
+flipperTitleJs = T.unlines
+  [ "(function(){ if (window.__lkFlipTitleHooked) return;"
+  , "  window.__lkFlipTitleHooked = true;"
+  , "  document.addEventListener('mousedown', function(e){"
+  , "    var t = e.target;"
+  , "    if (!t.closest) return;"
+  , "    if (t.closest('.flipper-content button')) {"
+  , "      if (window.leksahFlipperKeys) window.leksahFlipperKeys(false); return; }"
+  , "    if (!t.closest('.toolbar-active-pane')) return;"
+  , "    if (document.documentElement.classList.contains('leksah-narrow')) return;"
+  , "    window.__lkFlipClickX = e.clientX;"
+  , "    if (window.leksahFlipperKeysSoon) window.leksahFlipperKeysSoon();"
+  , "  }, true);"
+  , "})()" ]
+
+-- | The flipper's key handling: 'overlayKeysJs' armed by
+-- @window.leksahFlipperKeys(open)@ (↑/↓ step, Enter picks as a click does,
+-- Escape dismisses — with ⌘ held or not, so a flipper opened with ⌘\` takes
+-- ⌘↓ / ⌘↑ / ⌘Enter), plus @window.leksahFlipperKeysSoon()@: arm now, and
+-- disarm in a second unless the flipper confirms it opened.
+flipperKeysJs :: Text
+flipperKeysJs = T.unlines
+  [ overlayKeysJs "__lkFlipOpen" "leksahFlipperKeys" "leksahFlipperKey" False
+  , "(function(){"
+  , "  var arm = window.leksahFlipperKeys, gen = 0;"
+  , "  window.leksahFlipperKeys = function(open){ gen++; arm(open); };"
+  , "  window.leksahFlipperKeysSoon = function(){"
+  , "    var g = ++gen; arm(true);"
+  , "    setTimeout(function(){ if (g === gen) arm(false); }, 1000);"
+  , "  };"
+  , "})();"
+  , flipperTitleJs ]
+
+-- | Place the title-opened flipper ('.flipper.at-title' in the flipper CSS):
+-- its top just below the title, its left edge a little left of where the
+-- click was, kept on screen with room for the list.  Measured VISUAL, written
+-- LOCAL ('leksahLocal' — see 'zoomJs'), so it lands under the click at any
+-- page zoom.  The click position is used once.
+flipAtTitleJs :: Text
+flipAtTitleJs = T.unlines
+  [ "(function(){"
+  , "  var t = document.querySelector('.toolbar-active-pane');"
+  , "  var r = t ? t.getBoundingClientRect() : {left: 0, bottom: 30};"
+  , "  var x = (window.__lkFlipClickX != null) ? window.__lkFlipClickX : r.left;"
+  , "  window.__lkFlipClickX = null;"
+  , "  var L = window.leksahLocal || function(v){ return v; };"
+  , "  var left = Math.max(0, Math.min(x - 40, window.innerWidth - 420));"
+  , "  var s = document.documentElement.style;"
+  , "  s.setProperty('--flip-at-top', Math.round(L(r.bottom)) + 'px');"
+  , "  s.setProperty('--flip-at-left', Math.round(L(left)) + 'px');"
+  , "  s.setProperty('--flip-at-maxw', Math.round(L(window.innerWidth - left)) + 'px');"
+  , "  s.setProperty('--flip-at-maxh', Math.round(L(window.innerHeight - r.bottom - 16)) + 'px');"
+  , "})()" ]
 
 -- | Defines @window.leksahFlipMirror(owner, labelsJson, index)@ and
 -- @window.leksahFlipMirrorHide(owner)@: a read-only copy of another OS window's
@@ -6785,7 +6847,7 @@ main showMenubar macTitlebar wid ctx = mdo
           , False <$ ffilter (== "up")   aiKeyE ]
         aiCancelE = gate (current aiPickerVisibleD) (() <$ ffilter (== "cancel") aiKeyE)
         aiDoneE   = gate (current aiPickerVisibleD) $
-            leftmost [ rawFlipDoneE, () <$ ffilter (== "commit") aiKeyE ]
+            leftmost [ rawFlipDoneE, () <$ ffilter (== "enter") aiKeyE ]
     -- Failures worth a word (nothing to resume, the session went away between
     -- opening the picker and committing): a transient toast, on the frame thread.
     (aiStatusE, fireAIStatus) <- newTriggerEvent
@@ -7936,18 +7998,49 @@ main showMenubar macTitlebar wid ctx = mdo
     -- current entry, in any window; pick with a click, dismiss with a click
     -- outside it.
     let titleFlipE = fmapMaybe (^? _ToolbarTitleClick) toolbarE
+    -- …dropping down from where the title was clicked ('flipAtTitleJs'),
+    -- placed before it shows.
+    performEvent_ $ ffor (gate (not <$> current narrowD) titleFlipE) $ \_ ->
+      liftJSM (void (eval flipAtTitleJs))
+    -- The open flipper's keys ('flipperKeysJs'): ↑/↓ step, Enter picks as a
+    -- click does, Escape dismisses — with or without ⌘ held.
+    (flipKeyE, fireFlipKey) <- newTriggerEvent
+    flipKeysPb <- getPostBuild
+    performEvent_ $ ffor flipKeysPb $ \_ -> liftJSM $ do
+        void $ eval flipperKeysJs
+        void $ jsg ("window" :: Text) ^. jss ("leksahFlipperKey" :: Text)
+               (fun $ \_ _ args -> case args of
+                  (v : _) -> valToText v >>= liftIO . fireFlipKey
+                  _       -> return ())
+    -- Only while it IS open: the JS arming runs a round trip behind (and is
+    -- armed early by a title click), so a stray key from either edge must not
+    -- reopen it — an arrow is a step, and a step opens a closed flipper.
+    let openKeyE   = gate (current flipperVisibleD) flipKeyE
+        flipArrowE = leftmost [ True  <$ ffilter (== ("down" :: Text)) openKeyE
+                              , False <$ ffilter (== "up") openKeyE ]
+        flipEnterE = () <$ ffilter (== ("enter" :: Text)) openKeyE
+        flipEscE   = () <$ ffilter (== ("cancel" :: Text)) openKeyE
     -- The tab flipper: always opens already-advanced (⌘` = the previous tab);
     -- in narrow mode the title tap opens it at entry 0 instead.  It is
     -- dismissed without a commit when the window loses or regains focus
     -- (flipBlurE, above) and, in narrow mode, on a tap outside it.
+    -- Opened by the title (rather than ⌘\`): no ⌘ is held, and it drops down
+    -- from the title instead of sitting in the middle.
+    titleOpenD <- holdDyn False (leftmost [True <$ titleFlipE, False <$ flipStepE])
+    -- (The arrows step it like ⌘\` does, but aren't a ⌘\` — they don't move
+    -- a title-opened flipper back to the middle: see 'titleOpenD'.)
     (flipperVisibleD, flipperSelD, flipSelIndexD, flipRawE, flipClickE) <-
-        flipperWidget flipItemsD flipStepE rawFlipDoneE selfSelectedD
+        flipperWidget flipItemsD (leftmost [flipStepE, flipArrowE]) rawFlipDoneE selfSelectedD
                       titleFlipE
                       -- A click on an item commits it and closes the flipper,
                       -- so a ⌘ release after it finds it closed and commits
-                      -- nothing more.
-                      (leftmost [flipBlurE, () <$ flipClickE])
+                      -- nothing more.  Enter (⌘Enter) is a click.
+                      (leftmost [flipBlurE, () <$ flipClickE, flipEscE])
+                      flipEnterE ((&&) <$> titleOpenD <*> (not <$> narrowD))
                       flipLabel
+    -- Arm the keys only while it is up.
+    performEvent_ $ ffor (updated flipperVisibleD) $ \vis -> liftJSM . void . eval $
+      ("window.leksahFlipperKeys && window.leksahFlipperKeys(" <> (if vis then "true" else "false") <> ")" :: Text)
     -- …and when ⌘-Tab takes the ⌘ keyup but leaves leksah in front (the
     -- app switcher, Escaped or landing back on leksah): no blur, no focus,
     -- no keyup reaches the page.  So while the flipper is up — and only then
@@ -7958,8 +8051,8 @@ main showMenubar macTitlebar wid ctx = mdo
     -- A generation number retires the previous poll thread whenever the
     -- flipper opens again, so there is never more than one.
     flipPollGen <- liftIO (newIORef (0 :: Int))
-    -- (Not when the title click opened it: no ⌘ is held at all then.)
-    titleOpenD <- holdDyn False (leftmost [True <$ titleFlipE, False <$ flipStepE])
+    -- (Not when the title click opened it: no ⌘ is held at all then —
+    -- 'titleOpenD', above.)
     -- (zipDyn: the title click sets both in the SAME frame; a sampled
     -- 'current titleOpenD' would still read the old False there.)
     performEvent_ $ ffor (updated (zipDyn titleOpenD flipperVisibleD)) $ \(byTitle, vis) -> liftIO $ do
@@ -7983,7 +8076,7 @@ main showMenubar macTitlebar wid ctx = mdo
     (aiPickerVisibleD, _aiPickerSelD, _aiPickerIdxD, aiCommitE, _) <-
         divClass "ai-picker-host" $
             flipperWidget aiItemsD aiStepE aiDoneE (pure False)
-                          aiOpenE aiCancelE aiChoiceLabel
+                          aiOpenE aiCancelE never (pure False) aiChoiceLabel
     -- Thicken THIS window's flipper border when the highlighted item lives here.
     selfSelectedD <- holdUniqDyn $
       (\lws tree wins msel -> case msel of
