@@ -87,7 +87,7 @@ import IDE.Web.AgentHost (Host(..), RanOn(..), currentHost, diedWithHost, ranOnF
 import IDE.Web.AgentNames
        (agentContinuations, agentLastSeen, agentNames, holdAgentNames)
 import IDE.Web.Claude
-       (ClaudeLive(..), ClaudeBackground(..), claudeBackgroundSessions,
+       (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou, claudeBackgroundSessions,
         claudeFindTranscript, claudeLatestActivity,
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath)
 import IDE.Web.ClaudeStatus
@@ -447,11 +447,6 @@ blank sid dir = AgentInfo
 --------------------------------------------------------------------------------
 -- liveness: which agents were running, and which of them were interrupted
 
--- | How long a blocked background session counts as "needs you" (see
--- 'agentForest'): a day.
-backgroundStaleAge :: Double
-backgroundStaleAge = 24 * 3600
-
 -- | How long an interrupted agent is offered back (by its card, and by "Resume
 -- all") before it becomes an ordinary exited one — the same week its name is
 -- reserved for ("IDE.Web.AgentNames").
@@ -766,7 +761,11 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   infos <- readInfos
   now   <- getCurrentTime
   let posix = realToFrac (utcTimeToPOSIXSeconds now)
-      liveRows = M.fromList [ (csrSession r, r) | r <- csRows st ]
+      -- (The status poll also carries a recently blocked BACKGROUND session
+      -- as a row, so the dot and menu-bar item count it; it is not live here
+      -- — its row comes from 'claudeBackgroundSessions' below.)
+      rows = filter (not . csrBackground) (csRows st)
+      liveRows = M.fromList [ (csrSession r, r) | r <- rows ]
   lastSeen <- agentLastSeen
   exited <- exitedNodes now infos liveRows lastSeen
   -- Background sessions with no process (blocked on a question, finished,
@@ -789,21 +788,15 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   bgCands <- fmap catMaybes . forM
       [ b | b <- bgs, isNothing (cbPid b), not (cbSession b `M.member` liveRows)
           , cbSession b `notElem` ownWins ] $ \b -> do
-    -- When it last did anything: its transcript's mtime, else when it started
-    -- (the CLI's list only says that).
-    lastActive <- (`catch` \(_ :: SomeException) -> return Nothing) $ do
-      p <- claudeTranscriptPath (cbDir b) (cbSession b)
-      ex <- doesFileExist p
-      if ex then Just <$> getModificationTime p else return Nothing
-    let active = lastActive <|> (posixSecondsToUTCTime . realToFrac <$> cbStarted b)
+    let active = cbLastActive b
         idleFor = maybe 0 (\t -> realToFrac (diffUTCTime now t)) active :: Double
-        n = backgroundNode now active idleFor b (M.lookup (cbSession b) infos)
+        n = backgroundNode now active b (M.lookup (cbSession b) infos)
     if cbState b /= "blocked" && idleFor > exitedMaxAge then return Nothing else do
       (br, pr) <- agentGit posix (cbDir b)
       return (Just (cbSession b, n { anBranch = br, anPr = pr }))
   let bgNodes = bgCands
       bgIds = map fst bgNodes
-  liveNodes <- forM (csRows st) $ \r -> do
+  liveNodes <- forM rows $ \r -> do
     (br, pr) <- agentGit posix (T.unpack (csrDir r))
     act <- agentActivity r
     let i = M.lookup (csrSession r) infos
@@ -916,10 +909,10 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     -- process is shown through its session file instead.  "stopped" is NOT
     -- leksah's "suspended", which means leksah suspended it and will offer it
     -- back.)
-    backgroundNode now active idleFor b i =
+    backgroundNode now active b i =
       let (state, what) = case cbState b of
-            "blocked" | idleFor > backgroundStaleAge -> ("gone", "blocked (left waiting)")
-                      | otherwise -> ("waiting",   "blocked — it is waiting for you")
+            "blocked" | backgroundNeedsYou now b -> ("waiting", "blocked — it is waiting for you")
+                      | otherwise -> ("gone", "blocked (left waiting)")
             "done"    -> ("done",      "finished")
             "stopped" -> ("gone",      "stopped")
             "failed"  -> ("gone",      "failed")

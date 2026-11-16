@@ -135,7 +135,8 @@ computeAgentWorktrees = do
   wis   <- allWorktrees
   conts <- agentContinuations
   names <- agentNames
-  live  <- (S.fromList . map csrSession . csRows <$> claudeStatusNow)
+  live  <- (S.fromList . map csrSession . filter (not . csrBackground) . csRows
+             <$> claudeStatusNow)
              `catch` \(_ :: SomeException) -> return S.empty
   now   <- realToFrac <$> getPOSIXTime
   -- Which paths still exist (remote ones are taken on trust: a stat would

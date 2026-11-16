@@ -44,11 +44,13 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Time (getCurrentTime)
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Web.AgentNames (touchAgentNames)
 import IDE.Web.Claude
-       (ClaudeLive(..), claudeLiveBySession, claudeSessionLabel)
+       (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou,
+        claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel)
 
 -- | One live session, as a status surface shows it.
 data ClaudeStatusRow = ClaudeStatusRow
@@ -62,6 +64,10 @@ data ClaudeStatusRow = ClaudeStatusRow
   , csrDir     :: Text  -- ^ its working directory (absolute)
   , csrDetail  :: Text  -- ^ what it is doing, spelled out
   , csrSession :: Text  -- ^ session id — the handle for showing this session
+  , csrBackground :: Bool -- ^ a Claude Code BACKGROUND session with no process
+                          --   ('backgroundNeedsYou': blocked, recently) — it
+                          --   counts on every status surface, but is not a live
+                          --   session (no pane; showing it resumes it)
   } deriving (Eq, Show)
 
 -- | The live sessions, worst state first.
@@ -141,10 +147,16 @@ startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
           [ l | l <- M.elems live, clName l == Nothing
               , not (clSession l `M.member` labels) ]
         titles <- titlesIO
+        -- A background session blocked on a question has no pane, so nothing
+        -- else says it is waiting: it counts as needing you here too, while
+        -- it blocked recently ('backgroundNeedsYou').
+        now <- getCurrentTime
+        blocked <- filter (\b -> backgroundNeedsYou now b && not (cbSession b `M.member` live))
+                     <$> claudeBackgroundSessions
         -- The poll is where a session leksah did NOT launch (claude -c, the
         -- resume picker, one typed into a terminal) first gets its name.
-        names  <- touchAgentNames (M.keys live)
-        return (summarize names titles labels' (M.elems live), labels')
+        names  <- touchAgentNames (M.keys live <> map cbSession blocked)
+        return (summarize names titles labels' (M.elems live) blocked, labels')
       when (st /= prev) $ do
         atomicWriteIORef statusRef st
         readIORef pushRef >>= mapM_ (\h ->
@@ -160,9 +172,9 @@ startClaudeStatusPoll titlesIO = forkIO (loop emptyClaudeStatus M.empty)
 -- approval prompt), then working, then idle, each group by title.  Takes the
 -- agent-written titles (session → title) and the cached first-prompt labels.
 summarize :: Map Text Text -> Map Text Text -> Map Text Text -> [ClaudeLive]
-          -> ClaudeStatus
-summarize names titles labels ls = ClaudeStatus
-  { csState   = if null ls then "none"
+          -> [ClaudeBackground] -> ClaudeStatus
+summarize names titles labels ls bgs = ClaudeStatus
+  { csState   = if null ls && null bgs then "none"
                 else if nWaiting > 0 then "waiting"
                 else if nWorking > 0 then "busy" else "idle"
     -- The count belongs to whichever state won above, so it always answers "how
@@ -170,7 +182,8 @@ summarize names titles labels ls = ClaudeStatus
     -- surfaces want (no number on green or grey).
   , csCount   = if nWaiting > 0 then nWaiting else nWorking
   , csSummary = summary
-  , csRows    = map row (sortOn (\l -> (rank l, T.toLower (title l))) ls)
+  , csRows    = map bgRow (sortOn (T.toLower . bgTitle) bgs)
+                <> map row (sortOn (\l -> (rank l, T.toLower (title l))) ls)
   }
   where
     rank l = case clStatus l of
@@ -178,12 +191,13 @@ summarize names titles labels ls = ClaudeStatus
       Just "busy"    -> 1
       Just "shell"   -> 1
       _              -> 2
-    nWaiting = length (filter ((== 0) . rank) ls)
+    nWaiting = length (filter ((== 0) . rank) ls) + length bgs
     nWorking = length (filter ((== 1) . rank) ls)
+    nAll = length ls + length bgs
     summary
-      | null ls = csSummary emptyClaudeStatus
-      | otherwise = num (length ls)
-                      <> (if length ls == 1 then " agent" else " agents") <> detail
+      | nAll == 0 = csSummary emptyClaudeStatus
+      | otherwise = num nAll
+                      <> (if nAll == 1 then " agent" else " agents") <> detail
       where detail = case [ num n <> w | (n, w) <- [ (nWaiting, " waiting")
                                                    , (nWorking, " working") ], n > 0 ] of
               [] -> ""
@@ -214,6 +228,18 @@ summarize names titles labels ls = ClaudeStatus
           Just "idle"    -> "Idle — ready for input"
           _              -> "Running"
       , csrSession = clSession l
+      , csrBackground = False
+      }
+    bgTitle b = fromMaybe (T.take 8 (cbSession b)) $
+      M.lookup (cbSession b) titles <|> cbName b
+    bgRow b = ClaudeStatusRow
+      { csrState   = "waiting"
+      , csrName    = M.findWithDefault "" (cbSession b) names
+      , csrTitle   = bgTitle b
+      , csrDir     = T.pack (cbDir b)
+      , csrDetail  = "Background session, blocked — waiting for you (open it to answer)"
+      , csrSession = cbSession b
+      , csrBackground = True
       }
 
 -- | One session in one line, as every list of them prints it: its name, then
