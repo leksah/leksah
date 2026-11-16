@@ -2008,6 +2008,7 @@ static NSString *gClaudeState = @"none";  // aggregate live-session state
 static int       gClaudeCount = 0;        // sessions IN that state; 0 = draw no number
 static NSString *gClaudeTip   = nil;      // one-line summary for the tooltip
 static NSArray  *gClaudeRows  = nil;      // @[@[state, title, tooltip, session id, face svg], …]
+                                          // (built from the pushed JSON rows)
 static NSString *gCoordState  = @"green"; // the in-page coordination light
 
 @interface LeksahStatusItemTarget : NSObject
@@ -2135,14 +2136,19 @@ static NSString *leksah_coord_line(NSString *st) {
     return nil;
 }
 
-// An agent's face (IDE.Web.AgentFace's SVG, sent along with its row) as an
-// image, or nil when the row has none (a session not named yet) or this macOS
-// can't read SVG (NSImage decodes SVG data from macOS 14).  Autoreleased.
-static NSImage *leksah_face_image(NSString *svg) {
+// An agent's face (IDE.Web.AgentFace's SVG, sent along with its row) as a
+// px×px image, or nil when the row has none (a session not named yet) or this
+// macOS can't read SVG (NSImage decodes SVG data from macOS 14).  Autoreleased.
+//
+// The size is set EXPLICITLY: the SVG has a viewBox but no width/height (the
+// page sizes it with CSS), and an NSImage with no intrinsic size can come back
+// {0,0} — which draws nothing at all.
+static NSImage *leksah_face_image(NSString *svg, CGFloat px) {
     if (svg == nil || [svg length] == 0) return nil;
     NSData *d = [svg dataUsingEncoding:NSUTF8StringEncoding];
     NSImage *img = [[[NSImage alloc] initWithData:d] autorelease];
     if (img == nil || [[img representations] count] == 0) return nil;
+    [img setSize:NSMakeSize(px, px)];
     return img;
 }
 
@@ -2154,7 +2160,7 @@ static NSImage *leksah_face_image(NSString *svg) {
 static NSImage *leksah_session_row_image(NSString *state, NSString *svg) {
     const CGFloat shapePx = 12, gap = 5, facePx = 18;
     NSImage *shape = leksah_claude_image(state, shapePx, shapePx * (2.0/18.0), nil);
-    NSImage *face  = leksah_face_image(svg);
+    NSImage *face  = leksah_face_image(svg, facePx);
     // The drawing handler runs whenever AppKit draws the row, long after this
     // returns; the (copied) block retains shape and face until then.
     return [NSImage imageWithSize:NSMakeSize(shapePx + gap + facePx, facePx) flipped:YES
@@ -2273,28 +2279,67 @@ static void leksah_status_item_set(NSString *state) {
     });
 }
 
+// A string field of a pushed JSON row, or @"" when it is missing or not a string.
+static NSString *leksah_row_field(NSDictionary *row, NSString *key) {
+    id v = [row objectForKey:key];
+    return [v isKindOfClass:[NSString class]] ? (NSString *)v : @"";
+}
+
+// One pushed JSON row as the menu draws it: @[state, title, tooltip, session
+// id, face svg].  The title is the label every status surface prints
+// (IDE.Web.ClaudeStatus.claudeRowLabel: "Name — title", or whichever half
+// there is), ellipsized, then the directory's last component — it tells two
+// sessions of one project apart (worktrees are named for their task).
+// Autoreleased.
+static NSArray *leksah_menu_row(NSDictionary *row) {
+    NSString *name  = leksah_row_field(row, @"name");
+    NSString *title = leksah_row_field(row, @"title");
+    NSString *dir   = leksah_row_field(row, @"dir");
+    NSString *label = ([name length] > 0 && [title length] > 0)
+                        ? [NSString stringWithFormat:@"%@ — %@", name, title]
+                        : ([name length] > 0 ? name : title);
+    if ([label length] > 60) {
+        NSRange r = [label rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, 59)];
+        label = [[label substringWithRange:r] stringByAppendingString:@"…"];
+    }
+    if ([dir length] > 0)
+        label = [NSString stringWithFormat:@"%@  ·  %@", label, dir];
+    NSMutableArray *tip = [NSMutableArray array];
+    for (NSString *k in @[ @"path", @"detail", @"sid" ]) {
+        NSString *v = leksah_row_field(row, k);
+        if ([v length] > 0) [tip addObject:v];
+    }
+    return @[ leksah_row_field(row, @"state"), label,
+              [tip componentsJoinedByString:@"\n"],
+              leksah_row_field(row, @"sid"), leksah_row_field(row, @"face") ];
+}
+
 // The live Claude sessions changed (pushed by Haskell's poll, on change only).
 // @state is the aggregate ("waiting" / "busy" / "idle" / "none"), @count how many
-// sessions are in that state (0 = draw no number: idle/none), @tip a
-// one-line summary, and @rows one session per line as
-// state \t title \t tooltip \t session-id \t face-svg (the tooltip's own
-// newlines escaped as \n by the sender, since they'd otherwise end the row;
-// the face is the agent's SVG on one line, empty when it has no name yet).
+// sessions are in that state (0 = draw no number: idle/none), @tip a one-line
+// summary, and @rows the sessions as a JSON array — the same rows the in-page
+// light's list draws (IDE.Web.ClaudeStatus.claudeStatusRowsJson: state, name,
+// title, dir, path, detail, sid, face).  All UTF-8.
+//
+// Called on a Haskell thread, which has no autorelease pool: the pool here
+// drains the parse's temporaries; what is KEPT (st, tp, parsed — and the rows'
+// strings, retained by parsed) is owned outright.
 void leksah_set_claude_status(const char *state, int count, const char *tip,
                              const char *rows) {
-    NSString *st = [[NSString stringWithUTF8String:(state != NULL ? state : "none")] copy];
-    NSString *tp = [[NSString stringWithUTF8String:(tip   != NULL ? tip   : "")] copy];
-    NSString *rw = [NSString stringWithUTF8String:(rows  != NULL ? rows  : "")];
+    NSString *st, *tp;
     NSMutableArray *parsed = [[NSMutableArray alloc] init];
-    for (NSString *line in [rw componentsSeparatedByString:@"\n"]) {
-        if ([line length] == 0) continue;
-        NSArray *f = [line componentsSeparatedByString:@"\t"];
-        if ([f count] < 4) continue;
-        [parsed addObject:@[ [f objectAtIndex:0], [f objectAtIndex:1],
-                             [[f objectAtIndex:2] stringByReplacingOccurrencesOfString:@"\\n"
-                                                                           withString:@"\n"],
-                             [f objectAtIndex:3],
-                             ([f count] > 4 ? [f objectAtIndex:4] : @"") ]];
+    @autoreleasepool {
+        st = [[NSString stringWithUTF8String:(state != NULL ? state : "none")] copy];
+        tp = [[NSString stringWithUTF8String:(tip   != NULL ? tip   : "")] copy];
+        NSData *d = [NSData dataWithBytes:(rows != NULL ? rows : "[]")
+                                   length:(rows != NULL ? strlen(rows) : 2)];
+        id json = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
+        if ([json isKindOfClass:[NSArray class]])
+            for (id row in (NSArray *)json)
+                // No session id = nothing to show when chosen: not a row.
+                if ([row isKindOfClass:[NSDictionary class]]
+                    && [leksah_row_field((NSDictionary *)row, @"sid") length] > 0)
+                    [parsed addObject:leksah_menu_row((NSDictionary *)row)];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
         [gClaudeState release]; gClaudeState = st;   // each takes its copy's ref

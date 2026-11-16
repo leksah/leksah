@@ -264,7 +264,7 @@ import IDE.Web.SaveRequest (requestSaveActiveFileWait)
 import IDE.Web.Claude
        (runClaudeCmd, claudeCommandLine, ClaudeCmd(..), ClaudeLive(..),
         claudeLiveBySession, paneCurrentPath, paneForSession, sendToSession,
-        showLiveSession)
+        showLiveSession, showLiveSessionHere)
 import IDE.Web.AISession
        (AIChoice(..), AIRow(..), activeAIPaneRef, aiPickerChoices, choiceKey)
 #if !defined(ghcjs_HOST_OS)
@@ -2023,20 +2023,25 @@ jsMain showMenubar macTitlebar mbWid app = do
       claudeStatusD <- holdUniqDyn =<< holdDyn emptyClaudeStatus claudeStatusE
       -- The summary line and the rows (face, state, label, directory) for the
       -- dot's hover list; only a real change gets here (holdUniqDyn), so the
-      -- faces' data URIs aren't re-sent every tick.
-      performEvent_ $ ffor (updated claudeStatusD) $ \st ->
+      -- faces aren't re-sent every tick.
+      performEvent_ $ ffor (updated claudeStatusD) $ \st -> do
+          -- Built once per change for every window (and the menu-bar item):
+          -- the poll has already cached it.
+          rowsJson <- liftIO (claudeStatusRowsJson st)
           liftJSM . void $ jsg ("window" :: Text)
             ^. js4 ("leksahClaudeStatus" :: Text) (csState st) (csSummary st)
-                  (csCount st) (claudeStatusRowsJson st)
-      -- A row of that list clicked: show the session, exactly as choosing it
-      -- from the menu-bar item's menu does (MacMenu's cbClaudeActivate).  Off
-      -- the frame thread — it runs tmux and ps.
+                  (csCount st) rowsJson
+      -- A row of that list clicked: show the session HERE — its tab comes to
+      -- the window you clicked in, as an agent card's does, rather than
+      -- raising whichever OS window holds it (the menu-bar item, which has no
+      -- window of its own, does that).  Off the frame thread — it runs tmux
+      -- and ps.
       performEvent_ $ ffor pb $ \_ -> liftJSM $ do
           w <- jsg ("window" :: Text)
           void $ w ^. jss ("leksahShowSession" :: Text) (fun $ \_ _ args -> case args of
               (sidV:_) -> do
                   sid <- valToText sidV
-                  unless (T.null sid) . liftIO . void . forkIO . void $ showLiveSession sid
+                  unless (T.null sid) . liftIO . void . forkIO . void $ showLiveSessionHere sid
               _ -> return ())
 #endif
       return ()
@@ -5681,8 +5686,8 @@ activeEditorSelectionJs = mconcat
 -- @leksahClaudeStatus(state, summary, count, rowsJson)@ from the shared poll —
 -- never a cross-window JS broadcast.  Hovering opens a list of the sessions
 -- (face, state shape, label, directory — the menu-bar item's menu, in the
--- page); clicking one shows it (@leksahShowSession@, the same
--- 'showLiveSession' the menu-bar item calls).
+-- page); clicking one brings that session's tab to this window
+-- (@leksahShowSession@ → 'showLiveSessionHere').
 --
 -- The AGENT-COORDINATION state (is it safe to touch leksah while an agent drives
 -- it) is set from the shell — @leksah-cmd js eval 'leksahTestStart()'@ (beep,
@@ -5709,9 +5714,12 @@ statusLightJs = T.unlines
   -- pushed by the reflex network; 'none' until the first push, a tick after
   -- boot.
   , "  var claude = 'none', claudeTip = 'No agents running', claudeCount = 0, rows = [];"
+  -- rowsSrc = the rows' JSON as last pushed (parsed again only when it changes).
+  , "  var rowsSrc = '[]';"
   -- The hover list (popEl, a child of the dot so moving into it keeps the dot
-  -- hovered) and its pending close.
-  , "  var popEl = null, popOpen = false, popTimer = null;"
+  -- hovered), its pending close, and what it was last built from (renderedKey:
+  -- a push that changes nothing it shows leaves its DOM alone).
+  , "  var popEl = null, popOpen = false, popTimer = null, renderedKey = null;"
   -- Runs BEFORE mainWidgetWithCss rebuilds <body>, which detaches anything we
   -- append now — so (re)create the dot on demand and keep it in whatever <body>
   -- is current, preserving the colour across a rebuild.
@@ -5824,6 +5832,11 @@ statusLightJs = T.unlines
   , "    popEl = document.createElement('div');"
   , "    popEl.id = 'leksah-status-pop';"
   , "    el.appendChild(popEl);"
+  -- A NEW (closed, empty) list: whatever the detached one was doing — open,
+  -- closing, what it showed — is not true of this one, or the next hover
+  -- would find popOpen still set and open nothing.
+  , "    popOpen = false; renderedKey = null;"
+  , "    if (popTimer){ clearTimeout(popTimer); popTimer = null; }"
   -- Hover opens the list; leaving the dot AND the list closes it after a
   -- beat, long enough to cross the gap below the title bar.  The list is
   -- the dot's child, so moving into it is not a mouseleave.
@@ -5865,11 +5878,21 @@ statusLightJs = T.unlines
   , "    if (state === 'blue')   return 'Leksah: an agent is rebuilding/restarting';"
   , "    return '';"
   , "  }"
-  -- The hover list, rebuilt from the latest push (DOM nodes + textContent,
-  -- so a title can't inject markup).  Same order and labels as the menu-bar
-  -- item's menu: claudeRowLabel, then the directory's last component.
+  -- The hover list, built from the latest push (DOM nodes + textContent, so a
+  -- title can't inject markup).  Same order and labels as the menu-bar item's
+  -- menu: claudeRowLabel ("Name — title", or whichever half there is), then
+  -- the directory's last component.
+  --
+  -- Rebuilt ONLY when something it shows changed: the reflex network pushes on
+  -- every status change, and replacing the rows under the pointer loses the
+  -- row's hover tooltip and drops a click whose mousedown and mouseup land on
+  -- different nodes.  A real rebuild keeps the scroll position.
   , "  function renderPop(){"
   , "    if (!popEl) return;"
+  , "    var key = claudeTip + '\\u0000' + state + '\\u0000' + rowsSrc;"
+  , "    if (key === renderedKey) return;"
+  , "    renderedKey = key;"
+  , "    var top = popEl.scrollTop;"
   , "    popEl.textContent = '';"
   , "    var hd = document.createElement('div');"
   , "    hd.className = 'hd'; hd.textContent = claudeTip;"
@@ -5878,14 +5901,16 @@ statusLightJs = T.unlines
   , "      var row = document.createElement('div');"
   , "      row.className = 'row';"
   , "      row.setAttribute('data-sid', r.sid || '');"
-  , "      if (r.tip) row.title = r.tip;"
+  , "      var tip = [r.path, r.detail].filter(function(x){ return !!x; }).join('\\n');"
+  , "      if (tip) row.title = tip;"
   , "      var g = document.createElement('span');"
   , "      g.className = 'g c-' + (r.state || 'idle');"
   , "      row.appendChild(g);"
   -- No name yet: the plain Claude icon the workspace tree uses for one.
   , "      var f = document.createElement('img');"
   , "      f.className = 'face';"
-  , "      f.src = r.face || '/pics/tree-claude.svg';"
+  , "      f.src = r.face ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(r.face)"
+  , "                     : '/pics/tree-claude.svg';"
   , "      row.appendChild(f);"
   , "      var l = document.createElement('span');"
   , "      l.className = 'lbl';"
@@ -5893,7 +5918,7 @@ statusLightJs = T.unlines
   , "        var b = document.createElement('b'); b.textContent = r.name;"
   , "        l.appendChild(b);"
   , "        l.appendChild(document.createTextNode(' \\u2014 ' + r.title));"
-  , "      } else l.textContent = r.label || '';"
+  , "      } else l.textContent = r.name || r.title || '';"
   , "      row.appendChild(l);"
   , "      if (r.dir) {"
   , "        var d = document.createElement('span');"
@@ -5908,6 +5933,7 @@ statusLightJs = T.unlines
   , "      cl.className = 'coord coord-' + state; cl.textContent = c;"
   , "      popEl.appendChild(cl);"
   , "    }"
+  , "    popEl.scrollTop = top;"
   , "  }"
   , "  function openPop(){"
   , "    if (popTimer){ clearTimeout(popTimer); popTimer = null; }"
@@ -5963,7 +5989,11 @@ statusLightJs = T.unlines
   , "    claude = st || 'none';"
   , "    if (tip) claudeTip = tip;"
   , "    claudeCount = (typeof n === 'number' && n > 0) ? n : 0;"
-  , "    try { rows = JSON.parse(rowsJson || '[]') || []; } catch(e){ rows = []; }"
+  , "    var src = rowsJson || '[]';"
+  , "    if (src !== rowsSrc) {"
+  , "      rowsSrc = src;"
+  , "      try { rows = JSON.parse(src) || []; } catch(e){ rows = []; }"
+  , "    }"
   , "    apply();"
   , "  };"
   -- Land the dot in the final <body> (mainWidget replaces an early append) and
@@ -6101,7 +6131,10 @@ browserNativeReporterJs = T.unlines
   , "      emptyLeft = els.length > 0 ? 20 : (emptyLeft - 1);"
   , "      var fl = document.querySelector('.flipper');"
   , "      var overlay = (fl && getComputedStyle(fl).display !== 'none')"
-  , "                    || !!document.querySelector('.context-menu');"
+  , "                    || !!document.querySelector('.context-menu')"
+  -- The status light's session list (statusLightJs) opens over the top-right
+  -- of the window, where a browser pane may well be.
+  , "                    || !!document.querySelector('#leksah-status-pop.open');"
   , "      var panes = [];"
   , "      els.forEach(function(el){"
   , "        var bid = parseInt(el.getAttribute('data-bid'), 10);"

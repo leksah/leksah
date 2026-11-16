@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -23,8 +24,8 @@ module IDE.Web.ClaudeStatus
   , startClaudeStatusPoll
   , claudeStatusNow
   , registerClaudeStatusPush
-  , claudeStatusTooltip
   , claudeStatusRowsJson
+  , dirBaseName
   , claudeStatusGlyph
   , claudeRowLabel
   , pokeClaudeStatus
@@ -51,7 +52,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Time (getCurrentTime)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Web.AgentFace (agentFaceDataUri)
+import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentNames (agentNames, touchAgentNames)
 import IDE.Web.AgentEvents (sePromptPending, sessionEvents)
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -185,6 +186,9 @@ startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
         let names = names0 <> M.filterWithKey (\k _ -> k `elem` map cbSession blocked) known
         return (summarize names titles labels' (M.elems live) blocked, labels')
       when (st /= prev) $ do
+        -- Warm the shared rows JSON before anyone is told: the windows and
+        -- the menu-bar push then all find it built.
+        _ <- claudeStatusRowsJson st
         atomicWriteIORef statusRef st
         readIORef pushRef >>= mapM_ (\h ->
           h st `catch` \(_ :: SomeException) -> return ())
@@ -287,35 +291,51 @@ claudeStatusGlyph = \case
   "idle"    -> "●"
   _         -> "○"
 
--- | The hover text for a status surface: the summary, then one line per session
--- (glyph, title, directory), so the same information the menu-bar item's menu
--- lists is reachable in the page too.
-claudeStatusTooltip :: ClaudeStatus -> Text
-claudeStatusTooltip st = T.intercalate "\n" (csSummary st : map line (csRows st))
-  where
-    line r = claudeStatusGlyph (csrState r) <> " " <> claudeRowLabel r
-               <> (if T.null (csrDir r) then "" else "  ·  " <> baseName (csrDir r))
-    baseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')
+-- | The last component of a session's directory — what every status surface
+-- prints beside a session to tell two of one project apart (worktrees are named
+-- for their task).
+dirBaseName :: Text -> Text
+dirBaseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')
 
--- | The rows as the in-page status light's hover list draws them (see
--- @statusLightJs@ in "IDE.Web.Main"): a JSON array, one object per session,
--- in 'csRows' order — the same order and the same 'claudeRowLabel' the
--- menu-bar item's menu uses.  @face@ is the animal's face as a @data:@ URI
--- ('agentFaceDataUri'), empty for a session with no name yet; @name@ and
--- @title@ are 'claudeRowLabel''s two halves (so the page can set the name in
--- bold); @tip@ is the row's hover text (full directory, what it is doing).
-claudeStatusRowsJson :: ClaudeStatus -> Text
-claudeStatusRowsJson st =
-    decodeUtf8 . BL.toStrict . A.encode $ map row (csRows st)
+-- | The rows as BOTH list-drawing status surfaces get them — the in-page
+-- light's hover list (@statusLightJs@ in "IDE.Web.Main") and the menu-bar
+-- item's menu (@IDE.Web.MacMenu@, parsed with NSJSONSerialization): a JSON
+-- array, one object per session, in 'csRows' order.  Each surface derives its
+-- label from @name@ and @title@ exactly as 'claudeRowLabel' does.
+--
+-- * @state@  — @waiting@ \/ @busy@ \/ @idle@
+-- * @name@, @title@ — 'csrName', 'csrTitle'
+-- * @dir@    — 'dirBaseName' of the directory; @path@ the whole of it
+-- * @detail@ — what it is doing ('csrDetail')
+-- * @sid@    — the session id, to show it with
+-- * @face@   — the animal's face as SVG text ('agentFaceSvg'), empty for a
+--   session with no name yet
+--
+-- Built ONCE per status change and shared: every window's network and the
+-- menu-bar push ask for the same rows, so this keeps a one-entry cache keyed
+-- on them (the poll warms it before announcing the change).
+claudeStatusRowsJson :: ClaudeStatus -> IO Text
+claudeStatusRowsJson st = do
+    (rows, json) <- readIORef rowsJsonRef
+    if rows == csRows st then return json else do
+      let !json' = rowsJson (csRows st)
+      atomicWriteIORef rowsJsonRef (csRows st, json')
+      return json'
+
+{-# NOINLINE rowsJsonRef #-}
+rowsJsonRef :: IORef ([ClaudeStatusRow], Text)
+rowsJsonRef = unsafePerformIO (newIORef ([], "[]"))
+
+rowsJson :: [ClaudeStatusRow] -> Text
+rowsJson = decodeUtf8 . BL.toStrict . A.encode . map row
   where
     row r = A.object
-      [ "state" A..= csrState r
-      , "label" A..= claudeRowLabel r
-      , "name"  A..= csrName r
-      , "title" A..= csrTitle r
-      , "dir"   A..= baseName (csrDir r)
-      , "tip"   A..= T.intercalate "\n" (filter (not . T.null) [csrDir r, csrDetail r])
-      , "sid"   A..= csrSession r
-      , "face"  A..= (if T.null (csrName r) then "" else agentFaceDataUri (csrName r))
+      [ "state"  A..= csrState r
+      , "name"   A..= csrName r
+      , "title"  A..= csrTitle r
+      , "dir"    A..= dirBaseName (csrDir r)
+      , "path"   A..= csrDir r
+      , "detail" A..= csrDetail r
+      , "sid"    A..= csrSession r
+      , "face"   A..= (if T.null (csrName r) then "" else agentFaceSvg (csrName r))
       ]
-    baseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')

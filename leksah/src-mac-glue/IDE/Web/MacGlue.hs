@@ -201,8 +201,8 @@ foreign import ccall "leksah_set_recent_files" c_setRecentFiles :: CString -> IO
 -- The menu-bar status item: the live Claude sessions' aggregate state
 -- ("waiting"/"busy"/"idle"/"none"), how many sessions are IN that state (drawn
 -- beside the icon; 0 for idle/none = no number), a one-line tooltip summary, and
--- one row per session (@state \\t title \\t tooltip \\t session id@,
--- newline-separated).
+-- the sessions as a JSON array ('IDE.Web.ClaudeStatus.claudeStatusRowsJson':
+-- state, name, title, dir, path, detail, sid, face).  All UTF-8.
 foreign import ccall "leksah_set_claude_status" c_setClaudeStatus
   :: CString -> CInt -> CString -> CString -> IO ()
 -- Snapshot OS window <wid>'s WKWebView content to a PNG at the given path;
