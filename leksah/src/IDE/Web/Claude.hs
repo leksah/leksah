@@ -98,7 +98,7 @@ import qualified Data.Aeson.Key as Key (fromText)
 import qualified Data.Aeson.KeyMap as KM (lookup)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (ByteString, toStrict, writeFile)
-import Data.Text.Encoding (decodeUtf8With)
+import Data.Text.Encoding (decodeUtf8With, encodeUtf8)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Word (Word8)
 import Numeric (showHex)
@@ -110,8 +110,8 @@ import System.Directory
 import System.FilePath
        ((</>), takeExtension, takeBaseName, takeDirectory, takeFileName,
         dropTrailingPathSeparator, replaceExtension)
-import System.Environment (lookupEnv)
 import System.Info (os)
+import System.Environment (lookupEnv)
 import System.IO
        (withFile, IOMode(ReadMode), hIsEOF, hSeek,
         SeekMode(SeekFromEnd), hFileSize)
@@ -840,7 +840,7 @@ claudeCommandLine cmd = do
   -- (installed, and not turned off for this project): worked out once.
   plugin    <- if isRemotePath d then return False else leksahPluginEnabledFor (Just d)
   mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag plugin
-  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag plugin
+  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag plugin d
   -- The agent's own name, when its session id is known at launch — so it can
   -- tell the user and other agents who it is.
   myName <- traverse agentNameFor ownSession
@@ -1068,20 +1068,23 @@ claudeMcpFlag installed = (`catch` \(_ :: SomeException) -> return "") $
 -- @leksah-cmd hooks install@); this just refreshes it and points a small
 -- settings JSON at it.  Empty when @leksah-cmd@ isn't on PATH.  @--settings@
 -- loads ADDITIONAL settings, so the user's own hooks keep working.
-claudeHooksFlag :: Bool -> IO Text
-claudeHooksFlag installed = (`catch` \(_ :: SomeException) -> return "") $
+claudeHooksFlag :: Bool -> FilePath -> IO Text
+claudeHooksFlag installed dir = (`catch` \(_ :: SomeException) -> return "") $
   leksahHookTools >>= \case
     Nothing -> return ""
     Just (exe, script) -> do
       home <- getHomeDirectory
-      -- Two files, each always with the same content: running sessions may
-      -- re-read their --settings file, so a launch must never rewrite the
-      -- one another session is using into something different (with hooks
-      -- for a session where the plugin is off, without for one where it is
-      -- on).
-      let path = home </> ".leksah"
-                   </> (if installed then "settings-statusline.json" else "hooks.json")
-      userStatusLine <- claudeUserStatusLine
+      statusLine <- leksahStatusLine exe <$> claudeUserStatusLine exe dir
+      -- One file per distinct content: running sessions may re-read their
+      -- --settings file, so a launch must never rewrite the one another
+      -- session is using into something different — with hooks for a
+      -- session where the plugin is off, without for one where it is on
+      -- (settings-statusline…), and per carried-over status-line options
+      -- ('statusLineSettingsFile').
+      let base = statusLineSettingsFile statusLine
+          path = home </> ".leksah"
+                   </> (if installed then "settings-statusline" <> drop (length ("hooks" :: String)) base
+                                     else base)
       -- With the leksah plugin installed (`leksah-cmd plugin install`) every
       -- session — leksah's included — already has the hooks: keep that copy
       -- fresh, and leave them out here, or each event would arrive twice.
@@ -1091,7 +1094,7 @@ claudeHooksFlag installed = (`catch` \(_ :: SomeException) -> return "") $
         writeLeksahPlugin dir exe script
       writeIfChanged path . encode . object $
         [ "hooks" .= leksahHooks exe script | not installed ]
-        <> [ "statusLine" .= leksahStatusLine exe userStatusLine ]
+        <> [ "statusLine" .= statusLine ]
       return (" --settings " <> T.pack path)
 
 -- | The two programs the hooks run: @leksah-cmd@ (its path), and the worktree
@@ -1365,26 +1368,42 @@ duplicateWorktreeHook = (`catch` \(_ :: SomeException) -> return "") $ do
 -- status-line command and prints what it prints.  A @--settings@ file
 -- outranks the user's and project's settings, so without that wrapper this
 -- would replace their status line.  Its @padding@ and @refreshInterval@ are
--- carried over from the user's setting ('claudeUserStatusLine').
+-- carried over from the same setting the wrapper will run the command of
+-- ('claudeUserStatusLine').
 leksahStatusLine :: FilePath -> Maybe Object -> Value
 leksahStatusLine exe mine = object $
   [ "type"    .= ("command" :: Text)
   , "command" .= (shq (T.pack exe) <> " statusline") ]
-  <> [ Key.fromText k .= v | Just o <- [mine], k <- ["padding", "refreshInterval"]
+  <> [ Key.fromText k .= v | Just o <- [mine], k <- statusLineCarried
                            , Just v <- [KM.lookup (Key.fromText k) o] ]
 
--- | The @statusLine@ object in the user's own Claude Code settings
--- (@~/.claude/settings.json@, or under @$CLAUDE_CONFIG_DIR@), if any.
-claudeUserStatusLine :: IO (Maybe Object)
-claudeUserStatusLine = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-  dir <- lookupEnv "CLAUDE_CONFIG_DIR" >>= \case
-    Just d | not (null d) -> return d
-    _ -> (</> ".claude") <$> getHomeDirectory
-  let f = dir </> "settings.json"
-  ex <- doesFileExist f
-  if not ex then return Nothing else do
-    v <- decodeStrict' <$> BS.readFile f
-    return $ v >>= parseMaybe (withObject "settings" (.: "statusLine"))
+statusLineCarried :: [Text]
+statusLineCarried = ["padding", "refreshInterval"]
+
+-- | Where to write the settings file with this @statusLine@: one file per
+-- distinct carried-over @padding@\/@refreshInterval@ (nearly always just
+-- @hooks.json@), so two sessions launched together in projects with
+-- different settings can't overwrite each other's file before their
+-- @claude@ has read it.
+statusLineSettingsFile :: Value -> FilePath
+statusLineSettingsFile v = case tag of
+    "" -> "hooks.json"
+    t  -> "hooks-" <> t <> ".json"
+  where
+    tag = concat [ T.unpack k <> filter isAlphaNum (BS.unpack (BL.toStrict (encode x)))
+                 | Object o <- [v], k <- statusLineCarried
+                 , Just x <- [KM.lookup (Key.fromText k) o] ]
+
+-- | The user's own @statusLine@ setting for a session in @dir@ — exactly the
+-- one @leksah-cmd statusline@ will run the command of, because it asks it
+-- (@statusline --resolve DIR@: project settings only in a trusted project,
+-- nothing under @disableAllHooks@, then local > project > user).
+claudeUserStatusLine :: FilePath -> FilePath -> IO (Maybe Object)
+claudeUserStatusLine exe dir = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  (ec, out, _) <- readProcessWithExitCode exe ["statusline", "--resolve", dir] ""
+  return $ case ec of
+    ExitSuccess -> decodeStrict' (encodeUtf8 (T.pack out))
+    _           -> Nothing
 
 -- | Is a @claude@ terminal window currently live for @dir@ — the shared
 -- interactive window (@dir#claude@) or any resumed/ask window (@dir#claude#…@)?

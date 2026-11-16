@@ -36,7 +36,7 @@ module IDE.Web.Widget.AgentCard
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((.~), (&))
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, unless, void)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Map (Map)
@@ -44,13 +44,14 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (TimeZone, getCurrentTimeZone)
-import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Time.Clock.POSIX (getPOSIXTime, utcTimeToPOSIXSeconds)
 
 import Clay (Css, (?), (-:))
 
 import Reflex
        (Dynamic, Event, attach, current, delay, ffilter, ffor, gate, getPostBuild,
         holdDyn, holdUniqDyn, leftmost, never, newTriggerEvent, sample,
+        tickLossyFromPostBuildTime, _tickInfo_lastUTC,
         switchHold, tag, tagPromptlyDyn, updated)
 import Reflex.Dom.Core
        (Key(Enter, Escape), blank, def, divClass, domEvent, dyn, dyn_, dynText,
@@ -64,7 +65,7 @@ import Language.Javascript.JSaddle (liftJSM)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentInfo (AgentNode(..))
 import IDE.Web.AgentUsage
-       (SessionUsage(..), usageChip, usageContextPct, usageLevel, usageLines)
+       (usageChip, usageContextPct, usageLevel, usageLines)
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Web.Dom (focusElement)
 import GHCJS.DOM.HTMLInputElement (select)
@@ -101,6 +102,12 @@ agentCard
   => CardActions -> Dynamic t Bool -> Bool -> Dynamic t AgentNode -> m ()
 agentCard acts mustD startOpen nD = mdo
   tz <- liftIO getCurrentTimeZone
+  -- The time now, to the half minute: a usage report says when its
+  -- rate-limit windows reset and its prompt cache expires, and an idle
+  -- session sends no new report when they do.
+  now0 <- liftIO (realToFrac <$> getPOSIXTime)
+  tickE <- tickLossyFromPostBuildTime 30
+  nowD <- holdDyn now0 (realToFrac . utcTimeToPOSIXSeconds . _tickInfo_lastUTC <$> tickE)
   openD <- holdDyn startOpen (not <$> tag (current openD) moreE)
   fullD <- holdUniqDyn ((||) <$> mustD <*> openD)
   renamingD <- holdDyn False (leftmost [True <$ renameE, False <$ doneRenameE])
@@ -126,7 +133,7 @@ agentCard acts mustD startOpen nD = mdo
               elDynAttr "span" (ageAttrs <$> nD) . dynText $ anAge <$> nD
               -- How full its context window is, and what it has cost (from
               -- its status line); the details are the tooltip.
-              elDynAttr "span" (usageAttrs tz <$> nD) $ do
+              elDynAttr "span" (usageAttrs tz <$> nowD <*> nD) $ do
                 elDynAttr "span" (meterAttrs <$> nD) $
                   elDynAttr "span" (meterFillAttrs <$> nD) blank
                 dynText $ maybe "" usageChip . anUsage <$> nD
@@ -141,7 +148,7 @@ agentCard acts mustD startOpen nD = mdo
         return (domEvent Click b, d)
       -- The rest only while full.
       bE <- switchHold never =<< dyn (ffor fullD $ \full ->
-        if full then fullBody else return never)
+        if full then fullBody tz nowD else return never)
       return (mE, dE, bE)
   -- A click anywhere on the card that is not on one of its controls (the ⋯,
   -- the action buttons, a link, the rename field) and does not end a text
@@ -187,8 +194,8 @@ agentCard acts mustD startOpen nD = mdo
       return (leftmost [() <$ commitE, cancelE])
 
     -- The full card's body; answers its Rename button.
-    fullBody :: m (Event t ())
-    fullBody = do
+    fullBody :: TimeZone -> Dynamic t Double -> m (Event t ())
+    fullBody tz nowD = do
       -- The bio (else the description): sanitized HTML, straight into
       -- innerHTML — sanitized once, where it was stored.
       void $ elDynHtmlAttr' "div" ("class" =: "agent-card-bio")
@@ -211,10 +218,13 @@ agentCard acts mustD startOpen nD = mdo
           ffor nD $ \n -> maybe "" (\c -> "now in " <> T.pack (baseName c)) (anCwd n)
         elDynAttr "span" (editsAttrs <$> nD) . dynText $ editsText <$> nD
       -- Its context use, cost and rate limits, in full.
-      tz <- liftIO getCurrentTimeZone
-      dyn_ $ ffor nD $ \n -> forM_ (anUsage n) $ \u ->
+      -- (Rebuilt only when its text changes — not on every other change to
+      -- the agent, nor on every clock tick.)
+      usageD <- holdUniqDyn (anUsage <$> nD)
+      usageLinesD <- holdUniqDyn (maybe [] . usageLines tz <$> nowD <*> usageD)
+      dyn_ $ ffor usageLinesD $ \ls -> unless (null ls) $
         divClass "agent-card-facts agent-card-usage-facts" $
-          forM_ (usageLines tz (suAt u) u) $ \l -> elClass "span" "agent-card-fact" (text l)
+          forM_ ls $ \l -> elClass "span" "agent-card-fact" (text l)
       dyn_ $ ffor nD $ \n ->
         forM_ (anWorktrees n) $ \l -> divClass "agent-card-worktree" (text l)
       dyn_ $ ffor nD $ \n -> forM_ (anDone n) $ \d ->
@@ -318,15 +328,14 @@ editsText n = case anEdits n of
      <> (if length fs > 3 then " +" <> T.pack (show (length fs - 3)) else "")
 
 -- | The usage figure on the first line: hidden until its status line has
--- reported, coloured as its context window fills ('usageLevel').  Reset
--- times in the tooltip are judged against the report's own time, which a
--- live session renews after every message.
-usageAttrs :: TimeZone -> AgentNode -> Map Text Text
-usageAttrs tz n = case anUsage n of
+-- reported, coloured as its context window fills ('usageLevel').  The
+-- tooltip's reset times and cache expiry are judged against @now@.
+usageAttrs :: TimeZone -> Double -> AgentNode -> Map Text Text
+usageAttrs tz now n = case anUsage n of
   Just u | not (T.null (usageChip u)) ->
     "class" =: T.unwords ([ "agent-card-usage" ]
                           <> [ "agent-card-usage-" <> l | let l = usageLevel u, not (T.null l) ])
-    <> "title" =: T.intercalate "\n" (usageLines tz (suAt u) u)
+    <> "title" =: T.intercalate "\n" (usageLines tz now u)
   _ -> hidden
 
 meterAttrs, meterFillAttrs :: AgentNode -> Map Text Text
@@ -475,9 +484,18 @@ agentCardCss = do
     "display" -: "flex"
     "align-items" -: "baseline"
     "gap" -: "6px"
+  -- In a narrow pane the first line's spans give way (with an ellipsis) so
+  -- that the usage figure at its end stays whole; the name last of all.
+  ".agent-card .agent-card-line1 > span:not(.agent-card-usage)" ? do
+    "flex" -: "0 3 auto"
+    "min-width" -: "0"
+    "overflow" -: "hidden"
+    "text-overflow" -: "ellipsis"
+    "white-space" -: "nowrap"
   ".agent-card .agent-card-name" ? do
     "font-weight" -: "bold"
     "color" -: "var(--leksah-fg)"
+  ".agent-card .agent-card-line1 > span.agent-card-name" ? ("flex-shrink" -: "1")
   ".agent-card .agent-card-tag" ? do
     "font-size" -: "10px"
     "padding" -: "0 4px"

@@ -533,7 +533,10 @@ executable leksah-cmd
     main-is: Cmd.hs
     hs-source-dirs: main
     default-language: Haskell2010
-    ghc-options: -Wall -ferror-spans
+    -- -threaded: `statusline` must be able to time out a user's status-line
+    -- command, and waitForProcess is a blocking FFI call that `timeout`
+    -- cannot interrupt in the non-threaded RTS.
+    ghc-options: -Wall -ferror-spans -threaded
     -- Unix-domain-socket only, so this exe isn't built on Windows — nor for
     -- the JS backend (no sockets in a browser).
     if os(windows) || impl(ghcjs) || arch(javascript)

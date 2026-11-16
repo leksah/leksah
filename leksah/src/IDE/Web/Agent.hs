@@ -92,6 +92,7 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import qualified Data.Text.Encoding as TE (decodeUtf8, decodeUtf8With, encodeUtf8)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime, getCurrentTimeZone)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.IO.Unsafe (unsafePerformIO)
 
 import System.Directory
@@ -125,7 +126,7 @@ import IDE.Web.AgentEvents
         recordCwd, recordEdit, recordFailure, recordPermission,
         recordToolEnd, recordToolStart, recordTurnEnd, recordPromptSubmit,
         recordSubagentStart, recordSubagentStop, recordCompacting, recordSessionEnd)
-import IDE.Web.AgentUsage (SessionUsage(..), usageFor, usageLines, usageSummary)
+import IDE.Web.AgentUsage (usageFor, usageLines, usageSummary)
 import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
@@ -373,6 +374,7 @@ agentEvents sid = do
   -- And what its status line last said: context use, cost, rate limits.
   mu <- usageFor sid
   tz <- getCurrentTimeZone
+  now <- realToFrac <$> getPOSIXTime
   let row k = maybe (k <> "\t-") (\(t, _) -> k <> "\t" <> t)
   return . T.unlines $
     [ row "tool" (seTool e), row "approval" (sePermission e), row "error" (seError e)
@@ -380,7 +382,7 @@ agentEvents sid = do
     , "compacting\t" <> maybe "-" (const "yes") (seCompacting e) ]
     <> [ "subagent\t" <> kind <> " " <> aid | (aid, (kind, _)) <- seSubagents e ]
     <> [ "edited\t" <> T.pack f | (f, _) <- seEdits e ]
-    <> [ "usage\t" <> l | u <- maybe [] pure mu, l <- usageLines tz (suAt u) u ]
+    <> [ "usage\t" <> l | u <- maybe [] pure mu, l <- usageLines tz now u ]
 
 -- | 'liveDetail', sharpened by what the hooks have said
 -- ("IDE.Web.AgentEvents"): the exact approval it waits for, the tool it is
@@ -420,12 +422,14 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
     -- (Its context use, cost and rate limits last, when its status line
     -- has reported: a field a poller reading the first few never sees.)
     mu   <- usageFor sid
+    now  <- realToFrac <$> getPOSIXTime
     return $ T.intercalate "\t"
         ([ liveState l
          , detailWith ev l
          , fromMaybe "-" pane
          , T.pack (clDir l) ]
-         <> [ usageSummary (suAt u) u | Just u <- [mu] ]) <> "\n"
+         <> [ summary | Just u <- [mu], let summary = usageSummary now u
+                      , not (T.null summary) ]) <> "\n"
 
 -- | Bring an agent's pane to the front — whether or not its session has
 -- registered yet.  A fork parked on a first-run question ('agentStatus'\'s
