@@ -72,7 +72,7 @@ module IDE.Web.Agent
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (catch, SomeException)
-import Control.Monad (filterM, forM, when, void)
+import Control.Monad (filterM, forM, mfilter, unless, when, void)
 
 import Data.Char (isAlphaNum)
 import Data.List (sortOn)
@@ -89,7 +89,9 @@ import Data.Foldable (toList)
 import Data.Aeson.Types (Pair, parseMaybe)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (toStrict)
-import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import qualified Data.Set as S
+import qualified Data.Aeson.Key as Key
 import qualified Data.Text.Encoding as TE (decodeUtf8, decodeUtf8With, encodeUtf8)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime, getCurrentTimeZone)
@@ -98,7 +100,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import System.Directory
        (doesDirectoryExist, doesFileExist, getHomeDirectory, listDirectory)
-import System.FilePath ((</>), dropTrailingPathSeparator)
+import System.FilePath ((</>), dropTrailingPathSeparator, normalise)
 import System.IO
        (withFile, IOMode(ReadMode), hSeek, SeekMode(SeekFromEnd), hFileSize)
 
@@ -111,7 +113,7 @@ import IDE.Web.AgentInfo
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
-       (adoptContinuation, agentNameFor, agentNames, renameAgent,
+       (adoptContinuation, agentContinuations, agentNameFor, agentNames, renameAgent,
         resolveAgentName, touchAgentNames)
 import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, roleNote)
 import IDE.Web.Claude
@@ -131,6 +133,10 @@ import IDE.Web.AgentEvents
         recordTaskCreated, recordTaskActive, recordTaskStatus, TaskInfo(..))
 import IDE.Web.AgentUsage (usageFor, usageLines, usageSummary)
 import IDE.Web.ClaudeStatus (pokeClaudeStatus)
+import IDE.Web.Codex
+       (codexAvailable, codexInteractive, codexProcessOf, codexSessionStart, codexSetStatus, codexSessionEnd,
+        codexPatchFiles, codexSessionDir, codexStarted, codexTranscriptOf, isCodexSession,
+        isRollout, rolloutTurns)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
@@ -162,13 +168,18 @@ data ForkRequest = ForkRequest
   , frRole   :: Maybe Text     -- ^ start it in this role ("IDE.Web.AgentRoles");
                                --   a role agent is always fresh
   , frManager :: Bool          -- ^ start it as the workspace's manager
+  , frCodex  :: Bool           -- ^ run Codex rather than Claude Code (always a
+                               --   fresh agent: a Claude conversation cannot be
+                               --   carried into Codex)
+  , frClaude :: Bool           -- ^ run Claude Code even when forking from a Codex
+                               --   agent (whose children are Codex ones otherwise)
   } deriving (Eq, Show)
 
 emptyForkRequest :: FilePath -> ForkRequest
 emptyForkRequest cwd = ForkRequest
   { frPlace = PlaceBeside, frDir = Nothing, frFrom = Nothing, frFresh = False
   , frPrompt = Nothing, frParent = Nothing, frCwd = cwd, frRole = Nothing
-  , frManager = False }
+  , frManager = False, frCodex = False, frClaude = False }
 
 -- | Start a child agent, and answer with its session id and a line the parent
 -- can act on.
@@ -189,18 +200,35 @@ emptyForkRequest cwd = ForkRequest
 --
 -- With 'frRole', the role is looked up first (from the directory the agent
 -- will work in) and the agent starts fresh, with the role's instructions.
+--
+-- A Codex conversation cannot be forked at all (into Claude Code, or into
+-- Codex: @codex fork@ mints its own id), so a fork FROM a Codex agent — the
+-- caller, or @--from@ — is a fresh agent, and a Codex one like its parent
+-- unless @--claude@ asks otherwise.
 forkAgent :: ForkRequest -> IO (Either Text (Text, Text))
-forkAgent fr0 = case frRole fr0 of
-  Nothing -> forkAgentAs Nothing fr0
-  Just n  -> findAgentRole (fromMaybe (frCwd fr0) (frDir fr0)) n >>= \case
-    Left err   -> return (Left err)
-    Right role -> forkAgentAs (Just role) fr0 { frFresh = True }
+forkAgent fr1 = do
+  live <- claudeLiveBySession
+  srcCodex <- case frFrom fr1 <|> frParent fr1 of
+    Nothing  -> return False
+    Just src -> case M.lookup src live of
+      Just l  -> return (clAgent l == "codex")
+      Nothing -> isCodexSession src
+  let fr0 | frCodex fr1                  = fr1 { frFresh = True }
+          | srcCodex, not (frClaude fr1) = fr1 { frCodex = True, frFresh = True }
+          | srcCodex                     = fr1 { frFresh = True }
+          | otherwise                    = fr1
+  case frRole fr0 of
+    Nothing -> forkAgentAs Nothing fr0
+    Just n  -> findAgentRole (fromMaybe (frCwd fr0) (frDir fr0)) n >>= \case
+      Left err   -> return (Left err)
+      Right role -> forkAgentAs (Just role) fr0 { frFresh = True }
 
 forkAgentAs :: Maybe AgentRole -> ForkRequest -> IO (Either Text (Text, Text))
 forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                   return (Left ("agent fork failed: " <> T.pack (show e)))) $
-    claudeAvailable >>= \case
-      False -> return (Left "the claude CLI is not on leksah's PATH")
+    (if frCodex fr then codexAvailable else claudeAvailable) >>= \case
+      False -> return (Left (if frCodex fr then "the codex CLI is not on leksah's PATH"
+                                           else "the claude CLI is not on leksah's PATH"))
       True  -> do
         live <- claudeLiveBySession
         let parent  = frFrom fr `orElse` frParent fr
@@ -235,7 +263,8 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                                   , asParent  = parent
                                   , asRoleNote = roleNote <$> mrole
                                   , asResume  = False
-                                  , asManager = frManager fr }
+                                  , asManager = frManager fr
+                                  , asCodex   = frCodex fr }
              (_, key, line) <- claudeCommandLine (ClaudeAgent spec)
              place live spec key line
 
@@ -282,6 +311,8 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
           Nothing | Just ro <- mrole ->
                      "It is a fresh agent in the role " <> roleName ro
                        <> ": it knows only that role and the prompt you gave it."
+                  | asCodex spec ->
+                     "It is a fresh Codex agent: it knows only the prompt you gave it."
                   | otherwise ->
                      "It is a fresh agent: it knows only the prompt you gave it."
       , maybe "No prompt was sent, so it is waiting at its prompt."
@@ -336,7 +367,8 @@ agentList withStopped me = do
         , fromMaybe "-" (M.lookup (clSession l) panes)
         , T.pack (clDir l)
         , T.takeWhile (/= '\n') title
-        , if me == Just (clSession l) then "(you)" else "" ]
+        , T.unwords ([ "(you)" | me == Just (clSession l) ]
+                     <> [ "(codex)" | clAgent l == "codex" ]) ]
     return . T.unlines $
       "# session\tname\tstate\tdetail\tpane\tdir\ttitle" : rows <> stopped
   where
@@ -470,9 +502,14 @@ agentSend sid submit txt = paneForSession sid >>= \case
   Nothing -> return $ "session " <> sid <> " is not in a pane leksah can reach \
                       \(not running, remote, or in a terminal outside leksah)\n"
   Just (_, _, pane) -> do
-    ok <- if T.any (== '\n') txt then pasteTo pane txt
-                                 else sendKeysTo pane ["-l", T.unpack txt]
+    -- Codex takes keys that arrive in a burst for a paste, and an Enter at the
+    -- end of one for a newline in it: so hand it a real (bracketed) paste, and
+    -- press Enter a moment later.
+    codex <- maybe False ((== "codex") . clAgent) . M.lookup sid <$> claudeLiveBySession
+    ok <- if codex || T.any (== '\n') txt then pasteTo pane txt
+          else sendKeysTo pane ["-l", T.unpack txt]
     if not ok then return "tmux would not deliver the text\n" else do
+      when (codex && submit) $ threadDelay 300000
       submitted <- if submit then sendKeysTo pane ["Enter"] else return True
       return $ if submit && submitted
         then "Sent and submitted to " <> sid <> ".\n"
@@ -629,6 +666,10 @@ agentSuspend sid force = do
             _ <- sendKeysTo pane ["C-u"]
             _ <- sendKeysTo pane ["-l", "/exit"]
             _ <- sendKeysTo pane ["Enter"]
+            -- (Codex's first Enter only picks /exit from its command popup.)
+            when (clAgent l == "codex") $ do
+              threadDelay 300000
+              void (sendKeysTo pane ["Enter"])
             _ <- forkIO $ do
               threadDelay 6000000
               still <- M.member sid <$> claudeLiveBySession
@@ -650,9 +691,13 @@ agentResume sid = do
       _ <- showAgentPane sid
       return (Right (name <> " is already running; showing it.\n"))
     else agentInfoOf sid >>= \case
-      -- Not one leksah started — but a Claude Code background session says
-      -- where it ran: resume it there (`claude --resume` takes one up).
-      Nothing -> claudeBackgroundSessions >>= \bgs ->
+      -- Not one leksah started — but leksah's Codex hooks, or a Claude Code
+      -- background session, say where it ran: resume it there.
+      Nothing -> codexSessionDir sid >>= \case
+       Just d -> do
+        runClaudeCmd (CodexResume d sid)
+        return (Right ("Resuming " <> name <> " in its own tab.\n"))
+       Nothing -> claudeBackgroundSessions >>= \bgs ->
         case [ b | b <- bgs, cbSession b == sid, not (null (cbDir b)) ] of
           (b : _) -> do
             runClaudeCmd (ClaudeResume (cbDir b) sid)
@@ -667,10 +712,11 @@ agentResume sid = do
           Nothing -> return Nothing
           Just ro -> either (const Nothing) Just <$> findAgentRole (aiDir i) ro
         setAgentSuspended sid False
+        codex <- isCodexSession sid
         runClaudeCmd . ClaudeAgent $ AgentSpec
           { asDir = aiDir i, asSession = sid, asFrom = Nothing, asPrompt = Nothing
           , asParent = aiParent i, asRoleNote = roleNote <$> mrole
-          , asResume = True, asManager = aiManager i }
+          , asResume = True, asManager = aiManager i, asCodex = codex }
         return (Right ("Resuming " <> name <> " in its own tab.\n"))
 
 -- | Resume every one of these agents (the Agents pane's "Resume all", for the
@@ -848,7 +894,11 @@ startingPane sid = do
 -- looking for @\<id\>.jsonl@ among the project folders (a child that has already
 -- exited is exactly when a parent wants to read it).
 transcriptFor :: Text -> IO (Maybe FilePath)
-transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $
+ codexTranscriptOf sid >>= \case
+ -- (A Codex session's rollout, as its hooks reported it.)
+ Just p -> return (Just p)
+ Nothing -> do
   live <- claudeLiveBySession
   fromLive <- case M.lookup sid live of
     Just l | not (null (clDir l)) -> do
@@ -886,14 +936,13 @@ transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 --
 -- Every event but the per-tool ones ('perToolHookEvents') is logged, one line,
 -- to @~\/.leksah\/agent-hooks.log@.
-agentHook :: Maybe Int -> Text -> Text -> IO Text
-agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
-  let v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
-      field k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Text
+agentHook :: Maybe Int -> Text -> Text -> [Text] -> IO Text
+agentHook mpid ev raw ("codex" : rest) =
+  codexHook mpid ev raw (mfilter (not . T.null) (listToMaybe rest))
+agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
+  let h = parseHookIn raw
+      field = hiField h
       sid = field "session_id"
-      obj k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Object
-      toolName = fromMaybe "" (field "tool_name")
-      toolInput = fromMaybe mempty (obj "tool_input")
   -- Only SessionStart needs to know which claude process is calling (a `ps`
   -- walk, ~100ms): every other event skips the lookup, and Stop — a
   -- synchronous hook at the end of every turn — answers at once.  The
@@ -946,119 +995,247 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       return (hookOutput "SessionStart"
                 ([ "additionalContext" .= T.intercalate "\n\n" notes | not (null notes) ]
                  <> [ "sessionTitle" .= t | Just t <- [title] ]))
-    -- A prompt was submitted (by the user, or `agent send --submit`): a new
-    -- turn starts — the status surfaces say "working" at once (the poll
-    -- counts a just-submitted prompt as working, whatever the session file
-    -- says yet) — and its own title follows it into Claude Code.
-    ("UserPromptSubmit", Just s) -> do
-      recordPromptSubmit s
-      pokeClaudeStatus
-      title <- titleForClaude s (field "session_title")
-      return (hookOutput "UserPromptSubmit" [ "sessionTitle" .= t | Just t <- [title] ])
-    -- Its subagents (the Agent tool), for the activity line.  An empty type is
-    -- one of Claude Code's own internal agents (prompt suggestions, /btw).
-    ("SubagentStart", Just s) -> do
-      case (field "agent_id", field "agent_type") of
-        (Just aid, Just kind) | not (T.null kind) -> recordSubagentStart s aid kind
-        _ -> return ()
-      return ""
-    ("SubagentStop", Just s) -> mapM_ (recordSubagentStop s) (field "agent_id") >> return ""
-    -- Compacting its conversation, which can take a while and otherwise looks
-    -- like nothing at all.  (PreCompact's stdout would become instructions
-    -- for the summary: this hook runs async, and answers nothing anyway.)
-    ("PreCompact", Just s) -> recordCompacting s True >> return ""
-    ("PostCompact", Just s) -> recordCompacting s False >> return ""
-    ("SessionEnd", Just s) -> recordSessionEnd s >> pokeClaudeStatus >> return ""
-    -- Its task list: created, and done.
-    ("TaskCreated", Just s) -> do
-      case (field "task_id", field "task_subject") of
-        (Just tid, Just sub) -> recordTaskCreated s tid sub
-        _ -> return ()
-      return ""
-    ("TaskCompleted", Just s) -> mapM_ (\tid -> recordTaskStatus s tid "completed") (field "task_id")
-                                 >> return ""
-    -- What it is doing this moment (the activity line), and what it changed.
-    ("PreToolUse", Just s) -> do
-      recordToolStart s (field "tool_use_id") (describeToolUse toolName toolInput)
-      return ""
-    ("PostToolUseFailure", Just s) ->
-      recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput) >> return ""
-    ("PostToolUse", Just s) -> do
-      recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput)
-      -- Its task list (Claude Code's Task tools): status changes come only
-      -- as TaskUpdate calls, and a task's "doing" form only with TaskCreate.
-      let str k = parseMaybe (.: k) toolInput :: Maybe Text
-      case toolName of
-        "TaskUpdate" | Just tid <- str "taskId", Just st <- str "status" ->
-          recordTaskStatus s tid st
-        "TaskCreate" | Just sub <- str "subject", Just act <- str "activeForm" ->
-          recordTaskActive s sub act
-        _ -> return ()
-      let files = editedFiles toolName toolInput (v >>= parseMaybe (withObject "hook" (.: "tool_response")))
-      if null files then return "" else do
-        recordEdit s files
-        overlapNote s files
-    -- What it is waiting for you to approve, in full.
-    ("PermissionRequest", Just s) -> do
-      recordPermission s (approvalText toolName toolInput)
-      pokeClaudeStatus
-      return ""
-    -- A turn that ended on an API error, which would otherwise look idle.
-    ("StopFailure", Just s) -> do
-      recordFailure s $ fromMaybe "unknown" (field "error")
-        <> maybe "" (\m -> " — " <> T.take 160 m) (field "last_assistant_message")
-      pokeClaudeStatus
-      return ""
-    ("Stop", Just s) -> recordTurnEnd s >> pokeClaudeStatus >> return ""
-    ("CwdChanged", Just s) -> do
-      mapM_ (recordCwd s . T.unpack) (field "new_cwd")
-      return ""
+    (_, Just s) -> do
+      recordHookEvent ev s h
+      -- The status surfaces update at once on the events that change what
+      -- they show (a turn starting or ending, an approval, an error …) —
+      -- not on the per-tool ones, several a turn.
+      unless (ev `elem` quietHookEvents) pokeClaudeStatus
+      case ev of
+        -- Its own title follows a new prompt into Claude Code.
+        "UserPromptSubmit" -> do
+          title <- titleForClaude s (field "session_title")
+          return (hookOutput "UserPromptSubmit" [ "sessionTitle" .= t | Just t <- [title] ])
+        "PostToolUse" -> noteEdits s (editedFiles (hiTool h) (hiInput h) (hiResponse h))
+        _ -> return ""
     _ -> pokeClaudeStatus >> return ""
+
+-- | One hook's JSON, parsed once.
+data HookIn = HookIn
+  { hiField    :: Text -> Maybe Text   -- ^ a top-level string field
+  , hiTool     :: Text                 -- ^ @tool_name@ (or @""@)
+  , hiInput    :: Object               -- ^ @tool_input@ (or empty)
+  , hiResponse :: Maybe Value          -- ^ @tool_response@
+  }
+
+parseHookIn :: Text -> HookIn
+parseHookIn raw = HookIn
+  { hiField    = field
+  , hiTool     = fromMaybe "" (field "tool_name")
+  , hiInput    = fromMaybe mempty (v >>= parseMaybe (withObject "hook" (.: "tool_input")))
+  , hiResponse = v >>= parseMaybe (withObject "hook" (.: "tool_response")) }
   where
-    -- Another live agent edited one of these files lately: tell this one, once
-    -- per file and colleague (an async hook's context reaches it next turn).
-    overlapNote s files = do
-      live <- claudeLiveBySession
-      hits <- fmap concat . forM files $ \f -> do
-        others <- filter (`M.member` live) <$> editedRecently (2 * 3600) s f
-        fresh <- atomicModifyIORef' overlapWarned $ \w ->
-          let new = [ o | o <- others, (s, f, o) `notElem` w ]
-          in (w <> [ (s, f, o) | o <- new ], new)
-        return [ (f, o) | o <- fresh ]
-      if null hits then return "" else do
-        named <- forM hits $ \(f, o) -> (,) f <$> agentNameFor o
-        let say (f, nm) = nm <> " also edited " <> T.pack f <> " in the last two hours"
-            msg = "Leksah: " <> T.intercalate "; " (map say named)
-               <> ". Their changes may not be committed yet — check with them before \
-                  \going further (`leksah-cmd agent send NAME …`), so your edits \
-                  \do not collide."
-        return (hookOutput "PostToolUse" [ "additionalContext" .= msg ])
+    v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
+    field k = v >>= parseMaybe (withObject "hook" (.: Key.fromText k))
 
-    briefing sid = do
-      name <- agentNameFor sid
-      minfo <- agentInfoOf sid
-      roleText <- case (minfo >>= aiRole, minfo) of
-        (Just ro, Just i) -> either (const Nothing) (Just . roleNote) <$> findAgentRole (aiDir i) ro
-        _                 -> return Nothing
-      return $ [ nameNote name | not (T.null name) ]
-            <> [ agentNote p sid | Just p <- [minfo >>= aiParent] ]
-            <> maybe [] (: []) roleText
-            <> [ managerNote | maybe False aiManager minfo ]
+-- | The events that do not change what the status surfaces show by
+-- themselves (they feed the activity line, read on the next poll).
+quietHookEvents :: [Text]
+quietHookEvents =
+  [ "SubagentStart", "SubagentStop", "PreCompact", "PostCompact"
+  , "TaskCreated", "TaskCompleted", "PreToolUse", "PostToolUse"
+  , "PostToolUseFailure", "CwdChanged" ]
 
-    -- (The name only at startup: 'briefing' already gives it otherwise.  And
-    -- the worktree note without "pre-approved": only leksah's own launches
-    -- pre-approve `leksah-cmd agent register`.)
-    plainSessionNotes sid withName = do
-      name <- agentNameFor sid
-      return ([ nameNote name | withName, not (T.null name) ]
-              <> [ T.replace " — pre-approved, it never prompts" "" worktreeNote, planHtmlNote ])
+-- | What a hook event says about session @s@ ("IDE.Web.AgentEvents"),
+-- recorded the same way whichever CLI sent it — Claude Code and Codex send
+-- the same events, with the same fields.  Everything but SessionStart (each
+-- CLI's own) and the files a tool changed ('noteEdits').
+recordHookEvent :: Text -> Text -> HookIn -> IO ()
+recordHookEvent ev s h = case ev of
+  -- A prompt was submitted (by the user, or `agent send --submit`): a new
+  -- turn starts — the poll counts a just-submitted prompt as working,
+  -- whatever the session's state says yet.
+  "UserPromptSubmit" -> recordPromptSubmit s
+  -- Its subagents, for the activity line.  An empty type is one of Claude
+  -- Code's own internal agents (prompt suggestions, /btw).
+  "SubagentStart" -> case (field "agent_id", field "agent_type") of
+    (Just aid, Just kind) | not (T.null kind) -> recordSubagentStart s aid kind
+    _ -> return ()
+  "SubagentStop" -> mapM_ (recordSubagentStop s) (field "agent_id")
+  -- Compacting its conversation, which can take a while and otherwise looks
+  -- like nothing at all.  (Claude's PreCompact hook runs async: its stdout
+  -- would become instructions for the summary.)
+  "PreCompact"  -> recordCompacting s True
+  "PostCompact" -> recordCompacting s False
+  "SessionEnd"  -> recordSessionEnd s
+  -- Its task list (Claude Code's Task tools): created, and done.
+  "TaskCreated" -> case (field "task_id", field "task_subject") of
+    (Just tid, Just sub) -> recordTaskCreated s tid sub
+    _ -> return ()
+  "TaskCompleted" -> mapM_ (\tid -> recordTaskStatus s tid "completed") (field "task_id")
+  -- What it is doing this moment (the activity line).
+  "PreToolUse" -> recordToolStart s (field "tool_use_id") (describeToolUse tool inp)
+  "PostToolUseFailure" -> recordToolEnd s (field "tool_use_id") (approvalText tool inp)
+  "PostToolUse" -> do
+    recordToolEnd s (field "tool_use_id") (approvalText tool inp)
+    -- Task status changes come only as TaskUpdate calls, and a task's
+    -- "doing" form only with TaskCreate.
+    let str k = parseMaybe (.: k) inp :: Maybe Text
+    case tool of
+      "TaskUpdate" | Just tid <- str "taskId", Just st <- str "status" ->
+        recordTaskStatus s tid st
+      "TaskCreate" | Just sub <- str "subject", Just act <- str "activeForm" ->
+        recordTaskActive s sub act
+      _ -> return ()
+  -- What it is waiting for you to approve, in full.
+  "PermissionRequest" -> recordPermission s (approvalText tool inp)
+  -- A turn that ended on an API error, which would otherwise look idle.
+  "StopFailure" -> recordFailure s $ fromMaybe "unknown" (field "error")
+    <> maybe "" (\m -> " — " <> T.take 160 m) (field "last_assistant_message")
+  "Stop" -> recordTurnEnd s
+  "CwdChanged" -> mapM_ (recordCwd s . T.unpack) (field "new_cwd")
+  _ -> return ()
+  where
+    field = hiField h
+    tool = hiTool h
+    inp = hiInput h
 
-    -- A hook's answer: nothing at all when there is nothing to say, else
-    -- @{"hookSpecificOutput": {"hookEventName": EV, …}}@.
-    hookOutput :: Text -> [Pair] -> Text
-    hookOutput _ [] = ""
-    hookOutput evName ps = TE.decodeUtf8 . BL.toStrict . encode $ object
-      [ "hookSpecificOutput" .= object (("hookEventName" .= evName) : ps) ]
+-- | Record the files a tool call changed, and answer with the note telling
+-- the agent that another live agent edited one of them lately (if one did).
+noteEdits :: Text -> [FilePath] -> IO Text
+noteEdits _ []    = return ""
+noteEdits s files = recordEdit s files >> overlapNote s files
+
+-- | A Codex hook (@leksah-cmd agent hook EVENT codex [TOKEN]@, run by the
+-- @~\/.leksah\/codex-hook@ wrapper — see "IDE.Web.Codex").  The same events as
+-- Claude Code's, feeding the same per-session records, plus the one thing
+-- Claude Code does for itself: the live record that says the session is
+-- running and what it is doing ('codexSessionStart', 'codexSetStatus').
+--
+-- At SessionStart, @token@ — what a leksah launch exported as
+-- @LEKSAH_AGENT_TOKEN@ and used as the agent's id until now (Codex cannot be
+-- told its session id) — hands everything leksah knows over to the real id:
+-- its name, and its record (parent, role, the prompt it was given).  Then
+-- the session is briefed, in plain text (Codex adds a SessionStart hook's
+-- stdout to the session as developer context): its name, who started it and
+-- how to report back, its role, the worktree note.
+codexHook :: Maybe Int -> Text -> Text -> Maybe Text -> IO Text
+codexHook mpid ev raw token = (`catch` \(_ :: SomeException) -> return "") $ do
+  let h = parseHookIn raw
+      field = hiField h
+      sid = field "session_id"
+  ignored <- maybe (return False) (\s -> S.member s <$> readIORef codexIgnored) sid
+  if ignored then return "" else do
+   if ev `elem` perToolHookEvents then return ()
+     else logHook ev Nothing [sid, Just "codex", field "source", token, field "tool_name"]
+   case (ev, sid) of
+    ("SessionStart", Just new) -> do
+      let source = fromMaybe "" (field "source")
+      proc <- maybe (return Nothing) codexProcessOf mpid
+      case proc of
+        -- `codex exec` and the like run the same (global) hooks: they are
+        -- not agents — no record, no name, no briefing; their later events
+        -- are dropped too.
+        Just (_, args) | not (codexInteractive args) -> do
+          atomicModifyIORef' codexIgnored (\m -> (S.insert new m, ()))
+          return ""
+        _ -> do
+          prev <- case proc of
+            Just (p, _) -> codexSessionStart p new (maybe "" T.unpack (field "cwd"))
+                                             (T.unpack <$> field "transcript_path")
+            Nothing -> return Nothing
+          -- The launch token, the first time it is seen (a later /new in the
+          -- same process inherits the environment, and is handled as a /clear
+          -- below).
+          conts <- agentContinuations
+          case token of
+            Just t | t /= new, t `M.notMember` conts -> do
+              _ <- adoptContinuation t new
+              moveAgentRecord True t new
+            _ -> case (source, prev) of
+              (src, Just o) | src `elem` ["clear", "fork"] -> do
+                _ <- adoptContinuation o new
+                moveAgentRecord (src /= "clear") o new
+              -- What the process was recorded as before its first prompt
+              -- (IDE.Web.Claude.codexDiscover's token for a codex typed into
+              -- a terminal): the same agent, which keeps its name.
+              (_, Just o) -> codexStarted o >>= \started -> unless started $ do
+                _ <- adoptContinuation o new
+                moveAgentRecord True o new
+              _ -> return ()
+          when (source `elem` ["startup", "resume", "fork"]) $
+            mapM_ (\d -> void . forkIO $ ensureSessionWorktree new (T.unpack d)) (field "cwd")
+          when (source == "compact") $ recordCompacting new False
+          pokeClaudeStatus
+          notes <- briefing new
+          return (T.intercalate "\n\n" (notes <> [worktreeNote]))
+    (_, Just s) -> do
+      recordHookEvent ev s h
+      -- And the live state, which Codex does not keep for itself.
+      changed <- case ev of
+        "UserPromptSubmit"  -> codexSetStatus s "busy" Nothing >> return True
+        "PreToolUse"        -> codexSetStatus s "busy" Nothing
+        "PostToolUse"       -> codexSetStatus s "busy" Nothing
+        "PermissionRequest" -> codexSetStatus s "waiting" (Just (approvalText (hiTool h) (hiInput h)))
+        "Stop"              -> codexSetStatus s "idle" Nothing >> return True
+        "SessionEnd"        -> codexSessionEnd s >> return True
+        _                   -> return False
+      when changed pokeClaudeStatus
+      if ev /= "PostToolUse" then return "" else
+        -- The files it changed: an apply_patch names them in its patch; any
+        -- other tool the way Claude Code's do (a file_path …).  Made absolute
+        -- against its cwd — a patch's paths are relative — so they compare
+        -- with every other agent's.
+        let named = case codexPatchFiles (Object (hiInput h)) of
+              [] -> editedFiles (hiTool h) (hiInput h) (hiResponse h)
+              ps -> ps
+            cwd = maybe "" T.unpack (field "cwd")
+        in noteEdits s [ if null cwd then f else normalise (cwd </> f) | f <- named ]
+    _ -> return ""
+
+-- | Codex sessions that are not agents (@codex exec@ …): their hooks are
+-- ignored.
+{-# NOINLINE codexIgnored #-}
+codexIgnored :: IORef (S.Set Text)
+codexIgnored = unsafePerformIO (newIORef S.empty)
+
+-- Another live agent edited one of these files lately: tell this one, once
+-- per file and colleague (an async hook's context reaches it next turn).
+overlapNote :: Text -> [FilePath] -> IO Text
+overlapNote s files = do
+  live <- claudeLiveBySession
+  hits <- fmap concat . forM files $ \f -> do
+    others <- filter (`M.member` live) <$> editedRecently (2 * 3600) s f
+    fresh <- atomicModifyIORef' overlapWarned $ \w ->
+      let new = [ o | o <- others, (s, f, o) `notElem` w ]
+      in (w <> [ (s, f, o) | o <- new ], new)
+    return [ (f, o) | o <- fresh ]
+  if null hits then return "" else do
+    named <- forM hits $ \(f, o) -> (,) f <$> agentNameFor o
+    let say (f, nm) = nm <> " also edited " <> T.pack f <> " in the last two hours"
+        msg = "Leksah: " <> T.intercalate "; " (map say named)
+           <> ". Their changes may not be committed yet — check with them before \
+              \going further (`leksah-cmd agent send NAME …`), so your edits \
+              \do not collide."
+    return (hookOutput "PostToolUse" [ "additionalContext" .= msg ])
+
+briefing :: Text -> IO [Text]
+briefing sid = do
+  name <- agentNameFor sid
+  minfo <- agentInfoOf sid
+  roleText <- case (minfo >>= aiRole, minfo) of
+    (Just ro, Just i) -> either (const Nothing) (Just . roleNote) <$> findAgentRole (aiDir i) ro
+    _                 -> return Nothing
+  return $ [ nameNote name | not (T.null name) ]
+        <> [ agentNote p sid | Just p <- [minfo >>= aiParent] ]
+        <> maybe [] (: []) roleText
+        <> [ managerNote | maybe False aiManager minfo ]
+
+-- (The name only at startup: 'briefing' already gives it otherwise.  And
+-- the worktree note without "pre-approved": only leksah's own launches
+-- pre-approve `leksah-cmd agent register`.)
+plainSessionNotes :: Text -> Bool -> IO [Text]
+plainSessionNotes sid withName = do
+  name <- agentNameFor sid
+  return ([ nameNote name | withName, not (T.null name) ]
+          <> [ T.replace " — pre-approved, it never prompts" "" worktreeNote, planHtmlNote ])
+
+-- A hook's answer: nothing at all when there is nothing to say, else
+-- @{"hookSpecificOutput": {"hookEventName": EV, …}}@.
+hookOutput :: Text -> [Pair] -> Text
+hookOutput _ [] = ""
+hookOutput evName ps = TE.decodeUtf8 . BL.toStrict . encode $ object
+  [ "hookSpecificOutput" .= object (("hookEventName" .= evName) : ps) ]
 
 -- | Which @(session, file, other session)@ overlaps have been pointed out
 -- already — each once.
@@ -1119,15 +1296,20 @@ agentAnswerApproval sid yes mexpected = paneForSession sid >>= \case
     -- (The whole screen: 'tmuxOut' keeps only the first line.)
     screen <- tmuxStdoutOn LocalServer ["capture-pane", "-p", "-t", T.unpack pane]
     recorded <- fmap fst . sePermission <$> eventsFor sid
+    codex <- maybe False ((== "codex") . clAgent) . M.lookup sid <$> claudeLiveBySession
     let flat = T.unwords (T.words screen)
-        asking = "1. Yes" `T.isInfixOf` screen && "Esc to cancel" `T.isInfixOf` screen
+        -- Claude Code: "1. Yes" … "Esc to cancel".  Codex: "1. Yes, proceed
+        -- (y)" … "Press enter to confirm or esc to cancel".
+        asking = "1. Yes" `T.isInfixOf` screen
+                 && T.toLower "Esc to cancel" `T.isInfixOf` T.toLower screen
         expected = mexpected <|> recorded
         matches = maybe True (\e -> approvalKey e `T.isInfixOf` flat) expected
     if not asking then return "It is not asking for approval right now.\n"
     else if not matches then return
       "The approval on screen is not the one shown — look at its pane before answering.\n"
     else do
-        ok <- sendKeysTo pane [if yes then "1" else "Escape"]
+        -- (Codex's own key for "Yes, proceed" is y; Esc is "No" in both.)
+        ok <- sendKeysTo pane [if yes then (if codex then "y" else "1") else "Escape"]
         name <- agentNameFor sid
         return $ if not ok then "tmux would not deliver the answer.\n"
                  else (if yes then "Approved for " else "Denied for ") <> name <> ".\n"
@@ -1178,6 +1360,7 @@ logHook ev proc fs = (`catch` \(_ :: SomeException) -> return ()) $ do
 agentConversation :: Text -> Int -> IO [(Bool, Text)]
 agentConversation sid n = transcriptFor sid >>= \case
   Nothing   -> return []
+  Just path | isRollout path -> (\ts -> drop (max 0 (length ts - n)) ts) <$> rolloutTurns path
   Just path -> (`catch` \(_ :: SomeException) -> return []) $ do
     ls <- withFile path ReadMode $ \h -> do
       size <- hFileSize h
@@ -1214,6 +1397,7 @@ agentConversation sid n = transcriptFor sid >>= \case
     parseJSON' v = maybe (fail "content") return (parseMaybe parseJSON v :: Maybe [Value])
 
 assistantTail :: FilePath -> IO [Text]
+assistantTail path | isRollout path = map snd . filter (not . fst) <$> rolloutTurns path
 assistantTail path = (`catch` \(_ :: SomeException) -> return []) $ do
   ls <- withFile path ReadMode $ \h -> do
     size <- hFileSize h

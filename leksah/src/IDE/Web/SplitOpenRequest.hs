@@ -32,6 +32,7 @@ data SplitTarget
   | STClaudeResume FilePath Text -- ^ @claude --resume <id>@ (dir, session id)
   | STClaudeFork FilePath Text   -- ^ @claude --resume <id> --fork-session@
   | STClaudeAsk FilePath         -- ^ @claude "<explain this file>"@ (the file)
+  | STCodexNew FilePath          -- ^ @codex@ in the project dir
   | STBrowser Int                -- ^ a browser pane by its (pre-minted) id —
                                  --   the URL is already in the pane registry
                                  --   ('IDE.Web.Widget.Browser.rememberUrl')

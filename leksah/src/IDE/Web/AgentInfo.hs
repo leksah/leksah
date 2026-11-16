@@ -94,6 +94,7 @@ import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou, claudeBackgroundSessions,
         claudeFindTranscript, claudeLatestActivity, paneForSession,
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath)
+import IDE.Web.Codex (codexTranscriptOf, isCodexSession)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
@@ -216,6 +217,8 @@ data AgentNode = AgentNode
                                 --   row that came from @claude agents@
   , anUsage    :: Maybe SessionUsage -- ^ its context use, cost and rate limits,
                                 --   from its status line ("IDE.Web.AgentUsage")
+  , anAgent    :: Text          -- ^ which CLI runs it: @claude@ or @codex@ (the
+                                --   badge on the left of its face)
   , anChildren :: [AgentNode] -- ^ the agents it forked
   } deriving (Eq, Show)
 
@@ -822,7 +825,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anBorn     = Nothing
   , anParentName = Nothing
   , anChildNames = map (\(DemoAgent _ _ _ _ _ _ _ _ _ _ nm _ _) -> fromMaybe "" nm) kids
-  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
+  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = "claude"
   , anChildren = map demoNode kids
   }
 #else
@@ -928,7 +931,12 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     -- a `claude` in iTerm, say).  Looked up only for a session that waits on
     -- an approval, and remembered a while.
     reachable <- maybe (return False) (const (paneReachable s)) pending
+    -- A row that is not running says which CLI it was from leksah's own
+    -- record of the Codex sessions it has seen.
+    agent <- if anLive n || anBackground n /= Nothing then return (anAgent n)
+             else (\cx -> if cx then "codex" else "claude") <$> isCodexSession s
     return (s, n { anWorktrees = wls
+                 , anAgent = agent
                  , anName = M.findWithDefault (anName n) s names
                  , anBio = i >>= aiBio
                  , anManager = maybe False aiManager i
@@ -994,7 +1002,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anWorktrees = []
       , anBio = Nothing, anManager = False, anBorn = Nothing
       , anParentName = Nothing, anChildNames = []
-      , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
+      , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = csrAgent r
       , anChildren = [] }
 
     -- A background session with no process, as a row: not live (a click
@@ -1038,6 +1046,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         , anBio = Nothing, anManager = False, anBorn = Nothing
         , anParentName = Nothing, anChildNames = []
         , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anApproval = Nothing
+        , anAgent = "claude"
         , anChildren = [] }
 
     -- Stored agents that are NOT running: either exited (their transcript's mtime
@@ -1049,7 +1058,9 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       cands <- fmap (mapMaybe id) . forM (M.elems infos) $ \i ->
         if aiSession i `M.member` liveRows || null (aiDir i) then return Nothing
         else (`catch` \(_ :: SomeException) -> return Nothing) $ do
-          p  <- claudeTranscriptPath (aiDir i) (aiSession i)
+          -- (A Codex agent's conversation is its rollout.)
+          p  <- codexTranscriptOf (aiSession i)
+                  >>= maybe (claudeTranscriptPath (aiDir i) (aiSession i)) return
           ex <- doesFileExist p
           if not ex then return (starting now i) else do
             t <- getModificationTime p
@@ -1081,7 +1092,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = "claude"
           , anChildren = [] }
       let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
           interrupted i = isNothing (aiSuspended i) && isInterrupted posix i
@@ -1127,7 +1138,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = "claude"
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 

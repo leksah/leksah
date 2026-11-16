@@ -175,6 +175,7 @@ library
         IDE.Web.ThreadPriority
         IDE.Web.Claude
         IDE.Web.ClaudeStatus
+        IDE.Web.Codex
         IDE.Web.AISession
         IDE.Web.Agent
         IDE.Web.AgentEvents

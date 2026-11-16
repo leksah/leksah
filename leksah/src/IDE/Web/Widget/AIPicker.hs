@@ -104,8 +104,8 @@ aiChoiceLabel choiceD = do
     -- attribute maps have to be pinned down here.
     glyphAttr, nameAttr, noteAttr, starAttr :: AIChoice -> Map Text Text
     glyphAttr (AISessionChoice r) = "class" =: ("ai-glyph ai-" <> arState r)
-    glyphAttr (AINewSession _)    = "class" =: "ai-glyph ai-new"
-    glyphFor (AINewSession _) = "+"
+    glyphAttr (AINewSession _ _)  = "class" =: "ai-glyph ai-new"
+    glyphFor (AINewSession _ _) = "+"
     glyphFor (AISessionChoice r) = case arState r of
       "waiting" -> "▲"
       "busy"    -> "◆"
@@ -119,9 +119,9 @@ aiChoiceLabel choiceD = do
       | not (T.null (arName r)) = "class" =: "ai-name"
     nameAttr _                  = "style" =: "display:none"
     titleFor (AISessionChoice r) = arTitle r
-    titleFor (AINewSession _)    = "New Claude session"
+    titleFor (AINewSession cx _) = if cx then "New Codex session" else "New Claude session"
     dirFor (AISessionChoice r) = T.pack (takeFileName (arDir r))
-    dirFor (AINewSession d)    = T.pack (takeFileName d)
+    dirFor (AINewSession _ d)  = T.pack (takeFileName d)
     noteAttr (AISessionChoice r)
       | not (arLive r) = "class" =: "ai-note"
     noteAttr _         = "style" =: "display:none"

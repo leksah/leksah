@@ -448,6 +448,14 @@ commandClaudeNew = CommandIDEAction
   (\app -> readCell (wsCell (appWorkspace app)) >>=
       mapM_ (runClaudeCmd . ClaudeNew . prDir) . activeProject)
 
+-- | Start a new Codex session in the active project's directory.
+commandCodexNew :: Command
+commandCodexNew = CommandIDEAction
+  ""
+  "Start an OpenAI Codex session in the active project"
+  (\app -> readCell (wsCell (appWorkspace app)) >>=
+      mapM_ (runClaudeCmd . CodexNew . prDir) . activeProject)
+
 -- | Continue the most recent Claude Code session in the active project.
 commandClaudeContinue :: Command
 commandClaudeContinue = CommandIDEAction

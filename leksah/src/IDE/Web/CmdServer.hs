@@ -152,6 +152,7 @@ import IDE.Web.WorktreeRegistry
 import IDE.Web.Claude
        (leksahPluginInstall, leksahPluginStatus, leksahPluginUninstall, leksahPluginWrite,
         sessionOwningPid, showLiveSession)
+import IDE.Web.Codex (codexInstall, codexStatus, codexUninstall)
 
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.Handoff (handoffEnabled, requestHandoff)
@@ -419,6 +420,12 @@ handleConn app conn = do
       ("plugin" : rest) | rest `elem` [[], ["status"]] -> leksahPluginStatus >>= reply
       ("plugin" : _) -> reply
         "plugin: install | uninstall | status | write DIR  (leksah must be running)\n"
+      -- Codex sessions report to leksah through hooks installed into Codex's
+      -- own hooks.json (see "IDE.Web.Codex"); Codex runs them once trusted.
+      ("codex" : "install" : _)   -> codexInstall >>= reply
+      ("codex" : "uninstall" : _) -> codexUninstall >>= reply
+      ("codex" : rest) | rest `elem` [[], ["status"]] -> codexStatus >>= reply
+      ("codex" : _) -> reply "codex: install | uninstall | status  (leksah must be running)\n"
 
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point
@@ -825,7 +832,8 @@ handleConn app conn = do
     -- of the WHO lookup — a `ps` walk a hook never needs (agentHook finds the
     -- claude process itself, for the one event that uses it), and hooks come
     -- several times a turn; Stop and SessionStart are synchronous.
-    agentVerb mpid _ ("hook" : ev : raw : _) = agentHook mpid ev raw >>= reply
+    -- (A Codex hook adds @codex@ and the launch token: see "IDE.Web.Codex".)
+    agentVerb mpid _ ("hook" : ev : raw : rest) = agentHook mpid ev raw rest >>= reply
     agentVerb mpid cwd args = do
       me <- maybe (return Nothing) sessionOwningPid mpid
       case args of
@@ -952,6 +960,8 @@ handleConn app conn = do
           "--tab"      -> go fr { frPlace = PlaceTab    } as
           "--window"   -> go fr { frPlace = PlaceTab    } as
           "--fresh"    -> go fr { frFresh = True } as
+          "--codex"    -> go fr { frCodex = True, frFresh = True } as
+          "--claude"   -> go fr { frClaude = True } as
           "--from"     -> arg as $ \v as' -> go fr { frFrom = Just v } as'
           "--as"       -> arg as $ \v as' -> go fr { frRole = Just v } as'
           "--dir"      -> arg as $ \v as' -> go fr { frDir = Just (resolve cwd v) } as'
@@ -1044,6 +1054,9 @@ handleConn app conn = do
       , "      --from SID        fork that session instead of the calling one"
       , "      --as ROLE         a fresh agent in that role (see `agent roles`)"
       , "      --dir DIR         work here (only with --fresh: see `agent fork`)"
+      , "      --codex           a fresh OpenAI Codex agent instead of Claude Code"
+      , "      --claude          Claude Code, also when you are a Codex agent (whose"
+      , "                        forks are fresh Codex agents otherwise)"
       , "  list                  live sessions: id, name, state (waiting/busy/idle),"
       , "                        detail, pane, dir, title"
       , "      --all             also the agents not running but waiting to be"
