@@ -19,6 +19,11 @@ module IDE.Web.AgentEvents
   , recordPermission
   , recordFailure
   , recordTurnEnd
+  , recordPromptSubmit
+  , recordSubagentStart
+  , recordSubagentStop
+  , recordCompacting
+  , recordSessionEnd
   , recordEdit
   , recordCwd
   , editedRecently
@@ -48,10 +53,16 @@ data SessionEvents = SessionEvents
                                           --   (the last few): see 'recordToolStart'
   , seTurnEnd    :: Maybe Double          -- ^ when its last turn ended (Stop /
                                           --   StopFailure)
+  , seSubagents  :: [(Text, (Text, Double))]
+                                          -- ^ the subagents running now, oldest
+                                          --   first: agent_id → (agent type,
+                                          --   when it started)
+  , seCompacting :: Maybe Double          -- ^ since when it is compacting its
+                                          --   conversation (PreCompact)
   } deriving (Eq, Show)
 
 none :: SessionEvents
-none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing
+none = SessionEvents [] Nothing Nothing [] Nothing [] Nothing [] Nothing
 
 -- | The tool call running now: the newest of those still running.
 seTool :: SessionEvents -> Maybe (Text, Double)
@@ -133,6 +144,35 @@ recordFailure sid err = update sid $ \now e ->
 recordTurnEnd :: Text -> IO ()
 recordTurnEnd sid = update sid $ \now e ->
   e { seRunning = [], sePermission = Nothing, seError = Nothing, seTurnEnd = Just now }
+
+-- | The user (or `agent send --submit`) submitted a prompt (UserPromptSubmit):
+-- a new turn starts — no error stands, and it is not "just after a turn"
+-- any more (so its first tool call is not taken for a late report).
+recordPromptSubmit :: Text -> IO ()
+recordPromptSubmit sid = update sid $ \_ e -> e { seError = Nothing, seTurnEnd = Nothing }
+
+-- | A subagent started (SubagentStart).  Called again for one that is
+-- resumed, which keeps its place.
+recordSubagentStart :: Text -> Text -> Text -> IO ()
+recordSubagentStart sid aid kind = update sid $ \now e ->
+  if aid `elem` map fst (seSubagents e) then e
+  else e { seSubagents = take 20 (seSubagents e <> [(aid, (kind, now))]) }
+
+-- | A subagent finished (SubagentStop).
+recordSubagentStop :: Text -> Text -> IO ()
+recordSubagentStop sid aid = update sid $ \_ e ->
+  e { seSubagents = filter ((/= aid) . fst) (seSubagents e) }
+
+-- | Compaction started (True, PreCompact) or finished (False, PostCompact or
+-- the SessionStart that follows it).
+recordCompacting :: Text -> Bool -> IO ()
+recordCompacting sid on = update sid $ \now e ->
+  e { seCompacting = if on then Just now else Nothing }
+
+-- | The session ended (SessionEnd): nothing of it is running any more.
+recordSessionEnd :: Text -> IO ()
+recordSessionEnd sid = update sid $ \_ e ->
+  e { seRunning = [], sePermission = Nothing, seSubagents = [], seCompacting = Nothing }
 
 -- | It edited these files (kept to the 100 most recent).
 recordEdit :: Text -> [FilePath] -> IO ()

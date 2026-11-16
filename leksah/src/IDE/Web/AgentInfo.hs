@@ -29,6 +29,7 @@ module IDE.Web.AgentInfo
   , dismissAgent
   , markAgentDone
   , setAgentRole
+  , titleForClaude
   , setAgentSuspended
   , Interruption(..)
   , syncAgentLiveness
@@ -51,7 +52,7 @@ import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar, modifyMVar_)
 import Control.Exception (catch, SomeException)
 import Control.Applicative ((<|>))
-import Control.Monad (forM, unless, void, when)
+import Control.Monad (forM, mfilter, unless, void, when)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
@@ -65,7 +66,7 @@ import Language.Javascript.JSaddle (eval, valToText)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isAlphaNum, isSpace)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
-import Data.List (sortOn)
+import Data.List (nub, sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -132,6 +133,10 @@ data AgentInfo = AgentInfo
                                -- ^ it did not stop: its host went down under it
                                --   (a restart, leksah's tmux server dying) —
                                --   offered back until resumed or forgotten
+  , aiTitleSent :: Maybe Text  -- ^ the title leksah last gave Claude Code for this
+                               --   session (a hook's @sessionTitle@): when the
+                               --   session's title is something else, the user
+                               --   named it (@/rename@), and leksah leaves it be
   } deriving (Eq, Show)
 
 -- | An agent taken down with its host: when leksah found out, and the host it
@@ -155,7 +160,8 @@ instance ToJSON AgentInfo where
     , "born" .= aiBorn i, "done" .= aiDone i, "doneAt" .= aiDoneAt i
     , "role" .= aiRole i, "bio" .= aiBio i, "bioAt" .= aiBioAt i
     , "suspended" .= aiSuspended i, "manager" .= aiManager i
-    , "ranOn" .= aiRanOn i, "interrupted" .= aiInterrupted i ]
+    , "ranOn" .= aiRanOn i, "interrupted" .= aiInterrupted i
+    , "titleSent" .= aiTitleSent i ]
 
 instance FromJSON AgentInfo where
   parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
@@ -164,7 +170,7 @@ instance FromJSON AgentInfo where
     <*> o .:? "done" <*> o .:? "doneAt" <*> o .:? "role"
     <*> o .:? "bio" <*> o .:? "bioAt" <*> o .:? "suspended"
     <*> (fromMaybe False <$> o .:? "manager")
-    <*> o .:? "ranOn" <*> o .:? "interrupted"
+    <*> o .:? "ranOn" <*> o .:? "interrupted" <*> o .:? "titleSent"
 
 -- | One row of the Agents pane: an agent, and the agents it forked.
 data AgentNode = AgentNode
@@ -429,6 +435,26 @@ setAgentRole :: Text -> Text -> IO ()
 setAgentRole sid role = withInfos $ \m ->
   (M.adjust (\i -> i { aiRole = Just role }) sid m, ())
 
+-- | The title to give Claude Code for session @sid@ (a hook's @sessionTitle@),
+-- if any: what the agent calls itself (@agent describe --title@), when that is
+-- not already the session's title (@current@, the hook's @session_title@).
+-- Never over a name the user chose: a session title leksah did not set
+-- ('aiTitleSent') came from @/rename@ or @--name@, and stays.  Records what
+-- it hands out; reads before writing, so the common no-change case (every
+-- prompt) does not rewrite the store.
+titleForClaude :: Text -> Maybe Text -> IO (Maybe Text)
+titleForClaude sid current = do
+  m <- peekInfos
+  case M.lookup sid m of
+    Just i | Just t <- clean <$> aiTitle i, not (T.null t), Just t /= current'
+           , isNothing current' || current' == aiTitleSent i -> do
+      withInfos $ \m' -> (M.adjust (\x -> x { aiTitleSent = Just t }) sid m', ())
+      return (Just t)
+    _ -> return Nothing
+  where
+    current' = mfilter (not . T.null) (T.strip <$> current)
+    clean = T.take 80 . T.strip . T.takeWhile (/= '\n')
+
 -- | The agent that started @sid@, if leksah saw it happen.
 agentParentOf :: Text -> IO (Maybe Text)
 agentParentOf sid = (aiParent =<<) . M.lookup sid <$> peekInfos
@@ -445,7 +471,7 @@ blank sid dir = AgentInfo
   , aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
   , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing
   , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False
-  , aiRanOn = Nothing, aiInterrupted = Nothing }
+  , aiRanOn = Nothing, aiInterrupted = Nothing, aiTitleSent = Nothing }
 
 --------------------------------------------------------------------------------
 -- liveness: which agents were running, and which of them were interrupted
@@ -832,10 +858,20 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     let i = M.lookup s infos
         e = M.lookup s events
         recentErr = e >>= seError
-        activity = case anState n of
+        activity0 = case anState n of
           "waiting" | Just (p, _) <- e >>= sePermission -> Just ("needs approval: " <> p)
           state | state `elem` ["busy", "shell"], Just (t, _) <- e >>= seTool -> Just t
           _ -> anActivity n
+        -- Compacting its conversation says more than anything else it is
+        -- doing; its subagents ride along with whatever that is.
+        subs = nub (maybe [] (map (fst . snd) . seSubagents) e)
+        nSubs = maybe 0 (length . seSubagents) e
+        subsText = T.pack (show nSubs) <> (if nSubs == 1 then " subagent" else " subagents")
+                   <> " (" <> T.intercalate ", " subs <> ")"
+        activity
+          | isJust (e >>= seCompacting) = Just "Compacting the conversation…"
+          | nSubs == 0 = activity0
+          | otherwise = Just $ maybe (subsText <> " running") (<> " · " <> subsText) activity0
     return (s, n { anWorktrees = wls
                  , anName = M.findWithDefault (anName n) s names
                  , anBio = i >>= aiBio
