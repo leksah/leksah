@@ -72,6 +72,7 @@ module IDE.Web.Widget.Terminal
   , joinTmuxPane
   , joinTmuxPaneFull
   , breakTmuxPaneTo
+  , rehomeAgentWindow
   , windowLayoutString
   , movePaneToPane
   , selectWindowLayout
@@ -1272,6 +1273,11 @@ data TmuxPane = TmuxPane
                      --   ("Wren" — "IDE.Web.AgentNames"), resolved like
                      --   'tpClaudeTitle'.  What the tab leads with and what the
                      --   bell announcement says.
+  , tpAgentTag :: Text
+                     -- ^ the pane's @\@leksah_agent@ option (@""@ = none): the
+                     --   name leksah last tagged it with ('tagAgentPanes'), so
+                     --   the agent travels with the pane and plain tmux (a
+                     --   pane-border format, a script) can see it too.
   } deriving (Eq, Show)
 
 -- | A tmux window within a session: its index, a display label (its index and
@@ -1291,6 +1297,9 @@ data TmuxWindow = TmuxWindow
   , twSilence  :: Bool
   , twRunKey   :: Text        -- ^ the @\@leksah_run@ marker (@""@ = none), e.g.
                               --   @\<dir\>#claude@ for a Claude Code window
+  , twAutoName :: Bool        -- ^ tmux's @automatic-rename@ is on: the name is
+                              --   tmux's (the running command), not one a
+                              --   person gave it — so leksah may name it
   , twPanes    :: [TmuxPane]
   } deriving (Eq, Show)
 
@@ -1316,10 +1325,10 @@ listTerminalTree = do
     agents  <- demoAgentInfo
     let pane sid name = case M.lookup name agents of
           Just (title, st) ->
-            TmuxPane 0 ("%" <> sid) name 0 True "" "" (Just title) (Just st) (Just name)
-          Nothing -> TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing Nothing
+            TmuxPane 0 ("%" <> sid) name 0 True "" "" (Just title) (Just st) (Just name) name
+          Nothing -> TmuxPane 0 ("%" <> sid) name 0 True "" "" Nothing Nothing Nothing ""
     return $ M.fromListWith (\_ old -> old)
-        [ (sid, (name, [ TmuxWindow 0 ("@" <> sid) name True False False False ""
+        [ (sid, (name, [ TmuxWindow 0 ("@" <> sid) name True False False False "" False
                              [ pane sid name ] ]))
         | (sid, name) <- ts ++ created ]
 #else
@@ -1360,9 +1369,11 @@ enrichClaudeTitles tree
       byDir  <- M.fromList <$> mapM (\d -> (,) d <$> claudeSessionsFor d) claudeDirs
       names  <- agentNames
       conts  <- agentContinuations
-      M.traverseWithKey (renameAfterAgent names) $ M.map (\(nm, ws) ->
+      tree' <- M.traverseWithKey (renameAfterAgent names) $ M.map (\(nm, ws) ->
           (nm, [ w { twPanes = map (fillPane owners conts byDir names) (twPanes w) }
                | w <- ws ])) tree
+      mapM_ (mapM_ (tagAgentWindow (M.elems names)) . snd) tree'
+      return tree'
   where
     claudeDirs = nub (mapMaybe claudePaneDir
                        [ p | (_, (_, ws)) <- M.toList tree, w <- ws, p <- twPanes w ])
@@ -1406,6 +1417,30 @@ enrichClaudeTitles tree
                      Just ds -> not (T.null ds) && T.all isDigit ds
                      Nothing -> False
       Nothing   -> False
+    -- Put the agent's name where tmux itself shows it: on each pane as
+    -- @\@leksah_agent@ (so the name travels with the pane wherever it is
+    -- dragged, and the drag code can tell an agent's pane by asking tmux),
+    -- and as the name of a window holding exactly one agent — the bell
+    -- announcement speaks the window name, which was "bash".  A window name
+    -- someone chose (automatic-rename off) is left alone, unless it is
+    -- another agent's name (the pane that agent was in has moved on).  A
+    -- window whose agents have all left gets tmux's own naming back.  Only
+    -- writes when something differs, so a settled tree costs nothing.
+    tagAgentWindow known w = do
+      forM_ (twPanes w) $ \p -> case tpAgentName p of
+        Just a | a /= tpAgentTag p ->
+          tmuxCmd ["set-option", "-p", "-t", T.unpack (tpId p), "@leksah_agent", T.unpack a]
+        Nothing | not (T.null (tpAgentTag p)) ->
+          tmuxCmd ["set-option", "-p", "-u", "-t", T.unpack (tpId p), "@leksah_agent"]
+        _ -> return ()
+      let cur = fromMaybe (twLabel w)
+                  (T.stripPrefix (T.pack (show (twIndex w)) <> ": ") (twLabel w))
+      case nub (mapMaybe tpAgentName (twPanes w)) of
+        [a] | a /= cur, twAutoName w || cur `elem` known ->
+          tmuxCmd ["rename-window", "-t", T.unpack (twId w), T.unpack a]
+        [] | not (twAutoName w), cur `elem` known ->
+          tmuxCmd ["set-option", "-w", "-t", T.unpack (twId w), "automatic-rename", "on"]
+        _ -> return ()
     fillPane owners conts byDir names p = case claudePaneDir p of
       -- Not one leksah started Claude in — but it may still show a Claude
       -- session (@claude attach@ in a plain terminal): then it is that agent's.
@@ -1480,7 +1515,8 @@ paneTreeFormat = intercalate "\t"
     , "#{window_active}", "#{window_bell_flag}", "#{window_activity_flag}"
     , "#{window_silence_flag}", "#{@leksah_run}", "#{pane_index}", "#{pane_active}"
     , "#{pane_id}", "#{pane_pid}", "#{pane_current_command}"
-    , "#{pane_current_path}", "#{pane_title}" ]
+    , "#{pane_current_path}", "#{automatic-rename}", "#{@leksah_agent}"
+    , "#{pane_title}" ]
 
 -- | Run tmux on a remote host over ssh (no PTY, BatchMode — key auth only).
 -- 'Nothing' when ssh or the remote tmux fails (host down, no server, …).
@@ -1657,9 +1693,9 @@ parsePaneTree :: String -> Map Text (Text, [TmuxWindow])
 parsePaneTree out = M.map toSession grouped
   where
     rows =
-      [ (sid, sname, wi, wid, wn, wa == "1", wb == "1", wac == "1", ws == "1", runkey, pidx, pa == "1", pid, ppid, ppath, paneName)
+      [ (sid, sname, wi, wid, wn, wa == "1", wb == "1", wac == "1", ws == "1", runkey, pidx, pa == "1", pid, ppid, ppath, paneName, auto == "1", tag)
       | line <- lines out
-      , (sid:sname:wiT:wid:wn:wa:wb:wac:ws:runkey:piT:pa:pid:ppidT:cmd:ppath:rest) <- [T.splitOn "\t" (T.pack line)]
+      , (sid:sname:wiT:wid:wn:wa:wb:wac:ws:runkey:piT:pa:pid:ppidT:cmd:ppath:auto:tag:rest) <- [T.splitOn "\t" (T.pack line)]
       , not (T.null sid)
       -- The control-mode monitor's hidden session is not a real terminal.
       , sname /= monitorSessionName
@@ -1670,23 +1706,23 @@ parsePaneTree out = M.map toSession grouped
             -- An old remote tmux with no #{pane_pid} just yields 0 (unknown).
             ppid     = maybe 0 id (readMaybe (T.unpack ppidT)) ]
     -- session id -> (name, window index -> (window id, name, active, bell, activity, silence, @leksah_run, pane idx -> (paneName, active, pane id, pane pid, path, @leksah_run)))
-    grouped :: Map Text (Text, Map Int (Text, Text, Bool, Bool, Bool, Bool, Text, Map Int (Text, Bool, Text, Int, Text, Text)))
+    grouped :: Map Text (Text, Map Int (Text, Text, Bool, Bool, Bool, Bool, Text, Bool, Map Int (Text, Bool, Text, Int, Text, Text, Text)))
     grouped = M.fromListWith mergeSess
-      [ (sid, (sname, M.singleton wi (wid, wn, wa, wb, wac, ws, runkey, M.singleton pidx (paneName, pa, pid, ppid, ppath, runkey))))
-      | (sid, sname, wi, wid, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, ppid, ppath, paneName) <- rows ]
+      [ (sid, (sname, M.singleton wi (wid, wn, wa, wb, wac, ws, runkey, auto, M.singleton pidx (paneName, pa, pid, ppid, ppath, runkey, tag))))
+      | (sid, sname, wi, wid, wn, wa, wb, wac, ws, runkey, pidx, pa, pid, ppid, ppath, paneName, auto, tag) <- rows ]
     mergeSess (sname, w1) (_, w2) = (sname, M.unionWith mergeWin w1 w2)
     -- The run key is a *pane* option (rows differ within a window — e.g. a
     -- claude pane dragged into a window of shell panes), so a window's
     -- 'twRunKey' is any non-empty pane key; legacy window-tagged windows give
     -- every row the same inherited key, so this reduces to the old behaviour.
-    mergeWin (wid, wn, wa, wb, wac, ws, rk1, ps1) (_, _, _, _, _, _, rk2, ps2) =
-      (wid, wn, wa, wb, wac, ws, if T.null rk1 then rk2 else rk1, ps1 <> ps2)
+    mergeWin (wid, wn, wa, wb, wac, ws, rk1, auto, ps1) (_, _, _, _, _, _, rk2, _, ps2) =
+      (wid, wn, wa, wb, wac, ws, if T.null rk1 then rk2 else rk1, auto, ps1 <> ps2)
     toSession (sname, wm) =
       ( sname
-      , [ TmuxWindow wi wid (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk
-            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) ppid pa prk ppath Nothing Nothing Nothing
-            | (pidx, (paneName, pa, pid, ppid, ppath, prk)) <- M.toAscList ps ]
-        | (wi, (wid, wn, wa, wb, wac, ws, rk, ps)) <- M.toAscList wm ] )
+      , [ TmuxWindow wi wid (T.pack (show wi) <> ": " <> wn) wa wb wac ws rk auto
+            [ TmuxPane pidx pid (T.pack (show pidx) <> ": " <> paneName) ppid pa prk ppath Nothing Nothing Nothing tag
+            | (pidx, (paneName, pa, pid, ppid, ppath, prk, tag)) <- M.toAscList ps ]
+        | (wi, (wid, wn, wa, wb, wac, ws, rk, auto, ps)) <- M.toAscList wm ] )
 
 -- | Make window @w@ of session @s@ (a tmux session id) the current window.
 selectTmuxWindow :: Text -> Int -> IO ()
@@ -1868,6 +1904,60 @@ breakTmuxPaneTo p dstS = tmuxOnIds [p, dstS] Nothing $ \srv raw -> do
                  "-s", raw p, "-t", raw dstS <> ":"]
             return $ qualifyTmuxId srv <$>
                 listToMaybe (filter (not . T.null) (map T.strip (T.lines out)))
+
+-- | The one agent whose panes window @w@ holds, by their @\@leksah_agent@
+-- tags ('tagAgentWindow' keeps them) — 'Nothing' for a window with no agent,
+-- or with two.
+windowAgent :: Text -> IO (Maybe Text)
+windowAgent w = tmuxOnIds [w] Nothing $ \srv raw -> do
+    out <- tmuxStdoutOn srv ["list-panes", "-t", raw w, "-F", "#{@leksah_agent}"]
+    return $ case nub (filter (not . T.null) (map T.strip (T.lines out))) of
+      [a] -> Just a
+      _   -> Nothing
+
+-- | The session an agent's window belongs in: the one named after the agent
+-- (its own, as 'newSessionWindow' made it).
+agentHomeName :: Text -> Text
+agentHomeName a = a
+
+-- | Window @w@ is about to become a leksah window (a tab) of its own, in
+-- session @cur@.  When it holds one agent's panes, move it to that agent's
+-- home session ('agentHomeName'; created when there is none) and return that
+-- session's id; otherwise, or on any failure, return @cur@.  Dragging Wolf's
+-- pane into Koala's window and out again otherwise left Wolf's tab living in
+-- Koala's session.
+--
+-- Run it under the conversion guard ('beginConversion'): until the model
+-- names the moved window it is a stray, and so is the placeholder window a
+-- brand-new session is born with, until it is killed here.
+rehomeAgentWindow :: Text -> Text -> IO Text
+rehomeAgentWindow w cur = (`catch` \(_ :: SomeException) -> return cur) $
+  windowAgent w >>= \case
+    Nothing -> return cur
+    Just a -> tmuxOnIds [w, cur] cur $ \srv raw -> do
+      let home = agentHomeName a
+      ls <- T.lines <$> tmuxStdoutOn srv
+              ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
+      let sessions = [ (sid, T.intercalate "\t" nm)
+                     | l <- ls, (sid : nm) <- [T.splitOn "\t" l] ]
+      case lookup (raw cur) [ (T.unpack sid, nm) | (sid, nm) <- sessions ] of
+        Just nm | nm == home -> return cur
+        _ -> do
+          mdst <- case [ sid | (sid, nm) <- sessions, nm == home ] of
+            (sid : _) -> return (Just (sid, Nothing))
+            [] -> do
+              out <- tmuxStdoutOn srv
+                ["new-session", "-d", "-s", T.unpack home
+                , "-P", "-F", "#{session_id}\t#{window_id}"]
+              return $ case T.splitOn "\t" (T.strip out) of
+                [sid, pw] | not (T.null sid) -> Just (sid, Just pw)
+                _                            -> Nothing
+          case mdst of
+            Nothing -> return cur
+            Just (sid, mplaceholder) -> do
+              tmuxCmdOn srv ["move-window", "-d", "-s", raw w, "-t", T.unpack sid <> ":"]
+              forM_ mplaceholder $ \pw -> tmuxCmdOn srv ["kill-window", "-t", T.unpack pw]
+              return (qualifyTmuxId srv sid)
 
 -- | Rename session @s@ (a session id) to @name@.
 renameTmuxSession :: Text -> Text -> IO ()
