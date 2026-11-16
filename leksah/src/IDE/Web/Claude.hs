@@ -24,6 +24,9 @@ module IDE.Web.Claude
   , ClaudeLive(..)
   , claudeLiveSessions
   , claudeLiveBySession
+  , ClaudeBackground(..)
+  , claudeBackgroundSessions
+  , claudeRemoveBackground
   , claudeLiveOwners
   , ClaudeCmd(..)
   , AgentSpec(..)
@@ -79,6 +82,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
        (UTCTime, NominalDiffTime, getCurrentTime, diffUTCTime)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 
 import Data.Aeson
        (Object, Value(..), decodeStrict', withObject, (.:), (.:?), object, (.=),
@@ -106,7 +110,10 @@ import System.IO
 import IDE.Utils.RemotePath (isRemotePath)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Exit (ExitCode(..))
-import System.Process (createProcess, proc, readProcess, readProcessWithExitCode)
+import System.Process
+       (CreateProcess(..), StdStream(..), createProcess, proc, readProcess,
+        readProcessWithExitCode, terminateProcess, waitForProcess)
+import System.Timeout (timeout)
 import Text.Read (readMaybe)
 
 import IDE.App (appUi, getGlobalApp)
@@ -271,6 +278,99 @@ claudeSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
                 , clJob        = mfilter (not . T.null) (v >>= objField "jobId")
                 , clKind       = mfilter (not . T.null) (v >>= objField "kind") } ]
           _ -> []
+
+-- | One background session (@claude --bg@, or one dispatched from @claude
+-- agents@), as the CLI's own @claude agents --json@ reports it — the one
+-- documented, machine-readable list of them.  A background session that is
+-- running has a session file like any other and shows up in
+-- 'claudeLiveBySession'; one that has stopped (blocked on a question,
+-- finished, failed, stopped) has no process and no session file, so this is
+-- the only way leksah sees it at all.
+data ClaudeBackground = ClaudeBackground
+  { cbId      :: Text            -- ^ the short id @claude attach@ takes
+  , cbSession :: Text            -- ^ the session id (@claude --resume@ takes it)
+  , cbName    :: Maybe Text
+  , cbState   :: Text            -- ^ working | blocked | done | failed | stopped
+  , cbDir     :: FilePath
+  , cbStarted :: Maybe Double    -- ^ POSIX seconds
+  , cbPid     :: Maybe Int       -- ^ while its process is alive
+  } deriving (Eq, Show)
+
+-- | The background sessions, from @claude agents --json@ — CACHED: the CLI
+-- takes a few hundred ms, and the Agents pane polls every 2s.  Returns what
+-- the last run found at once, and starts a fresh run in the background when
+-- that is older than 'backgroundTtl' (one at a time); so the first call after
+-- start-up returns @[]@ and the list fills in on the next poll.  Never throws:
+-- no @claude@, a failed run or unparsable output keep the previous list.
+claudeBackgroundSessions :: IO [ClaudeBackground]
+claudeBackgroundSessions = do
+  now <- realToFrac <$> getPOSIXTime
+  start <- atomicModifyIORef' backgroundRef $ \(at, running, xs) ->
+    if not running && now - at > backgroundTtl
+      then ((at, True, xs), True) else ((at, running, xs), False)
+  when start . void . forkIO $ do
+    fresh <- (Just <$> runAgentsJson) `catch` \(_ :: SomeException) -> return Nothing
+    done <- realToFrac <$> getPOSIXTime
+    atomicModifyIORef' backgroundRef $ \(_, _, xs) ->
+      ((done, False, fromMaybe xs fresh), ())
+  (\(_, _, xs) -> xs) <$> readIORef backgroundRef
+ where
+  -- The output is read as BYTES (it is UTF-8 JSON; a String round trip
+  -- through the locale would mangle any non-ASCII name or path), and under a
+  -- timeout: a CLI stuck on a prompt or a network stall must not wedge the
+  -- refresh, which only ever runs one at a time.
+  runAgentsJson = findExecutable "claude" >>= \case
+    Nothing  -> return []
+    Just exe -> do
+      (_, Just hout, _, ph) <- createProcess (proc exe ["agents", "--json"])
+        { std_in = NoStream, std_out = CreatePipe, std_err = NoStream }
+      r <- timeout 15000000 $ do
+        out <- BS.hGetContents hout
+        (,) out <$> waitForProcess ph
+      case r of
+        Just (out, ExitSuccess) | Just vs <- decodeStrict' out -> return (mapMaybe one vs)
+        Nothing -> do
+          terminateProcess ph
+          ioError (userError "claude agents --json timed out")
+        _ -> ioError (userError "claude agents --json failed")
+  one v = do
+    k <- objField "kind" v
+    if (k :: Text) /= "background" then Nothing else do
+      sid <- objField "sessionId" v
+      Just ClaudeBackground
+        { cbId      = fromMaybe (T.take 8 sid) (objField "id" v)
+        , cbSession = sid
+        , cbName    = mfilter (not . T.null) (objField "name" v)
+        , cbState   = fromMaybe "working" (objField "state" v)
+        , cbDir     = maybe "" (dropTrailingPathSeparator . T.unpack) (objField "cwd" v)
+        , cbStarted = (/ 1000) . fromInteger <$> objField "startedAt" v
+        , cbPid     = objField "pid" v }
+
+-- | Remove background session @jobId@ from Claude Code's list (@claude rm@:
+-- it keeps the conversation, and deletes the session's worktree only when
+-- that is safe).  Answers what the CLI said.  The Agents pane's Forget, for a
+-- row that came from @claude agents@ — leksah's own record has nothing to
+-- forget, and the row would come straight back.
+claudeRemoveBackground :: Text -> IO Text
+claudeRemoveBackground jobId = (`catch` \(e :: SomeException) -> return (T.pack (show e))) $
+  findExecutable "claude" >>= \case
+    Nothing  -> return "claude is not on PATH"
+    Just exe -> do
+      r <- timeout 30000000 (readProcessWithExitCode exe ["rm", T.unpack jobId] "")
+      atomicModifyIORef' backgroundRef (\(_, running, xs) ->
+        ((0, running, filter ((/= jobId) . cbId) xs), ()))
+      return $ case r of
+        Nothing -> "claude rm " <> jobId <> " timed out"
+        Just (_, out, err) -> T.strip (T.pack (out <> err))
+
+-- | (when the last run finished, whether one is running now, what it found)
+{-# NOINLINE backgroundRef #-}
+backgroundRef :: IORef (Double, Bool, [ClaudeBackground])
+backgroundRef = unsafePerformIO (newIORef (0, False, []))
+
+-- | How old the cached @claude agents --json@ may get before a poll refreshes it.
+backgroundTtl :: Double
+backgroundTtl = 10
 
 -- | Live sessions keyed by session id, with dead leftovers dropped: a session
 -- file can outlive its process (@kill -9@, a crash), so the pids are checked

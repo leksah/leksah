@@ -79,7 +79,7 @@ import IDE.Web.AgentHost (RanOn)
 import IDE.Web.AgentInfo
        (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
         interruptedOffer, latestInterruption)
-import IDE.Web.Claude (ClaudeCmd(..), runClaudeCmd)
+import IDE.Web.Claude (ClaudeCmd(..), claudeRemoveBackground, runClaudeCmd)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
         dimColor, fgColor, hoverColor)
@@ -112,7 +112,11 @@ agentCardActions toast refresh = CardActions
       toast ("Asked " <> displayName n <> " to refresh how it appears")
   , caSuspend = \n -> agentSuspend (anSession n) False >>= toast . T.strip >> refresh
   , caResume  = \n -> agentResume (anSession n) >>= either toast (toast . T.strip) >> refresh
-  , caForget  = \n -> dismissAgent (anSession n) >> refresh
+  -- A row from `claude agents` (a background session) is forgotten by the
+  -- CLI itself — `claude rm` — or it would come straight back.
+  , caForget  = \n -> case anBackground n of
+      Just job -> claudeRemoveBackground job >>= toast >> refresh
+      Nothing  -> dismissAgent (anSession n) >> refresh
   , caRename  = \n new -> renameAgentEverywhere (anSession n) new >>= \case
       Left err -> toast err
       Right _  -> refresh
