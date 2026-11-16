@@ -94,7 +94,7 @@ import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou, claudeBackgroundSessions,
         claudeFindTranscript, claudeLatestActivity, paneForSession,
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath)
-import IDE.Web.Codex (isCodexSession)
+import IDE.Web.Codex (codexTranscriptOf, isCodexSession)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
@@ -1058,7 +1058,9 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       cands <- fmap (mapMaybe id) . forM (M.elems infos) $ \i ->
         if aiSession i `M.member` liveRows || null (aiDir i) then return Nothing
         else (`catch` \(_ :: SomeException) -> return Nothing) $ do
-          p  <- claudeTranscriptPath (aiDir i) (aiSession i)
+          -- (A Codex agent's conversation is its rollout.)
+          p  <- codexTranscriptOf (aiSession i)
+                  >>= maybe (claudeTranscriptPath (aiDir i) (aiSession i)) return
           ex <- doesFileExist p
           if not ex then return (starting now i) else do
             t <- getModificationTime p

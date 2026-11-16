@@ -961,6 +961,7 @@ handleConn app conn = do
           "--window"   -> go fr { frPlace = PlaceTab    } as
           "--fresh"    -> go fr { frFresh = True } as
           "--codex"    -> go fr { frCodex = True, frFresh = True } as
+          "--claude"   -> go fr { frClaude = True } as
           "--from"     -> arg as $ \v as' -> go fr { frFrom = Just v } as'
           "--as"       -> arg as $ \v as' -> go fr { frRole = Just v } as'
           "--dir"      -> arg as $ \v as' -> go fr { frDir = Just (resolve cwd v) } as'
@@ -1054,6 +1055,8 @@ handleConn app conn = do
       , "      --as ROLE         a fresh agent in that role (see `agent roles`)"
       , "      --dir DIR         work here (only with --fresh: see `agent fork`)"
       , "      --codex           a fresh OpenAI Codex agent instead of Claude Code"
+      , "      --claude          Claude Code, also when you are a Codex agent (whose"
+      , "                        forks are fresh Codex agents otherwise)"
       , "  list                  live sessions: id, name, state (waiting/busy/idle),"
       , "                        detail, pane, dir, title"
       , "      --all             also the agents not running but waiting to be"

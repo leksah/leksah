@@ -1113,7 +1113,7 @@ mcpTools =
       , ("role",   "string", "Start a fresh agent in this role (a Claude Code subagent definition in .claude/agents/; see list_agent_roles)")
       , ("fresh",  "boolean", "Do NOT inherit your conversation: a clean agent that knows only this prompt (and the project's CLAUDE.md)")
       , ("dir",    "string", "Working directory — only with fresh (a forked conversation stays in its own directory)")
-      , ("agent",  "string", "claude (default) or codex — codex starts a fresh OpenAI Codex agent")
+      , ("agent",  "string", "claude or codex: which CLI the agent runs (default: yours — a Codex agent's forks are fresh Codex agents)")
       , ("place",  "string", "beside (default), below, or tab") ] ["prompt"]
   , mcpTool "find_agent"
       "Which agent in this IDE should take a piece of work? Ranks the running \
@@ -1297,6 +1297,7 @@ mcpCall params = do
         Just p  -> sock $ ["agent", "fork"]
                        <> [ "--fresh" | mcpBool "fresh" args ]
                        <> [ "--codex" | mcpText "agent" args == Just "codex" ]
+                       <> [ "--claude" | mcpText "agent" args == Just "claude" ]
                        <> maybe [] (\d -> ["--dir", T.unpack d]) (mcpText "dir" args)
                        <> maybe [] (\ro -> ["--as", T.unpack ro]) (mcpText "role" args)
                        <> case mcpText "place" args of

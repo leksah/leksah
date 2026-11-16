@@ -132,6 +132,7 @@ import IDE.App (appNote, appUi, getGlobalApp)
 import IDE.Web.Codex
        (CodexLive(..), codexLiveRecords, codexEnsureInstalled, codexWriteScripts,
         codexClaimLaunch, codexRememberLaunch, codexStarted, isCodexProgram,
+        codexAvailable, codexInteractive, codexKnownPid,
         codexTranscriptOf, rolloutFirstPrompt)
 import IDE.Reactive (readCell)
 import IDE.Web.Instance (tmuxServerSocket)
@@ -1004,34 +1005,41 @@ codexCommandLine s = do
 -- carries the name and the agent record across ('IDE.Web.Agent.codexHook').
 -- Only top-level interactive codex processes count — not its helpers, nor
 -- @codex exec@ and the other subcommands.
+--
+-- Without @codex@ installed it does nothing at all (no @ps@); a codex running
+-- outside leksah's terminals is looked at once, not on every poll.
 codexDiscover :: IO ()
-codexDiscover = (`catch` \(_ :: SomeException) -> return ()) $ do
+codexDiscover = (`catch` \(_ :: SomeException) -> return ()) $
+ codexAvailable >>= \avail -> when avail $ do
   procs <- readProcessArgs
   recs  <- codexLiveRecords
+  rejected <- readIORef discoverRejected
   let parents = fst <$> procs
       covered = S.fromList (map cxPid recs)
       prog p = maybe "" (takeWhile (/= ' ') . snd) (M.lookup p procs)
-      interactive args = case drop 1 (words args) of
-        (w : _) | w `elem` [ "exec", "e", "review", "login", "logout", "mcp", "plugin"
-                           , "mcp-server", "app-server", "remote-control", "app"
-                           , "completion", "update", "doctor", "sandbox", "debug"
-                           , "apply", "a", "archive", "delete", "unarchive", "cloud"
-                           , "exec-server", "features", "help", "execpolicy" ] -> False
-        _ -> True
-      cands = [ p | (p, (q, args)) <- M.toList procs
-                  , isCodexProgram (takeWhile (/= ' ') args), interactive args
-                  , not (isCodexProgram (prog q))       -- not one of its helpers
-                  , p `S.notMember` covered ]
+      cands0 = [ p | (p, (q, args)) <- M.toList procs
+                   , isCodexProgram (takeWhile (/= ' ') args), codexInteractive args
+                   , not (isCodexProgram (prog q))       -- not one of its helpers
+                   , p `S.notMember` covered, p `S.notMember` rejected ]
+  cands <- filterM (fmap not . codexKnownPid) cands0
+  -- (Forget rejections of processes that are gone: pids are reused.)
+  writeIORef discoverRejected (S.filter (`M.member` procs) rejected)
   unless (null cands) $ do
     panes <- livePanePids
     forM_ cands $ \cp ->
       case [ pane | (_, _, pane, pp) <- panes, pp `elem` (cp : pidAncestors parents cp) ] of
-        [] -> return ()                                  -- not in a leksah terminal
+        [] -> atomicModifyIORef' discoverRejected (\r -> (S.insert cp r, ()))
+                                                         -- not in a leksah terminal
         (pane : _) -> do
           tok <- processToken cp >>= maybe newAgentSessionId return
           dir <- fromMaybe "" <$> paneCurrentPath pane
           codexRememberLaunch tok dir
           codexClaimLaunch cp tok dir
+
+-- | Codex processes 'codexDiscover' found outside leksah's terminals.
+{-# NOINLINE discoverRejected #-}
+discoverRejected :: IORef (S.Set Int)
+discoverRejected = unsafePerformIO (newIORef S.empty)
 
 -- | The @LEKSAH_AGENT_TOKEN@ in a process's environment, if it has one.
 processToken :: Int -> IO (Maybe Text)

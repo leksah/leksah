@@ -262,7 +262,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
   -- Suppressed at a dir already covered by a project/package row's Claude node.
   avail <- liftIO claudeAvailable
   cxAvail <- liftIO codexAvailable
-  when (claudeHere && avail) $ agentsNode treeName dir
+  when (claudeHere && (avail || cxAvail)) $ agentsNode treeName dir
   postBuild <- getPostBuild
   newListE <- performEvent $ filesAndDirs dir <$ postBuild
   allD <- holdDyn ([], []) newListE
@@ -476,7 +476,7 @@ agentsNodeKids treeName dir extraD mkids = do
   -- Cold, that pegged eight cores for minutes after every ghci reload (the
   -- byte-offset cache was a CAF, so :reload wiped it).  Don't reintroduce it.
   let doScan = void . forkIO $ do
-        ok <- claudeAvailable
+        ok <- (||) <$> claudeAvailable <*> codexAvailable
         (if ok then claudeSessionsFor dir else return []) >>= fireSess
         (if ok then claudeRunning dir     else return False) >>= fireRun
   performEvent_ $ liftIO doScan <$ pb
@@ -497,7 +497,9 @@ agentsNodeKids treeName dir extraD mkids = do
   namesD <- holdUniqDyn =<< holdDyn M.empty (snd <$> nameE)
   sessD <- holdDyn [] sessE
   runD  <- holdUniqDyn =<< holdDyn False runE
-  hasD  <- holdUniqDyn ((\ss ex -> not (null ss) || not (null ex)) <$> sessD <*> extraD)
+  -- (Or an agent is running here: a Codex one has no saved session listed.)
+  hasD  <- holdUniqDyn ((\ss ex run -> not (null ss) || not (null ex) || run)
+                          <$> sessD <*> extraD <*> runD)
   -- The node's status badge: the "worst" state among the live sessions running
   -- in THIS directory (waiting > working > idle), falling back to the plain
   -- green dot while a claude terminal is open here but no live state is

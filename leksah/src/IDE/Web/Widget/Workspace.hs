@@ -2016,7 +2016,7 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
     -- it's reachable without drilling into the Files node.
     claudeAvail <- liftIO claudeAvailable
     cxAvail <- liftIO codexAvailable
-    when claudeAvail $ do
+    when (claudeAvail || cxAvail) $ do
         -- A project dir that is itself a worktree also lists
         -- the sessions the registry links to it, INSIDE its
         -- Agents node after its own sessions ('worktreeClaims').

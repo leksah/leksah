@@ -89,7 +89,9 @@ import Data.Foldable (toList)
 import Data.Aeson.Types (Pair, parseMaybe)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (toStrict)
-import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import qualified Data.Set as S
+import qualified Data.Aeson.Key as Key
 import qualified Data.Text.Encoding as TE (decodeUtf8, decodeUtf8With, encodeUtf8)
 import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime, getCurrentTimeZone)
@@ -132,7 +134,7 @@ import IDE.Web.AgentEvents
 import IDE.Web.AgentUsage (usageFor, usageLines, usageSummary)
 import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.Codex
-       (codexAvailable, codexProcessOf, codexSessionStart, codexSetStatus, codexSessionEnd,
+       (codexAvailable, codexInteractive, codexProcessOf, codexSessionStart, codexSetStatus, codexSessionEnd,
         codexPatchFiles, codexSessionDir, codexStarted, codexTranscriptOf, isCodexSession,
         isRollout, rolloutTurns)
 import IDE.Web.NewLwRequest (requestNewLw)
@@ -169,13 +171,15 @@ data ForkRequest = ForkRequest
   , frCodex  :: Bool           -- ^ run Codex rather than Claude Code (always a
                                --   fresh agent: a Claude conversation cannot be
                                --   carried into Codex)
+  , frClaude :: Bool           -- ^ run Claude Code even when forking from a Codex
+                               --   agent (whose children are Codex ones otherwise)
   } deriving (Eq, Show)
 
 emptyForkRequest :: FilePath -> ForkRequest
 emptyForkRequest cwd = ForkRequest
   { frPlace = PlaceBeside, frDir = Nothing, frFrom = Nothing, frFresh = False
   , frPrompt = Nothing, frParent = Nothing, frCwd = cwd, frRole = Nothing
-  , frManager = False, frCodex = False }
+  , frManager = False, frCodex = False, frClaude = False }
 
 -- | Start a child agent, and answer with its session id and a line the parent
 -- can act on.
@@ -196,13 +200,28 @@ emptyForkRequest cwd = ForkRequest
 --
 -- With 'frRole', the role is looked up first (from the directory the agent
 -- will work in) and the agent starts fresh, with the role's instructions.
+--
+-- A Codex conversation cannot be forked at all (into Claude Code, or into
+-- Codex: @codex fork@ mints its own id), so a fork FROM a Codex agent — the
+-- caller, or @--from@ — is a fresh agent, and a Codex one like its parent
+-- unless @--claude@ asks otherwise.
 forkAgent :: ForkRequest -> IO (Either Text (Text, Text))
-forkAgent fr1 = case frRole fr0 of
-  Nothing -> forkAgentAs Nothing fr0
-  Just n  -> findAgentRole (fromMaybe (frCwd fr0) (frDir fr0)) n >>= \case
-    Left err   -> return (Left err)
-    Right role -> forkAgentAs (Just role) fr0 { frFresh = True }
-  where fr0 = if frCodex fr1 then fr1 { frFresh = True } else fr1
+forkAgent fr1 = do
+  live <- claudeLiveBySession
+  srcCodex <- case frFrom fr1 <|> frParent fr1 of
+    Nothing  -> return False
+    Just src -> case M.lookup src live of
+      Just l  -> return (clAgent l == "codex")
+      Nothing -> isCodexSession src
+  let fr0 | frCodex fr1                  = fr1 { frFresh = True }
+          | srcCodex, not (frClaude fr1) = fr1 { frCodex = True, frFresh = True }
+          | srcCodex                     = fr1 { frFresh = True }
+          | otherwise                    = fr1
+  case frRole fr0 of
+    Nothing -> forkAgentAs Nothing fr0
+    Just n  -> findAgentRole (fromMaybe (frCwd fr0) (frDir fr0)) n >>= \case
+      Left err   -> return (Left err)
+      Right role -> forkAgentAs (Just role) fr0 { frFresh = True }
 
 forkAgentAs :: Maybe AgentRole -> ForkRequest -> IO (Either Text (Text, Text))
 forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
@@ -921,12 +940,9 @@ agentHook :: Maybe Int -> Text -> Text -> [Text] -> IO Text
 agentHook mpid ev raw ("codex" : rest) =
   codexHook mpid ev raw (mfilter (not . T.null) (listToMaybe rest))
 agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
-  let v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
-      field k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Text
+  let h = parseHookIn raw
+      field = hiField h
       sid = field "session_id"
-      obj k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Object
-      toolName = fromMaybe "" (field "tool_name")
-      toolInput = fromMaybe mempty (obj "tool_input")
   -- Only SessionStart needs to know which claude process is calling (a `ps`
   -- walk, ~100ms): every other event skips the lookup, and Stop — a
   -- synchronous hook at the end of every turn — answers at once.  The
@@ -979,74 +995,106 @@ agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
       return (hookOutput "SessionStart"
                 ([ "additionalContext" .= T.intercalate "\n\n" notes | not (null notes) ]
                  <> [ "sessionTitle" .= t | Just t <- [title] ]))
-    -- A prompt was submitted (by the user, or `agent send --submit`): a new
-    -- turn starts — the status surfaces say "working" at once (the poll
-    -- counts a just-submitted prompt as working, whatever the session file
-    -- says yet) — and its own title follows it into Claude Code.
-    ("UserPromptSubmit", Just s) -> do
-      recordPromptSubmit s
-      pokeClaudeStatus
-      title <- titleForClaude s (field "session_title")
-      return (hookOutput "UserPromptSubmit" [ "sessionTitle" .= t | Just t <- [title] ])
-    -- Its subagents (the Agent tool), for the activity line.  An empty type is
-    -- one of Claude Code's own internal agents (prompt suggestions, /btw).
-    ("SubagentStart", Just s) -> do
-      case (field "agent_id", field "agent_type") of
-        (Just aid, Just kind) | not (T.null kind) -> recordSubagentStart s aid kind
-        _ -> return ()
-      return ""
-    ("SubagentStop", Just s) -> mapM_ (recordSubagentStop s) (field "agent_id") >> return ""
-    -- Compacting its conversation, which can take a while and otherwise looks
-    -- like nothing at all.  (PreCompact's stdout would become instructions
-    -- for the summary: this hook runs async, and answers nothing anyway.)
-    ("PreCompact", Just s) -> recordCompacting s True >> return ""
-    ("PostCompact", Just s) -> recordCompacting s False >> return ""
-    ("SessionEnd", Just s) -> recordSessionEnd s >> pokeClaudeStatus >> return ""
-    -- Its task list: created, and done.
-    ("TaskCreated", Just s) -> do
-      case (field "task_id", field "task_subject") of
-        (Just tid, Just sub) -> recordTaskCreated s tid sub
-        _ -> return ()
-      return ""
-    ("TaskCompleted", Just s) -> mapM_ (\tid -> recordTaskStatus s tid "completed") (field "task_id")
-                                 >> return ""
-    -- What it is doing this moment (the activity line), and what it changed.
-    ("PreToolUse", Just s) -> do
-      recordToolStart s (field "tool_use_id") (describeToolUse toolName toolInput)
-      return ""
-    ("PostToolUseFailure", Just s) ->
-      recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput) >> return ""
-    ("PostToolUse", Just s) -> do
-      recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput)
-      -- Its task list (Claude Code's Task tools): status changes come only
-      -- as TaskUpdate calls, and a task's "doing" form only with TaskCreate.
-      let str k = parseMaybe (.: k) toolInput :: Maybe Text
-      case toolName of
-        "TaskUpdate" | Just tid <- str "taskId", Just st <- str "status" ->
-          recordTaskStatus s tid st
-        "TaskCreate" | Just sub <- str "subject", Just act <- str "activeForm" ->
-          recordTaskActive s sub act
-        _ -> return ()
-      let files = editedFiles toolName toolInput (v >>= parseMaybe (withObject "hook" (.: "tool_response")))
-      if null files then return "" else do
-        recordEdit s files
-        overlapNote s files
-    -- What it is waiting for you to approve, in full.
-    ("PermissionRequest", Just s) -> do
-      recordPermission s (approvalText toolName toolInput)
-      pokeClaudeStatus
-      return ""
-    -- A turn that ended on an API error, which would otherwise look idle.
-    ("StopFailure", Just s) -> do
-      recordFailure s $ fromMaybe "unknown" (field "error")
-        <> maybe "" (\m -> " — " <> T.take 160 m) (field "last_assistant_message")
-      pokeClaudeStatus
-      return ""
-    ("Stop", Just s) -> recordTurnEnd s >> pokeClaudeStatus >> return ""
-    ("CwdChanged", Just s) -> do
-      mapM_ (recordCwd s . T.unpack) (field "new_cwd")
-      return ""
+    (_, Just s) -> do
+      recordHookEvent ev s h
+      -- The status surfaces update at once on the events that change what
+      -- they show (a turn starting or ending, an approval, an error …) —
+      -- not on the per-tool ones, several a turn.
+      unless (ev `elem` quietHookEvents) pokeClaudeStatus
+      case ev of
+        -- Its own title follows a new prompt into Claude Code.
+        "UserPromptSubmit" -> do
+          title <- titleForClaude s (field "session_title")
+          return (hookOutput "UserPromptSubmit" [ "sessionTitle" .= t | Just t <- [title] ])
+        "PostToolUse" -> noteEdits s (editedFiles (hiTool h) (hiInput h) (hiResponse h))
+        _ -> return ""
     _ -> pokeClaudeStatus >> return ""
+
+-- | One hook's JSON, parsed once.
+data HookIn = HookIn
+  { hiField    :: Text -> Maybe Text   -- ^ a top-level string field
+  , hiTool     :: Text                 -- ^ @tool_name@ (or @""@)
+  , hiInput    :: Object               -- ^ @tool_input@ (or empty)
+  , hiResponse :: Maybe Value          -- ^ @tool_response@
+  }
+
+parseHookIn :: Text -> HookIn
+parseHookIn raw = HookIn
+  { hiField    = field
+  , hiTool     = fromMaybe "" (field "tool_name")
+  , hiInput    = fromMaybe mempty (v >>= parseMaybe (withObject "hook" (.: "tool_input")))
+  , hiResponse = v >>= parseMaybe (withObject "hook" (.: "tool_response")) }
+  where
+    v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
+    field k = v >>= parseMaybe (withObject "hook" (.: Key.fromText k))
+
+-- | The events that do not change what the status surfaces show by
+-- themselves (they feed the activity line, read on the next poll).
+quietHookEvents :: [Text]
+quietHookEvents =
+  [ "SubagentStart", "SubagentStop", "PreCompact", "PostCompact"
+  , "TaskCreated", "TaskCompleted", "PreToolUse", "PostToolUse"
+  , "PostToolUseFailure", "CwdChanged" ]
+
+-- | What a hook event says about session @s@ ("IDE.Web.AgentEvents"),
+-- recorded the same way whichever CLI sent it — Claude Code and Codex send
+-- the same events, with the same fields.  Everything but SessionStart (each
+-- CLI's own) and the files a tool changed ('noteEdits').
+recordHookEvent :: Text -> Text -> HookIn -> IO ()
+recordHookEvent ev s h = case ev of
+  -- A prompt was submitted (by the user, or `agent send --submit`): a new
+  -- turn starts — the poll counts a just-submitted prompt as working,
+  -- whatever the session's state says yet.
+  "UserPromptSubmit" -> recordPromptSubmit s
+  -- Its subagents, for the activity line.  An empty type is one of Claude
+  -- Code's own internal agents (prompt suggestions, /btw).
+  "SubagentStart" -> case (field "agent_id", field "agent_type") of
+    (Just aid, Just kind) | not (T.null kind) -> recordSubagentStart s aid kind
+    _ -> return ()
+  "SubagentStop" -> mapM_ (recordSubagentStop s) (field "agent_id")
+  -- Compacting its conversation, which can take a while and otherwise looks
+  -- like nothing at all.  (Claude's PreCompact hook runs async: its stdout
+  -- would become instructions for the summary.)
+  "PreCompact"  -> recordCompacting s True
+  "PostCompact" -> recordCompacting s False
+  "SessionEnd"  -> recordSessionEnd s
+  -- Its task list (Claude Code's Task tools): created, and done.
+  "TaskCreated" -> case (field "task_id", field "task_subject") of
+    (Just tid, Just sub) -> recordTaskCreated s tid sub
+    _ -> return ()
+  "TaskCompleted" -> mapM_ (\tid -> recordTaskStatus s tid "completed") (field "task_id")
+  -- What it is doing this moment (the activity line).
+  "PreToolUse" -> recordToolStart s (field "tool_use_id") (describeToolUse tool inp)
+  "PostToolUseFailure" -> recordToolEnd s (field "tool_use_id") (approvalText tool inp)
+  "PostToolUse" -> do
+    recordToolEnd s (field "tool_use_id") (approvalText tool inp)
+    -- Task status changes come only as TaskUpdate calls, and a task's
+    -- "doing" form only with TaskCreate.
+    let str k = parseMaybe (.: k) inp :: Maybe Text
+    case tool of
+      "TaskUpdate" | Just tid <- str "taskId", Just st <- str "status" ->
+        recordTaskStatus s tid st
+      "TaskCreate" | Just sub <- str "subject", Just act <- str "activeForm" ->
+        recordTaskActive s sub act
+      _ -> return ()
+  -- What it is waiting for you to approve, in full.
+  "PermissionRequest" -> recordPermission s (approvalText tool inp)
+  -- A turn that ended on an API error, which would otherwise look idle.
+  "StopFailure" -> recordFailure s $ fromMaybe "unknown" (field "error")
+    <> maybe "" (\m -> " — " <> T.take 160 m) (field "last_assistant_message")
+  "Stop" -> recordTurnEnd s
+  "CwdChanged" -> mapM_ (recordCwd s . T.unpack) (field "new_cwd")
+  _ -> return ()
+  where
+    field = hiField h
+    tool = hiTool h
+    inp = hiInput h
+
+-- | Record the files a tool call changed, and answer with the note telling
+-- the agent that another live agent edited one of them lately (if one did).
+noteEdits :: Text -> [FilePath] -> IO Text
+noteEdits _ []    = return ""
+noteEdits s files = recordEdit s files >> overlapNote s files
 
 -- | A Codex hook (@leksah-cmd agent hook EVENT codex [TOKEN]@, run by the
 -- @~\/.leksah\/codex-hook@ wrapper — see "IDE.Web.Codex").  The same events as
@@ -1063,97 +1111,83 @@ agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
 -- how to report back, its role, the worktree note.
 codexHook :: Maybe Int -> Text -> Text -> Maybe Text -> IO Text
 codexHook mpid ev raw token = (`catch` \(_ :: SomeException) -> return "") $ do
-  let v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
-      field k = v >>= parseMaybe (withObject "hook" (.: k)) :: Maybe Text
+  let h = parseHookIn raw
+      field = hiField h
       sid = field "session_id"
-      toolName = fromMaybe "" (field "tool_name")
-      toolInput = fromMaybe mempty (v >>= parseMaybe (withObject "hook" (.: "tool_input")) :: Maybe Object)
-      -- The new state, and the status surfaces told when it changed.  (A
-      -- turn starting or ending pokes them anyway: the per-session records
-      -- the poll reads changed too.)
-      status s st what = do
-        changed <- codexSetStatus s st what
-        when changed pokeClaudeStatus
-      status_ s st what = void (codexSetStatus s st what)
-  if ev `elem` perToolHookEvents then return ()
-    else logHook ev Nothing [sid, Just "codex", field "source", token, field "tool_name"]
-  case (ev, sid) of
+  ignored <- maybe (return False) (\s -> S.member s <$> readIORef codexIgnored) sid
+  if ignored then return "" else do
+   if ev `elem` perToolHookEvents then return ()
+     else logHook ev Nothing [sid, Just "codex", field "source", token, field "tool_name"]
+   case (ev, sid) of
     ("SessionStart", Just new) -> do
       let source = fromMaybe "" (field "source")
       proc <- maybe (return Nothing) codexProcessOf mpid
-      prev <- case proc of
-        Just p  -> codexSessionStart p new (maybe "" T.unpack (field "cwd"))
-                                       (T.unpack <$> field "transcript_path")
-        Nothing -> return Nothing
-      -- The launch token, the first time it is seen (a later /new in the same
-      -- process inherits the environment, and is handled as a /clear below).
-      conts <- agentContinuations
-      case token of
-        Just t | t /= new, t `M.notMember` conts -> do
-          _ <- adoptContinuation t new
-          moveAgentRecord True t new
-        _ -> case (source, prev) of
-          (src, Just o) | src `elem` ["clear", "fork"] -> do
-            _ <- adoptContinuation o new
-            moveAgentRecord (src /= "clear") o new
-          -- What the process was recorded as before its first prompt
-          -- (IDE.Web.Claude.codexDiscover's token for a codex typed into a
-          -- terminal): the same agent, which keeps its name.
-          (_, Just o) -> codexStarted o >>= \started -> unless started $ do
-            _ <- adoptContinuation o new
-            moveAgentRecord True o new
-          _ -> return ()
-      when (source `elem` ["startup", "resume", "fork"]) $
-        mapM_ (\d -> void . forkIO $ ensureSessionWorktree new (T.unpack d)) (field "cwd")
-      when (source == "compact") $ recordCompacting new False
-      pokeClaudeStatus
-      notes <- briefing new
-      return (T.intercalate "\n\n" (notes <> [worktreeNote]))
-    ("UserPromptSubmit", Just s) -> do
-      recordPromptSubmit s
-      status_ s "busy" Nothing
-      pokeClaudeStatus
-      return ""
-    ("PreToolUse", Just s) -> do
-      recordToolStart s (field "tool_use_id") (describeToolUse toolName toolInput)
-      status s "busy" Nothing
-      return ""
-    ("PostToolUse", Just s) -> do
-      recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput)
-      status s "busy" Nothing
-      -- The files it changed: an apply_patch names them in its patch; any
-      -- other tool the way Claude Code's do (a file_path …).  Made absolute
-      -- against its cwd — a patch's paths are relative — so they compare
-      -- with every other agent's.
-      let resp = v >>= parseMaybe (withObject "hook" (.: "tool_response"))
-          named = case codexPatchFiles (Object toolInput) of
-            [] -> editedFiles toolName toolInput resp
-            ps -> ps
-          cwd = maybe "" T.unpack (field "cwd")
-          files = [ if null cwd then f else normalise (cwd </> f) | f <- named ]
-      if null files then return "" else do
-        recordEdit s files
-        overlapNote s files
-    ("PermissionRequest", Just s) -> do
-      let what = approvalText toolName toolInput
-      recordPermission s what
-      status s "waiting" (Just what)
-      return ""
-    ("SubagentStart", Just s) -> do
-      case (field "agent_id", field "agent_type") of
-        (Just aid, Just kind) | not (T.null kind) -> recordSubagentStart s aid kind
-        _ -> return ()
-      return ""
-    ("SubagentStop", Just s) -> mapM_ (recordSubagentStop s) (field "agent_id") >> return ""
-    ("PreCompact", Just s) -> recordCompacting s True >> return ""
-    ("PostCompact", Just s) -> recordCompacting s False >> return ""
-    ("Stop", Just s) -> recordTurnEnd s >> status_ s "idle" Nothing >> pokeClaudeStatus >> return ""
-    ("SessionEnd", Just s) -> do
-      recordSessionEnd s
-      codexSessionEnd s
-      pokeClaudeStatus
-      return ""
+      case proc of
+        -- `codex exec` and the like run the same (global) hooks: they are
+        -- not agents — no record, no name, no briefing; their later events
+        -- are dropped too.
+        Just (_, args) | not (codexInteractive args) -> do
+          atomicModifyIORef' codexIgnored (\m -> (S.insert new m, ()))
+          return ""
+        _ -> do
+          prev <- case proc of
+            Just (p, _) -> codexSessionStart p new (maybe "" T.unpack (field "cwd"))
+                                             (T.unpack <$> field "transcript_path")
+            Nothing -> return Nothing
+          -- The launch token, the first time it is seen (a later /new in the
+          -- same process inherits the environment, and is handled as a /clear
+          -- below).
+          conts <- agentContinuations
+          case token of
+            Just t | t /= new, t `M.notMember` conts -> do
+              _ <- adoptContinuation t new
+              moveAgentRecord True t new
+            _ -> case (source, prev) of
+              (src, Just o) | src `elem` ["clear", "fork"] -> do
+                _ <- adoptContinuation o new
+                moveAgentRecord (src /= "clear") o new
+              -- What the process was recorded as before its first prompt
+              -- (IDE.Web.Claude.codexDiscover's token for a codex typed into
+              -- a terminal): the same agent, which keeps its name.
+              (_, Just o) -> codexStarted o >>= \started -> unless started $ do
+                _ <- adoptContinuation o new
+                moveAgentRecord True o new
+              _ -> return ()
+          when (source `elem` ["startup", "resume", "fork"]) $
+            mapM_ (\d -> void . forkIO $ ensureSessionWorktree new (T.unpack d)) (field "cwd")
+          when (source == "compact") $ recordCompacting new False
+          pokeClaudeStatus
+          notes <- briefing new
+          return (T.intercalate "\n\n" (notes <> [worktreeNote]))
+    (_, Just s) -> do
+      recordHookEvent ev s h
+      -- And the live state, which Codex does not keep for itself.
+      changed <- case ev of
+        "UserPromptSubmit"  -> codexSetStatus s "busy" Nothing >> return True
+        "PreToolUse"        -> codexSetStatus s "busy" Nothing
+        "PostToolUse"       -> codexSetStatus s "busy" Nothing
+        "PermissionRequest" -> codexSetStatus s "waiting" (Just (approvalText (hiTool h) (hiInput h)))
+        "Stop"              -> codexSetStatus s "idle" Nothing >> return True
+        "SessionEnd"        -> codexSessionEnd s >> return True
+        _                   -> return False
+      when changed pokeClaudeStatus
+      if ev /= "PostToolUse" then return "" else
+        -- The files it changed: an apply_patch names them in its patch; any
+        -- other tool the way Claude Code's do (a file_path …).  Made absolute
+        -- against its cwd — a patch's paths are relative — so they compare
+        -- with every other agent's.
+        let named = case codexPatchFiles (Object (hiInput h)) of
+              [] -> editedFiles (hiTool h) (hiInput h) (hiResponse h)
+              ps -> ps
+            cwd = maybe "" T.unpack (field "cwd")
+        in noteEdits s [ if null cwd then f else normalise (cwd </> f) | f <- named ]
     _ -> return ""
+
+-- | Codex sessions that are not agents (@codex exec@ …): their hooks are
+-- ignored.
+{-# NOINLINE codexIgnored #-}
+codexIgnored :: IORef (S.Set Text)
+codexIgnored = unsafePerformIO (newIORef S.empty)
 
 -- Another live agent edited one of these files lately: tell this one, once
 -- per file and colleague (an async hook's context reaches it next turn).
