@@ -31,6 +31,8 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 
 import Foreign.C.String (withCString)
+import qualified GHC.Foreign as GHC
+import GHC.IO.Encoding (utf8)
 import Foreign.Ptr (Ptr, castPtr)
 import System.Exit (ExitCode(..))
 import System.IO.Unsafe (unsafePerformIO)
@@ -45,10 +47,9 @@ import IDE.Config (currentConfig)
 import IDE.Reactive (modifyCell, readCell)
 import IDE.Web.Model (WindowId(..), activeWindow, webWindows)
 import IDE.Workspace (projectOpenPath)
-import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.Claude (showLiveSession)
 import IDE.Web.ClaudeStatus
-       (ClaudeStatus(..), ClaudeStatusRow(..), claudeRowLabel,
+       (ClaudeStatus(..), claudeStatusRowsJson,
         registerClaudeStatusPush)
 import IDE.Web.Command (Command(..), commandAction, commandGetToggleState)
 import IDE.Web.GhciMode
@@ -278,36 +279,22 @@ macToggleState tag = do
 
 -- | Push a 'ClaudeStatus' into the menu-bar status item: the aggregate state
 -- (which shape\/colour the icon draws), how many sessions are in that state (drawn
--- beside the icon when it isn't green), the summary line for its tooltip, and one
--- menu row per session as @state \\t title \\t tooltip \\t session id \\t face@ —
--- tooltip newlines escaped as @\\n@, since a raw one would end the row; @face@
--- is the agent's animal face ('agentFaceSvg', on one line), drawn beside the
--- state shape in its menu row, or empty for a session with no name yet.
+-- beside the icon when it isn't green), the summary line for its tooltip, and the
+-- sessions as the same JSON rows the in-page light's list draws
+-- ('claudeStatusRowsJson' — built once per change and shared), which the ObjC
+-- side parses with NSJSONSerialization.  All UTF-8.
 --
 -- Called only when the status CHANGES (see 'registerClaudeStatusPush'), so the
 -- native menu is rebuilt on real state changes rather than 20 times a minute.
 pushClaudeStatusToMenuBar :: ClaudeStatus -> IO ()
-pushClaudeStatusToMenuBar st =
-    withCString (T.unpack (csState st)) $ \s ->
-      withCString (T.unpack (csSummary st)) $ \t ->
-        withCString (T.unpack (T.unlines (map row (csRows st))))
-                    (c_setClaudeStatus s (fromIntegral (csCount st)) t)
+pushClaudeStatusToMenuBar st = do
+    rows <- claudeStatusRowsJson st
+    utf8CString (csState st) $ \s ->
+      utf8CString (csSummary st) $ \t ->
+        utf8CString rows (c_setClaudeStatus s (fromIntegral (csCount st)) t)
   where
-    -- The directory tells two sessions of one project apart (worktrees are named
-    -- for their task), so it rides along in the row's title.
-    row r = T.intercalate "\t"
-      [ csrState r
-      , ellipsize 60 (claudeRowLabel r)
-          <> (if T.null (csrDir r) then "" else "  ·  " <> baseName (csrDir r))
-      , T.intercalate "\\n" [ csrDir r, csrDetail r, csrSession r ]
-      , csrSession r
-      , if T.null (csrName r) then ""
-          else T.map (\c -> if c == '\t' || c == '\n' || c == '\r' then ' ' else c)
-                     (agentFaceSvg (csrName r))
-      ]
-    ellipsize k t | T.length t > k = T.take (k - 1) t <> "…"
-                  | otherwise      = t
-    baseName = T.takeWhileEnd (/= '/') . T.dropWhileEnd (== '/')
+    -- UTF-8 whatever the process locale (a title's em dash, a face's text).
+    utf8CString = GHC.withCString utf8 . T.unpack
 
 -- | Build and install the native menu bar.  Safe to call before the app's run
 -- loop starts; the actual menu-bar install is scheduled onto the main thread.
