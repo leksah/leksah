@@ -74,7 +74,7 @@ import IDE.Workspace (WorkspaceService(..), activeProject, prDir)
 import IDE.Web.Agent
        (ForkRequest(..), agentLastSaid, agentManagerStart, agentRefresh,
         agentManagerTriage, agentResume, agentResumeAll, agentSuspend, emptyForkRequest, forkAgent,
-        renameAgentEverywhere, showAgentPane, showAgentPaneHere)
+        renameAgentEverywhere, showAgentPane, showAgentPaneHere, agentAnswerApproval)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.AgentInfo
        (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
@@ -122,6 +122,7 @@ agentCardActions toast refresh = CardActions
       Right _  -> refresh
     -- A copy of its conversation, beside it — the user asked, so (unlike an
     -- agent's own fork) the new pane is brought up to type into.
+  , caAnswer = \n yes -> agentAnswerApproval (anSession n) yes >>= toast . T.strip >> refresh
   , caBranch = \n -> forkAgent (emptyForkRequest (anDir n)) { frFrom = Just (anSession n) }
       >>= \case
         Left err       -> toast err

@@ -44,6 +44,8 @@ module IDE.Web.Claude
   , claudeProcessOf
   , claudePaneSessions
   , nameNote
+  , planHtmlNote
+  , worktreeNote
   , agentNote
   , managerNote
   , claudeRunning
@@ -1157,7 +1159,9 @@ leksahHooks exe script = object $
            -- Its subagents, and a compaction in progress, for the activity
            -- line.  PreCompact MUST stay async: a synchronous PreCompact
            -- hook's stdout becomes instructions for the compaction summary.
-           , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact" ])
+           , "SubagentStart", "SubagentStop", "PreCompact", "PostCompact"
+           -- Its task list (Claude Code's Task tools), for the activity line.
+           , "TaskCreated", "TaskCompleted" ])
   where
     hookGroup :: Bool -> Text -> Value
     hookGroup async ev = object [ "hooks" .=

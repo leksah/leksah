@@ -144,7 +144,8 @@ import IDE.Web.Agent
        (ForkPlace(..), ForkRequest(..), agentDone, agentFind, agentList,
         agentEvents, agentHook, agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
         agentResume, agentRoleList, agentSend, agentStatus, agentSuspend,
-        emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent)
+        emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent,
+        agentAnswerApproval)
 import IDE.Web.AgentInfo (describeAgent)
 import IDE.Web.AgentUsage (recordStatusLine)
 import IDE.Web.WorktreeRegistry
@@ -868,6 +869,12 @@ handleConn app conn = do
           _ -> reply ("agent rename: give a new name (and, from outside an agent, "
                       <> "which agent)\n\n" <> agentUsage)
         ("roles" : _) -> agentRoleList cwd >>= reply
+        -- Answer the permission prompt an agent is blocked on (what the
+        -- Agents pane's Approve / Deny buttons do).
+        ("approve" : who : _) | not (T.null who) -> withAgent who $ \sid ->
+            agentAnswerApproval sid True >>= reply
+        ("deny" : who : _) | not (T.null who) -> withAgent who $ \sid ->
+            agentAnswerApproval sid False >>= reply
         ("events" : who : _) | not (T.null who) -> withAgent who $ \sid ->
             agentEvents sid >>= reply
         -- Ending an agent's process on purpose, keeping the agent; and

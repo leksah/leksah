@@ -65,6 +65,7 @@ module IDE.Web.Agent
   , agentManagerStart
   , newAgentSessionId
   , showAgentPane
+  , agentAnswerApproval
   , showAgentPaneHere
   ) where
 
@@ -120,12 +121,14 @@ import IDE.Web.Claude
         claudeSessionLabel, claudeTranscriptPath, newAgentSessionId,
         paneForSession, runClaudeCmd,
         showLiveSession, showLiveSessionHere, showTmuxPaneWith, claudeProcessOf, nameNote, agentNote,
-        managerNote, describeToolUse, claudePaneSessions)
+        managerNote, describeToolUse, claudePaneSessions, planHtmlNote, worktreeNote)
+import System.Process (readProcessWithExitCode)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seTool, perToolHookEvents, editedRecently, eventsFor, sessionEvents,
         recordCwd, recordEdit, recordFailure, recordPermission,
         recordToolEnd, recordToolStart, recordTurnEnd, recordPromptSubmit,
-        recordSubagentStart, recordSubagentStop, recordCompacting, recordSessionEnd)
+        recordSubagentStart, recordSubagentStop, recordCompacting, recordSessionEnd,
+        recordTaskCreated, recordTaskActive, recordTaskStatus, TaskInfo(..))
 import IDE.Web.AgentUsage (usageFor, usageLines, usageSummary)
 import IDE.Web.ClaudeStatus (pokeClaudeStatus)
 import IDE.Web.NewLwRequest (requestNewLw)
@@ -133,6 +136,7 @@ import IDE.Web.RemoteTermRequest (requestLocalTerm)
 import IDE.Web.ReplTmux
        (freshSessionName, liveRunPanes, newSessionWindow, pasteTo,
         sendKeysTo, splitPane, tmuxCmd, tmuxOut)
+import IDE.Web.TmuxServer (TmuxServer(LocalServer), tmuxStdoutOn)
 
 -- | Where the child's pane goes.
 data ForkPlace
@@ -381,6 +385,7 @@ agentEvents sid = do
     , "cwd\t" <> maybe "-" T.pack (seCwd e)
     , "compacting\t" <> maybe "-" (const "yes") (seCompacting e) ]
     <> [ "subagent\t" <> kind <> " " <> aid | (aid, (kind, _)) <- seSubagents e ]
+    <> [ "task\t" <> tid <> " [" <> tiStatus t <> "] " <> tiSubject t | (tid, t) <- seTasks e ]
     <> [ "edited\t" <> T.pack f | (f, _) <- seEdits e ]
     <> [ "usage\t" <> l | u <- maybe [] pure mu, l <- usageLines tz now u ]
 
@@ -925,7 +930,13 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       -- After a compaction the session starts again with source "compact".
       when (source == "compact") $ recordCompacting new False
       pokeClaudeStatus
-      notes <- if source == "startup" then return [] else briefing new
+      -- A session leksah did not launch (`claude` in a terminal, with the
+      -- leksah plugin) never got leksah's --append-system-prompt notes: give
+      -- them now, so it knows its name, to register worktrees, and the rest.
+      plain <- maybe (return False) (fmap not . launchedByLeksah . fst) proc
+      notes <- if source == "startup"
+                 then if plain then plainSessionNotes new else return []
+                 else briefing new
       -- The title it gave itself (agent describe), as its Claude Code
       -- session title too — sessionTitle applies on startup/resume/fork.
       title <- if source `elem` ["startup", "resume", "fork"]
@@ -956,6 +967,14 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
     ("PreCompact", Just s) -> recordCompacting s True >> return ""
     ("PostCompact", Just s) -> recordCompacting s False >> return ""
     ("SessionEnd", Just s) -> recordSessionEnd s >> pokeClaudeStatus >> return ""
+    -- Its task list: created, and done.
+    ("TaskCreated", Just s) -> do
+      case (field "task_id", field "task_subject") of
+        (Just tid, Just sub) -> recordTaskCreated s tid sub
+        _ -> return ()
+      return ""
+    ("TaskCompleted", Just s) -> mapM_ (\tid -> recordTaskStatus s tid "completed") (field "task_id")
+                                 >> return ""
     -- What it is doing this moment (the activity line), and what it changed.
     ("PreToolUse", Just s) -> do
       recordToolStart s (field "tool_use_id") (describeToolUse toolName toolInput)
@@ -964,6 +983,15 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
       recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput) >> return ""
     ("PostToolUse", Just s) -> do
       recordToolEnd s (field "tool_use_id") (approvalText toolName toolInput)
+      -- Its task list (Claude Code's Task tools): status changes come only
+      -- as TaskUpdate calls, and a task's "doing" form only with TaskCreate.
+      let str k = parseMaybe (.: k) toolInput :: Maybe Text
+      case toolName of
+        "TaskUpdate" | Just tid <- str "taskId", Just st <- str "status" ->
+          recordTaskStatus s tid st
+        "TaskCreate" | Just sub <- str "subject", Just act <- str "activeForm" ->
+          recordTaskActive s sub act
+        _ -> return ()
       let files = editedFiles toolName toolInput (v >>= parseMaybe (withObject "hook" (.: "tool_response")))
       if null files then return "" else do
         recordEdit s files
@@ -1015,6 +1043,11 @@ agentHook mpid ev raw = (`catch` \(_ :: SomeException) -> return "") $ do
             <> maybe [] (: []) roleText
             <> [ managerNote | maybe False aiManager minfo ]
 
+    plainSessionNotes sid = do
+      names <- touchAgentNames [sid]
+      let name = M.findWithDefault "" sid names
+      return ([ nameNote name | not (T.null name) ] <> [ worktreeNote, planHtmlNote ])
+
     -- A hook's answer: nothing at all when there is nothing to say, else
     -- @{"hookSpecificOutput": {"hookEventName": EV, …}}@.
     hookOutput :: Text -> [Pair] -> Text
@@ -1058,6 +1091,32 @@ approvalText :: Text -> Object -> Text
 approvalText name inp = case parseMaybe (.: "command") inp of
   Just c | name == "Bash" -> "Bash: " <> T.take 120 (T.strip (T.takeWhile (/= '\n') c))
   _                       -> describeToolUse name inp
+
+-- | Answer the permission prompt session @sid@ is blocked on — the Agents
+-- pane's Approve / Deny.  Only when its pane really shows one ("Do you want
+-- to proceed?"): a stale click must never type into whatever is on screen
+-- now.  Approve picks option 1 ("Yes" — never the "always allow" or
+-- "switch to auto mode" ones); Deny is Esc, which tells Claude no.
+agentAnswerApproval :: Text -> Bool -> IO Text
+agentAnswerApproval sid yes = paneForSession sid >>= \case
+  Nothing -> return "Its pane can't be found, so there is nothing to answer.\n"
+  Just (_, _, pane) -> do
+    -- (The whole screen: 'tmuxOut' keeps only the first line.)
+    screen <- tmuxStdoutOn LocalServer ["capture-pane", "-p", "-t", T.unpack pane]
+    if not ("Do you want to proceed?" `T.isInfixOf` screen)
+      then return "It is not asking for approval right now.\n"
+      else do
+        ok <- sendKeysTo pane [if yes then "1" else "Escape"]
+        name <- agentNameFor sid
+        return $ if not ok then "tmux would not deliver the answer.\n"
+                 else (if yes then "Approved for " else "Denied for ") <> name <> ".\n"
+
+-- | Did leksah launch this claude process?  Its command line carries leksah's
+-- --append-system-prompt notes then (every leksah launch adds them).
+launchedByLeksah :: Int -> IO Bool
+launchedByLeksah pid = (`catch` \(_ :: SomeException) -> return True) $ do
+  (_, out, _) <- readProcessWithExitCode "ps" ["-o", "args=", "-p", show pid] ""
+  return ("--append-system-prompt" `T.isInfixOf` T.pack out)
 
 -- | The session each claude process (by pid) last started — how a SessionStart
 -- for a NEW id in the same process is recognised as the same agent.

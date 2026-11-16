@@ -55,7 +55,7 @@ import Reflex
         switchHold, tag, tagPromptlyDyn, updated)
 import Reflex.Dom.Core
        (Key(Enter, Escape), blank, def, divClass, domEvent, dyn, dyn_, dynText,
-        elAttr', elClass, elDynAttr, elDynAttr', elDynHtmlAttr',
+        elAttr, elAttr', elClass, elDynAttr, elDynAttr', elDynHtmlAttr',
         elementConfig_initialAttributes, inputElement,
         inputElementConfig_elementConfig, inputElementConfig_initialValue,
         keydown, keypress, text, wrapDomEvent, EventName(..), (=:), _element_raw,
@@ -91,6 +91,8 @@ data CardActions = CardActions
   , caBranch  :: AgentNode -> IO ()          -- ^ start a copy of its
                                              --   conversation beside it
   , caLastSaid :: AgentNode -> IO (Maybe Text)
+  , caAnswer  :: AgentNode -> Bool -> IO ()  -- ^ answer its permission prompt:
+                                             --   approve (True) or deny
   }
 
 -- | One card.  @fullD@: this card must be shown in full (the user's ⋯ opens
@@ -142,6 +144,21 @@ agentCard acts mustD startOpen nD = mdo
             elClass "div" "agent-card-line agent-card-title" . dynText $ anTitle <$> nD
             -- 3: what it is doing now, else the gist of its description
             elDynAttr "div" (line3Attrs <$> nD) . dynText $ line3 <$> nD
+            -- Blocked on a permission prompt: answer it from here (the
+            -- details are line 3, "needs approval: Bash: rm -rf …").  On the
+            -- compact card too — a card that needs you is the one to act on.
+            approvalD <- holdUniqDyn (anApproval <$> nD)
+            answerE <- switchHold never =<< dyn (ffor approvalD $ \case
+              Nothing -> return never
+              Just what -> elAttr "div" ("class" =: "agent-card-approval"
+                                         <> "title" =: what) $ do
+                (y, _) <- elAttr' "button" ("class" =: "agent-card-approve"
+                                            <> "title" =: ("Approve: " <> what)) (text "Approve")
+                (n, _) <- elAttr' "button" ("class" =: "agent-card-deny"
+                                            <> "title" =: "Deny (Esc in its pane)") (text "Deny")
+                return (leftmost [True <$ domEvent Click y, False <$ domEvent Click n]))
+            performEvent_ $ ffor (attach (current nD) answerE) $ \(n, yes) ->
+              liftIO . void . forkIO $ caAnswer acts n yes
             return d'
         (b, _) <- elDynAttr' "button" (moreAttrs <$> fullD <*> mustD) $
           dynText ((\f -> if f then "▴" else "⋯") <$> fullD)
@@ -612,6 +629,23 @@ agentCardCss = do
   ".agent-card .agent-card-label" ? do
     "color" -: "var(--leksah-dim)"
     "font-style" -: "italic"
+  -- Approve / Deny under line 3 while it waits on a permission prompt.
+  ".agent-card .agent-card-approval" ? do
+    "display" -: "flex"
+    "gap" -: "6px"
+    "margin-top" -: "3px"
+  ".agent-card .agent-card-approval button" ? do
+    "font-size" -: "11px"
+    "padding" -: "1px 9px"
+    "border-radius" -: "4px"
+    "cursor" -: "pointer"
+    "border" -: "1px solid currentColor"
+    "background" -: "transparent"
+  ".agent-card .agent-card-approve" ? do
+    "color" -: "#fff"
+    "background" -: "#3fb950 !important"
+    "border-color" -: "#3fb950 !important"
+  ".agent-card .agent-card-deny" ? ("color" -: "#f85149")
   ".agent-card .agent-card-actions" ? do
     "display" -: "flex"
     "flex-wrap" -: "wrap"
