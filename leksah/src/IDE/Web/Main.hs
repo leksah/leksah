@@ -258,7 +258,7 @@ import IDE.Web.ThreadPriority (ThreadPriority(..), raiseCurrentThreadPriority)
 import IDE.Web.ReplTmux
        (tmuxCmd, tmuxSupported, activePaneIdOfSession, activePaneIdOfWindow,
         openTerminalInDir, openTerminalInDirFor, splitPane, newSessionWindow, newWindowInSession,
-        shellCommandForDir, freshSessionName, tmuxOut, paneCountOfWindow,
+        shellCommandForDir, freshSessionName, tmuxOut, paneCountOfWindow, agentsSessionName,
         runInTerminal, prefixedCmdLine)
 import IDE.Web.SaveRequest (requestSaveActiveFileWait)
 import IDE.Web.Claude
@@ -2548,7 +2548,8 @@ flipForSel s mw mp tree = do
 -- A pane running a named agent is labelled by THAT agent — "Raven — fix the
 -- CI failure" — whichever pane of its window is active, followed by
 -- " · session" only when the agent lives in a session named after something
--- else (a split inside another agent's session).  The window-level label
+-- else (a split inside another agent's session) — never for the shared
+-- Agents session, where every agent lives.  The window-level label
 -- ('windowTabLabel') describes the window's active pane, so using it here gave
 -- every pane of a split window the same agent, and repeated the agent's name
 -- that the session name already carried.
@@ -2563,7 +2564,8 @@ flipPaneLabel :: Text -> Int -> Int -> Map Text (Text, [TmuxWindow]) -> Text
 flipPaneLabel n w p tree = case mbPane of
     Just pn | Just a <- tpAgentName pn ->
       a <> maybe "" (" — " <>) (ellipsize 60 <$> (tpClaudeTitle pn >>= nonEmpty))
-        <> (if baseName sessName == a then "" else " · " <> sessName)
+        <> (if baseName sessName == a || sessName == agentsSessionName
+              then "" else " · " <> sessName)
     _ -> T.intercalate " · " . dedupe $
            [sessName, winName] <> [ paneName | length panes > 1 ]
   where
@@ -6420,9 +6422,15 @@ main showMenubar macTitlebar wid ctx = mdo
               in Just $ case k of
                    LeksahWinKey n | Just lw <- M.lookup n lws ->
                      case lwSession lw of
-                       -- Session-backed: the session's active window/pane,
-                       -- exactly as the flipper would list it.
-                       Just s | Just (w, p) <- activePaneOfSession s tree ->
+                       -- Session-backed: THIS window's focused tmux window
+                       -- and its active pane, exactly as the flipper would
+                       -- list it — not the session's active window, which
+                       -- belongs to another tab when tabs share a session
+                       -- (every agent's tab, in the Agents session).
+                       Just s | Just (w, p) <- (lwFocusedWindow tree lw >>= \win ->
+                                  (\pn -> (twIndex win, tpIndex pn)) <$>
+                                    listToMaybe (filter tpActive (twPanes win) ++ twPanes win))
+                                <|> activePaneOfSession s tree ->
                          ( flipIconSrc lws tree (FlipPane s w p)
                          , flipPaneLabel s w p tree
                          , panePathOf s w p )
