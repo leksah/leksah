@@ -2783,9 +2783,14 @@ flipSelHighlight owner front tree = \case
 -- ownership split in 'main').
 buildFlipItems :: Map Text LeksahWindow -> [FlipItem] -> [(Text, TabKey)] -> [TabKey] -> Map Text (Text, [TmuxWindow]) -> S.Set (Text, Int) -> [(Text, FlipItem)]
 buildFlipItems lws mru rt otherTabs tree hidden =
-  let panes = [ FlipPane n (twIndex w) (tpIndex p)
+  let -- A session shown by a terminal VIEW leaf (the browser demo's
+      -- showcase agent) flips as that leaf's 'FlipView'; listing its pane
+      -- too would show it twice, and the pane has no tab of its own to go to.
+      viewOwned = viewLeafSessions lws
+      panes = [ FlipPane n (twIndex w) (tpIndex p)
               | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w
-              , not ((n, twIndex w) `S.member` hidden) ]
+              , not ((n, twIndex w) `S.member` hidden)
+              , not (n `S.member` viewOwned) ]
       -- Terminal-family tabs are represented by their PANES (from the tree):
       -- a leksah window's tmux panes flip individually, and its native VIEW
       -- panes (editor/git-log/browser leaves) each flip as a 'FlipView'.
