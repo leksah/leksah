@@ -36,7 +36,7 @@ module IDE.Web.Widget.AgentCard
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((.~), (&))
-import Control.Monad (forM_, unless, void)
+import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Map (Map)
@@ -167,7 +167,7 @@ agentCard acts mustD startOpen nD = mdo
         return (domEvent Click b, d)
       -- The rest only while full.
       bE <- switchHold never =<< dyn (ffor fullD $ \full ->
-        if full then fullBody tz nowD else return never)
+        if full then fullBody else return never)
       return (mE, dE, bE)
   -- A click anywhere on the card that is not on one of its controls (the ⋯,
   -- the action buttons, a link, the rename field) and does not end a text
@@ -213,8 +213,8 @@ agentCard acts mustD startOpen nD = mdo
       return (leftmost [() <$ commitE, cancelE])
 
     -- The full card's body; answers its Rename button.
-    fullBody :: TimeZone -> Dynamic t Double -> m (Event t ())
-    fullBody tz nowD = do
+    fullBody :: m (Event t ())
+    fullBody = do
       -- The bio (else the description): sanitized HTML, straight into
       -- innerHTML — sanitized once, where it was stored.
       void $ elDynHtmlAttr' "div" ("class" =: "agent-card-bio")
@@ -236,14 +236,6 @@ agentCard acts mustD startOpen nD = mdo
         elDynAttr "span" (cwdAttrs <$> nD) . dynText $
           ffor nD $ \n -> maybe "" (\c -> "now in " <> T.pack (baseName c)) (anCwd n)
         elDynAttr "span" (editsAttrs <$> nD) . dynText $ editsText <$> nD
-      -- Its context use, cost and rate limits, in full.
-      -- (Rebuilt only when its text changes — not on every other change to
-      -- the agent, nor on every clock tick.)
-      usageD <- holdUniqDyn (anUsage <$> nD)
-      usageLinesD <- holdUniqDyn (maybe [] . usageLines tz <$> nowD <*> usageD)
-      dyn_ $ ffor usageLinesD $ \ls -> unless (null ls) $
-        divClass "agent-card-facts agent-card-usage-facts" $
-          forM_ ls $ \l -> elClass "span" "agent-card-fact" (text l)
       dyn_ $ ffor nD $ \n ->
         forM_ (anWorktrees n) $ \l -> divClass "agent-card-worktree" (text l)
       dyn_ $ ffor nD $ \n -> forM_ (anDone n) $ \d ->
