@@ -153,6 +153,7 @@ library
         IDE.Web.GitLogRequest
         IDE.Web.Worktree
         IDE.Web.WorktreeRegistry
+        IDE.Web.SharedStore
         IDE.Web.AgentWorktrees
         IDE.Web.ClaudeQueue
         IDE.Web.NewWindowRequest

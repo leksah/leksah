@@ -72,6 +72,7 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (nub, sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ord (Down(..))
 import Data.Text (Text)
@@ -85,6 +86,7 @@ import System.FilePath (dropTrailingPathSeparator, takeFileName)
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath, writeSidecar)
+import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seCompactingAt, seSubagentsAt, seTaskSummary, seTool, sessionEvents)
@@ -246,44 +248,29 @@ data AgentNode = AgentNode
 -- The sidecar, lazily loaded, behind one MVar (the ClaudeQueue/Browser sidecar
 -- pattern).  Writers are socket connections, readers the panes' polls, and both
 -- can be several at once.
-{-# NOINLINE infoVar #-}
-infoVar :: MVar (Maybe (Map Text AgentInfo))
-infoVar = unsafePerformIO (newMVar Nothing)
+-- Shared with every other leksah that shows this machine's agents
+-- ("IDE.Web.SharedStore": locked, re-read whenever it changed).
+{-# NOINLINE infoStore #-}
+infoStore :: SharedStore (Map Text AgentInfo)
+infoStore = unsafePerformIO $ newSharedStore "agents.json"
+  (fmap (\is -> M.fromList [ (aiSession i, i) | i <- is ]) . decode')
+  (encode . M.elems) M.empty
 
-infoPath :: IO FilePath
-infoPath = sidecarPath "agents.json"
-
-loadInfos :: IO (Map Text AgentInfo)
-loadInfos = (`catch` \(_ :: SomeException) -> return M.empty) $ do
-  p  <- infoPath
-  ex <- doesFileExist p
-  if not ex then return M.empty else do
-    is <- fromMaybe [] . decode' <$> LBS.readFile p
-    return $ M.fromList [ (aiSession i, i) | i <- is ]
-
-saveInfos :: Map Text AgentInfo -> IO ()
-saveInfos m = (`catch` \(_ :: SomeException) -> return ()) $ do
-  p <- infoPath
-  writeSidecar p (encode (M.elems m))
-
--- | Update the (lazily loaded) store and persist it.
+-- | Update the store from what is in the file now; written back only when it
+-- changed.  (An unwritable store answers from what can be read, unchanged:
+-- the record keeping must not take the Agents pane down with it.)
 withInfos :: (Map Text AgentInfo -> (Map Text AgentInfo, a)) -> IO a
-withInfos f = modifyMVar infoVar $ \m0 -> do
-  m <- maybe loadInfos return m0
-  let (m', a) = f m
-  saveInfos m'
-  return (Just m', a)
+withInfos f = modifyStore infoStore (return . f)
+  `catch` \(_ :: SomeException) -> snd . f <$> peekStore infoStore
 
 readInfos :: IO (Map Text AgentInfo)
-readInfos = withInfos (\m -> (m, m))
+readInfos = peekStore infoStore
 
 -- | The store WITHOUT writing it back ('withInfos' saves on every call, which is
 -- the wrong price to pay on a poll that only looks).  Every writer goes through
 -- the same 'MVar' in this process, so the cached map is current.
 peekInfos :: IO (Map Text AgentInfo)
-peekInfos = modifyMVar infoVar $ \m0 -> do
-  m <- maybe loadInfos return m0
-  return (Just m, m)
+peekInfos = peekStore infoStore
 
 -- | What each agent calls ITSELF (session → title), for the surfaces that list
 -- sessions.  The name a session gives itself through @agent describe@ says what
@@ -566,8 +553,21 @@ agentParentOf sid = (aiParent =<<) . M.lookup sid <$> peekInfos
 
 -- | Forget an agent (the pane's ✕ on an exited row).  Its children re-attach to
 -- ITS parent rather than disappearing — see 'agentForest'.
+--
+-- Only for THIS leksah: the record is shared with every leksah that shows the
+-- agent's machine, and one person putting an old agent out of sight must not
+-- take it from everyone else's pane.  So it joins this leksah's own hidden
+-- set ('hiddenStore'), which hides it only while it is not running.
 dismissAgent :: Text -> IO ()
-dismissAgent sid = withInfos $ \m -> (M.delete sid m, ())
+dismissAgent sid = modifyStore hiddenStore (\h -> return (S.insert sid h, ()))
+  `catch` \(_ :: SomeException) -> return ()
+
+-- | The agents this leksah's user put out of sight ('dismissAgent'): a local
+-- sidecar, never shared.
+{-# NOINLINE hiddenStore #-}
+hiddenStore :: SharedStore (S.Set Text)
+hiddenStore = unsafePerformIO $
+  newSharedStore "agents-hidden.json" decode' encode S.empty
 
 blank :: Text -> FilePath -> AgentInfo
 blank sid dir = AgentInfo
@@ -621,11 +621,7 @@ posixNow = realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
 -- | Like 'withInfos', but writes the sidecar only when something changed —
 -- the liveness sync runs on every change of the live set.
 withInfosChanged :: (Map Text AgentInfo -> (Map Text AgentInfo, a)) -> IO a
-withInfosChanged f = modifyMVar infoVar $ \m0 -> do
-  m <- maybe loadInfos return m0
-  let (m', a) = f m
-  when (m' /= m) (saveInfos m')
-  return (Just m', a)
+withInfosChanged = withInfos
 
 -- | One pass of liveness tracking (serialised; the state is the vanished
 -- agents still in their 'vanishGrace').  Run on every change of the live set
@@ -934,7 +930,10 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       rows = filter (not . csrBackground) (csRows st)
       liveRows = M.fromList [ (csrSession r, r) | r <- rows ]
   lastSeen <- agentLastSeen
-  exited <- exitedNodes now infos liveRows lastSeen
+  -- (what this leksah's user dismissed stays out of sight while it is not
+  -- running — 'dismissAgent')
+  hidden <- peekStore hiddenStore `catch` \(_ :: SomeException) -> return S.empty
+  exited <- exitedNodes now (M.withoutKeys infos hidden) liveRows lastSeen
   -- Background sessions with no process (blocked on a question, finished,
   -- failed, stopped): no session file, so they are not in 'liveRows', but
   -- `claude agents` still lists them — one blocked is waiting for YOU.  Each

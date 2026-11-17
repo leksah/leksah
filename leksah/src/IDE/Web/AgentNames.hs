@@ -28,15 +28,13 @@ module IDE.Web.AgentNames
   , holdAgentNames
   ) where
 
-import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import Data.IORef (IORef, newIORef, readIORef, atomicWriteIORef)
 import qualified Data.Set as S
 import Control.Exception (catch, SomeException)
-import Control.Monad (mfilter, when)
+import Control.Monad (mfilter)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject, encode, decode')
-import qualified Data.ByteString.Lazy as LBS
 import Data.Char (isAlphaNum, isHexDigit, ord, toUpper)
 import Data.List (sortOn)
 import Data.Map (Map)
@@ -47,10 +45,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 
-import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Paths (sidecarPath, writeSidecar)
+import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore)
 
 -- | The pool, each short and distinct when spoken.  "IDE.Web.AgentFace" draws
 -- a face for every one of them — add the face with the name.
@@ -97,32 +94,31 @@ seenSlack :: Double
 seenSlack = 600
 
 --------------------------------------------------------------------------------
--- the store (the AgentInfo sidecar pattern: lazily loaded, one MVar)
+-- the store: shared with every other leksah that shows this machine's agents
+-- ("IDE.Web.SharedStore": locked, re-read whenever it changed)
 
-{-# NOINLINE namesVar #-}
-namesVar :: MVar (Maybe (Map Text NameRec))
-namesVar = unsafePerformIO (newMVar Nothing)
+{-# NOINLINE namesStore #-}
+namesStore :: SharedStore (Map Text NameRec)
+namesStore = unsafePerformIO $
+  newSharedStore "agent-names.json" decode' encode M.empty
 
-loadNames :: IO (Map Text NameRec)
-loadNames = (`catch` \(_ :: SomeException) -> return M.empty) $ do
-  p  <- sidecarPath "agent-names.json"
-  ex <- doesFileExist p
-  if not ex then return M.empty else fromMaybe M.empty . decode' <$> LBS.readFile p
-
-saveNames :: Map Text NameRec -> IO ()
-saveNames m = (`catch` \(_ :: SomeException) -> return ()) $ do
-  p <- sidecarPath "agent-names.json"
-  writeSidecar p (encode m)
-
--- | Update the store, writing it back only when it changed.
+-- | Update the store from what is in the file now, writing it back only when
+-- it changed.
 withNames :: (Double -> Map Text NameRec -> (Map Text NameRec, a)) -> IO a
 withNames f = do
   now <- realToFrac <$> getPOSIXTime
-  modifyMVar namesVar $ \m0 -> do
-    m <- maybe loadNames return m0
-    let (m', a) = f now m
-    when (m' /= m) (saveNames m')
-    return (Just m', a)
+  (`catch` \(e :: SomeException) -> fallback e) $
+    modifyStore namesStore (return . f now)
+  where
+    -- (an unwritable store must not take naming down with it: answer from
+    -- what can be read, unchanged)
+    fallback _ = do
+      now <- realToFrac <$> getPOSIXTime
+      snd . f now <$> peekStore namesStore
+
+-- | Look at the store without changing it.
+viewNames :: (Map Text NameRec -> a) -> IO a
+viewNames g = g <$> peekStore namesStore
 
 --------------------------------------------------------------------------------
 -- naming
@@ -148,8 +144,8 @@ touchAgentNames sids = do
 -- 'seenSlack'), without changing anything.  Sessions that carried on under
 -- another id are left out: their own clock stopped when they handed over.
 agentLastSeen :: IO (Map Text Double)
-agentLastSeen = withNames $ \_ m ->
-  (m, M.map nrSeen (M.filter (isNothing . nrContinuedIn) m))
+agentLastSeen = viewNames $ \m ->
+  M.map nrSeen (M.filter (isNothing . nrContinuedIn) m)
 
 -- | Sessions that keep their names whatever their clock says: suspended
 -- agents, and agents interrupted by a restart, are still on the team, and
@@ -170,7 +166,7 @@ reserved held now sid r = isNothing (nrContinuedIn r)
 
 -- | The session → name map, without changing anything.
 agentNames :: IO (Map Text Text)
-agentNames = withNames $ \_ m -> (m, M.map nrName m)
+agentNames = viewNames (M.map nrName)
 
 -- | Mark one session seen, naming it first if it has no name.
 touch :: S.Set Text -> Double -> Map Text NameRec -> Text -> Map Text NameRec
@@ -233,7 +229,7 @@ renameAgent sid raw
 -- passed through unchanged, so the callers keep working on ids leksah has no
 -- name for (an exited session found only through its transcript).
 resolveAgentName :: [Text] -> Text -> IO (Either Text Text)
-resolveAgentName live arg0 = withNames $ \_ m -> (m, resolve m)
+resolveAgentName live arg0 = viewNames resolve
   where
     arg = T.strip arg0
     resolve m = followOn m <$> resolve0 m
@@ -281,8 +277,8 @@ adoptContinuation old new = withNames $ \now m ->
 -- the end).  The live-session readers leave the old ids out: their process is
 -- only the host that started the new one.
 agentContinuations :: IO (Map Text Text)
-agentContinuations = withNames $ \_ m ->
-  (m, M.fromList [ (s, followOn m s) | (s, r) <- M.toList m, isJust (nrContinuedIn r) ])
+agentContinuations = viewNames $ \m ->
+  M.fromList [ (s, followOn m s) | (s, r) <- M.toList m, isJust (nrContinuedIn r) ]
 
 -- | The session a Claude pane's @\@leksah_run@ key names — the
 -- @\<dir\>#claude#\<id\>@ shape a pinned @--session-id@ launch gets.  A @#fork#@
