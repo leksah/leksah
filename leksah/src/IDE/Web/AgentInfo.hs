@@ -82,7 +82,7 @@ import System.Directory (doesFileExist, getModificationTime)
 import System.FilePath (dropTrailingPathSeparator, takeFileName)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Paths (sidecarPath)
+import IDE.Paths (sidecarPath, writeSidecar)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seCompactingAt, seSubagentsAt, seTaskSummary, seTool, sessionEvents)
@@ -246,7 +246,7 @@ loadInfos = (`catch` \(_ :: SomeException) -> return M.empty) $ do
 saveInfos :: Map Text AgentInfo -> IO ()
 saveInfos m = (`catch` \(_ :: SomeException) -> return ()) $ do
   p <- infoPath
-  LBS.writeFile p (encode (M.elems m))
+  writeSidecar p (encode (M.elems m))
 
 -- | Update the (lazily loaded) store and persist it.
 withInfos :: (Map Text AgentInfo -> (Map Text AgentInfo, a)) -> IO a
@@ -623,23 +623,32 @@ hostsVar = unsafePerformIO (newMVar Nothing)
 
 withHosts :: (HostsState -> (HostsState, a)) -> IO a
 withHosts f = modifyMVar hostsVar $ \h0 -> do
-  -- The path is resolved INSIDE the handlers: 'sidecarPath' creates the
-  -- directory, and where it can't (the browser demo has no home to write
-  -- to) that throw killed every Agents-pane refresh thread.  And only when
-  -- the file is actually read or written, not on every peek.
-  let path = sidecarPath "agent-hosts.json"
-  h <- case h0 of
-    Just h  -> return h
-    Nothing -> (`catch` \(_ :: SomeException) -> return emptyHosts) $ do
-      p  <- path
-      ex <- doesFileExist p
-      if ex then fromMaybe emptyHosts . decode' <$> LBS.readFile p else return emptyHosts
+  (h, known) <- maybe loadHosts (\h -> return (h, True)) h0
   let (h', a) = f h
-  when (h' /= h) . (`catch` \(_ :: SomeException) -> return ()) $ do
-    p <- path
-    LBS.writeFile p (encode h')
-  return (Just h', a)
-  where emptyHosts = HostsState False []
+  -- Only a state that came from the file (or from its absence) is cached and
+  -- written back: one built on an UNREADABLE file (half-written at boot, a
+  -- transient IO error) would overwrite the user's answered offers with an
+  -- empty list.  That call works on the empty state and the next one
+  -- retries the read.
+  when (known && h' /= h) . (`catch` \(_ :: SomeException) -> return ()) $ do
+    p <- hostsPath
+    writeSidecar p (encode h')
+  return (if known then Just h' else Nothing, a)
+
+hostsPath :: IO FilePath
+hostsPath = sidecarPath "agent-hosts.json"
+
+-- | The stored hosts state, and whether it can be trusted: 'False' when the
+-- file exists but couldn't be read or decoded.
+loadHosts :: IO (HostsState, Bool)
+loadHosts = (`catch` \(_ :: SomeException) -> return (emptyHosts, False)) $ do
+  p  <- hostsPath
+  ex <- doesFileExist p
+  if not ex then return (emptyHosts, True) else
+    maybe (emptyHosts, False) (\h -> (h, True)) . decode' <$> LBS.readFile p
+
+emptyHosts :: HostsState
+emptyHosts = HostsState False []
 
 -- | The one-off recovery, for the restart that happened before leksah tracked
 -- liveness: the agents whose names were last touched together, just before

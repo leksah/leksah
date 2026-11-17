@@ -58,7 +58,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
 
 import IDE.App (appWorkspace, withApp)
-import IDE.Paths (sidecarPath)
+import IDE.Paths (sidecarPath, writeSidecar)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.Claude
        (ClaudeCmd(..), runClaudeCmd, claudeRunning, claudeLiveBySession,
@@ -118,7 +118,7 @@ loadQueue = (`catch` \(_ :: SomeException) -> return (Queue 1 [])) $ do
 saveQueue :: Queue -> IO ()
 saveQueue q = (`catch` \(_ :: SomeException) -> return ()) $ do
   p <- queuePath
-  LBS.writeFile p (encode q)
+  writeSidecar p (encode q)
 
 -- | Run an update against the (lazily loaded) queue, persisting the result.
 withQueue :: (Queue -> (Queue, a)) -> IO a

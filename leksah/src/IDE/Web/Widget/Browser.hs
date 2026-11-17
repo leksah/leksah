@@ -75,7 +75,7 @@ import Reflex.Dom.Core
         _textInputConfig_initialValue, _textInputConfig_setValue,
         _textInputConfig_attributes, getPostBuild)
 
-import IDE.Paths (sidecarPath)
+import IDE.Paths (sidecarPath, writeSidecar)
 import IDE.Web.Events (BrowserEvents)
 import IDE.Web.NativeBrowser (NativeBrowserOps(..), getNativeBrowserOps)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -131,7 +131,7 @@ loadPanes = (`catch` \(_ :: SomeException) -> return (BrowserPanes 1 M.empty)) $
 savePanes :: BrowserPanes -> IO ()
 savePanes bp = (`catch` \(_ :: SomeException) -> return ()) $ do
     path <- panesPath
-    LBS.writeFile path (encode (bpNext bp, M.toList (bpUrls bp)))
+    writeSidecar path (encode (bpNext bp, M.toList (bpUrls bp)))
 
 -- | Run an update against the loaded registry, writing it through to disk
 -- (URL changes are address-bar-rate, so a write per update is fine).

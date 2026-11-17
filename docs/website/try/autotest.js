@@ -281,23 +281,27 @@
   // paused, screen inside its host, and visible painted output (DOM-renderer
   // row text, or a sized canvas under WebGL).
   // --- The showcase leksah window (multi-pane split) ---------------------
-  // The demo boots with a sessionless leksah window "lw-0": the game's editor
-  // beside a browser pane running the compiled game, rendered by the shared
+  // The demo boots with a sessionless leksah window "lw-0": a browser pane
+  // running the compiled game, with its agent (Otter's canned transcript, a
+  // terminal view leaf) beside it, rendered by the shared
   // sessionlessLwWidget.  Assert the split actually materialized (two leaf
   // rects at different x), that its leaves hold the expected views, and that
   // the ⌘-drag registries the gesture depends on are armed.
   function showcaseCheck(done) {
     // newTerminalCheck just left its leksah-1 tab in front: bring the
     // showcase's tab back, or every check below measures a hidden window.
-    var tabBtn = document.querySelector(
-      '.tab-buttons.area-wide0 .tab-wrap[data-tabkey="LeksahWinKey \\"lw-0\\""] button');
-    if (tabBtn) tabBtn.click();
-    else log('SHOWCASE: no lw-0 tab button');
+    // (A hidden tab is visibility:hidden, so its leaves keep their size:
+    // "in front" is the tab button being the selected one.)
+    var wrapSel = '.tab-buttons.area-wide0 .tab-wrap[data-tabkey="LeksahWinKey \\"lw-0\\""]';
+    var tabBtn = document.querySelector(wrapSel + ' button');
+    if (!tabBtn) { log('SHOWCASE: no lw-0 tab button'); done(); return; }
+    tabBtn.click();
     var t0 = Date.now();
     var timer = setInterval(function () {
       var lw = document.querySelector('.terminal-cc[data-lw="lw-0"]');
       var leaves = lw ? lw.querySelectorAll('.terminal-cc-leaf') : [];
-      if (leaves.length >= 2 && leaves[0].getBoundingClientRect().width > 0) {
+      var front = !!document.querySelector(wrapSel + '.selected');
+      if (leaves.length >= 2 && front) {
         clearInterval(timer);
         var lefts = Array.prototype.map.call(leaves, function (l) {
           return l.style.left;
@@ -318,7 +322,8 @@
       } else if (Date.now() - t0 > 15000) {
         clearInterval(timer);
         log('SHOWCASE TIMEOUT — .terminal-cc[data-lw=lw-0] '
-            + (lw ? 'has ' + leaves.length + ' leaves' : 'not in DOM'));
+            + (lw ? 'has ' + leaves.length + ' leaves' : 'not in DOM')
+            + (front ? '' : ', its tab is not in front'));
         done();
       }
     }, 400);
@@ -380,9 +385,12 @@
       // The pane navigates its frame with location.replace (keeping the game
       // out of the tab's history), so there is no src attribute to read:
       // ask the (same-origin) frame where it is.
-      var f = document.querySelector('.browser .browser-frame');
+      // (The showcase's own frame: there may be other browser panes, and a
+      // frame not navigated yet reports about:blank's pathname, "blank".)
+      var f = document.querySelector('.terminal-cc[data-lw="lw-0"] .browser-frame');
       var src = '';
       try { src = (f && f.contentWindow && f.contentWindow.location.pathname) || ''; } catch (e) {}
+      if (src === 'blank') src = '';
       if (!src && f) src = f.getAttribute('src') || '';
       if (f && /\/try\/breakout/.test(src)) {
         var body = null;
@@ -399,7 +407,7 @@
         clearInterval(timer);
         log(f ? ('BREAKOUT SKIP — iframe src=' + (src || '(unset)')
                  + ' (page missing or empty)')
-              : 'BREAKOUT SKIP — no .browser-frame in DOM');
+              : 'BREAKOUT SKIP — no browser frame in the showcase');
         done();
       }
     }, 400);
@@ -512,22 +520,46 @@
     }
     var before = leafCount();
     if (!before) { log('SPLIT-KEY SKIP — no showcase window'); done(); return; }
-    var down = new KeyboardEvent('keydown',
-      { key: 'd', code: 'KeyD', metaKey: true, bubbles: true });
-    Object.defineProperty(down, 'keyCode', { get: function () { return 68; } });
-    document.dispatchEvent(down);
-    var t0 = Date.now();
-    var timer = setInterval(function () {
-      if (leafCount() > before) {
-        clearInterval(timer);
-        log('Cmd+D split: lw-0 leaves ' + before + ' -> ' + leafCount());
-        done();
-      } else if (Date.now() - t0 > 6000) {
-        clearInterval(timer);
-        log('CMD+D DID NOTHING — lw-0 still has ' + before + ' leaves');
-        done();
-      }
-    }, 300);
+    // Split from the game's pane, as the check was written for — not from
+    // whatever leaf an earlier check that failed part-way left active.
+    var lw = document.querySelector('.terminal-cc[data-lw="lw-0"]');
+    var frame = lw.querySelector('.browser-frame');
+    var want = frame && frame.closest('.terminal-cc-leaf').getAttribute('data-leaf');
+    function activeLeaf() {
+      var a = lw.querySelector('.terminal-cc-leaf .pane-chrome.active');
+      var l = a && a.closest('.terminal-cc-leaf');
+      return l ? l.getAttribute('data-leaf') : '(none)';
+    }
+    if (want && activeLeaf() !== want) {
+      try { frame.contentWindow.focus(); } catch (e) {}
+      var tW = Date.now();
+      var waitGame = setInterval(function () {
+        if (activeLeaf() === want || Date.now() - tW > 3000) {
+          clearInterval(waitGame);
+          if (activeLeaf() !== want)
+            log('SPLIT-KEY: the game pane is not active (leaf ' + activeLeaf() + ')');
+          press();
+        }
+      }, 200);
+    } else press();
+    function press() {
+      var down = new KeyboardEvent('keydown',
+        { key: 'd', code: 'KeyD', metaKey: true, bubbles: true });
+      Object.defineProperty(down, 'keyCode', { get: function () { return 68; } });
+      document.dispatchEvent(down);
+      var t0 = Date.now();
+      var timer = setInterval(function () {
+        if (leafCount() > before) {
+          clearInterval(timer);
+          log('Cmd+D split: lw-0 leaves ' + before + ' -> ' + leafCount());
+          done();
+        } else if (Date.now() - t0 > 6000) {
+          clearInterval(timer);
+          log('CMD+D DID NOTHING — lw-0 still has ' + before + ' leaves');
+          done();
+        }
+      }, 300);
+    }
   }
 
   // --- Browser-pane chrome ------------------------------------------------
@@ -583,10 +615,16 @@
         tgt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
         tgt.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
       }
+      // …and take DOM focus out of the frame for real (a synthetic mousedown
+      // moves none): if the frame kept it, focusing it again below would be
+      // a no-op and the check would fail for the wrong reason.
+      var ta = other && other.querySelector('.xterm-helper-textarea');
+      if (ta) ta.focus();
     }
     var tA = Date.now();
     var waitOther = setInterval(function () {
-      if (activeLeaf() !== want) { clearInterval(waitOther); focusFrame(); }
+      if (activeLeaf() !== want && document.activeElement !== frame) {
+        clearInterval(waitOther); focusFrame(); }
       else if (Date.now() - tA > 4000) {
         clearInterval(waitOther);
         log('PANE-FOCUS SKIP — could not activate the other leaf first');
