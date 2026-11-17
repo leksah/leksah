@@ -289,7 +289,8 @@ import IDE.Web.TerminalInput
         getActiveTerminal, stopCCFor)
 import IDE.Web.SnapRequest (SnapReq(..))
 import IDE.Web.TmuxServer
-       (TmuxServer(..), serverOfTabKey, rawTmuxId, qualifyTmuxId, tmuxOutOn, tmuxCmdOn)
+       (TmuxServer(..), serverOfTabKey, rawTmuxId, qualifyTmuxId, tmuxOutOn, tmuxCmdOn,
+        tmuxRunOn, installFitScript)
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest
@@ -1091,6 +1092,13 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- terminal attaches: they wedge on leksah exit, stay counted as attached,
       -- and their stale 80x24 sizes clamp every window they're attached to.
       liftIO reapControlClients
+      -- Shared windows get the smallest size any leksah showing one wants
+      -- ('IDE.Web.TmuxServer.fitWindowScript'), refitted when a viewer
+      -- leaves: on every launch, as the server may outlive many of them.
+      liftIO $ do
+        installFitScript
+        void $ tmuxRunOn LocalServer
+          [ "set-hook", "-g", "client-detached", "run-shell -b 'sh ~/.leksah/fit-window.sh'" ] ""
 #endif
 #if !defined(ghcjs_HOST_OS)
       -- GC monitor (needs +RTS -T, set via -with-rtsopts): log every major
