@@ -7904,7 +7904,13 @@ main showMenubar macTitlebar wid ctx = mdo
     let flipItemLabel lws names tree fi = case fi of
           FlipTab k      -> tabLabelText k names
           FlipPane n w p -> flipPaneLabel n w p tree
-          FlipView n l   -> maybe "(closed view)" (`tabLabelText` names) (viewKeyOf lws n l)
+          FlipView n l   -> case viewKeyOf lws n l of
+            -- A terminal shown as a VIEW leaf (the browser demo's showcase
+            -- agent) is labelled like its session's pane — the agent's name
+            -- and title — as 'flipIconSrc' gives it the pane's face.
+            Just (TerminalKey s)
+              | Just (_, w : _) <- M.lookup s tree -> flipPaneLabel s (twIndex w) 0 tree
+            mk -> maybe "(closed view)" (`tabLabelText` names) mk
         -- A small square before each entry, coloured by the OS window that owns
         -- the pane — a visual cue of where selecting it will take you.  Only when
         -- there is more than one window (a single window needs no disambiguation).
