@@ -40,6 +40,7 @@
 -- worktree per task and reviews the diffs afterwards.
 module IDE.Web.Agent
   ( ForkPlace(..)
+  , runRemoteClaudeCmd
   , ForkRequest(..)
   , emptyForkRequest
   , remoteAgentEvent
@@ -118,6 +119,7 @@ import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
        (adoptContinuation, agentContinuations, agentNameFor, agentNames, renameAgent,
         resolveAgentName, touchAgentNames)
+import IDE.App (appNote, getGlobalApp)
 import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, findRemoteAgentRole, roleNote)
 import IDE.Web.Claude
        (AgentSpec(..), ClaudeBackground(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
@@ -539,6 +541,55 @@ startRemoteAgent host name rdir spec = do
       -- (once the tab's viewer session exists — however long its ssh attach takes)
       _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
       return (Right ())
+
+-- | 'runClaudeCmd' for a project on another machine (registered with
+-- 'setRemoteClaudeLauncher'): a Workspace-tree "New Claude Session" etc. on an
+-- @ssh://@ project.  The agent runs on that host like a fork there
+-- ('startRemoteAgent'), named in the host's store; a command with no session
+-- id to name it by yet (continue, the resume picker, ask) gets a window the
+-- host's Terminals poll names once its session shows up.  Problems go to the
+-- Log pane — the menu item has no one else to tell.
+runRemoteClaudeCmd :: Text -> FilePath -> ClaudeCmd -> IO ()
+runRemoteClaudeCmd host rdir cmd = report =<< case cmd of
+    ClaudeNew _      -> fresh Nothing
+    ClaudePrompt _ p -> fresh (Just p)
+    ClaudeAgent s | asCodex s -> unsupported
+                  | otherwise -> launch s
+    -- (an agent that host's store knows: resumed as itself, named; any
+    -- other session there — never 'agentResume''s LOCAL fallback)
+    ClaudeResume _ i -> remoteAgentRecord i >>= \case
+      Just (h, _) | h == host -> fmap (const ()) <$> agentResume i
+      _                       -> unnamed
+    CodexNew _       -> unsupported
+    CodexResume _ _  -> unsupported
+    _                -> unnamed
+  where
+    fresh mprompt = do
+      sid <- newAgentSessionId
+      launch AgentSpec { asDir = renderRemotePath host rdir, asSession = sid
+                       , asFrom = Nothing, asPrompt = mprompt, asParent = Nothing
+                       , asRoleNote = Nothing, asResume = False
+                       , asManager = False, asCodex = False }
+    launch spec = remoteAgentName host (asSession spec) >>= \case
+      Left err -> return (Left ("could not name the agent on " <> host <> ": " <> err))
+      Right name -> do
+        recordRemoteFork host (asParent spec) (asSession spec) rdir (asPrompt spec)
+                         Nothing (asManager spec)
+        startRemoteAgent host name rdir spec
+    unnamed = do
+      (_, key, line) <- claudeCommandLine cmd
+      -- (the run key a leksah on the host would give it: host-local dir)
+      let key' = maybe key (T.pack rdir <>)
+                   (T.stripPrefix (T.pack (renderRemotePath host rdir)) key)
+      newRemoteAgentWindow host "claude" rdir key' line >>= \case
+        Nothing -> return (Left ("could not start a window on " <> host))
+        Just (s, _, pane) -> do
+          requestRemoteTerm (host <> "#" <> rawTmuxId s)
+          _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
+          return (Right ())
+    unsupported = return (Left "Codex sessions can't run on another machine yet")
+    report = either (\e -> getGlobalApp >>= mapM_ (`appNote` ("Claude on " <> host <> ": " <> e)))
+                    (const (return ()))
 
 -- | Every live session: this machine's, and those on the hosts whose leksah
 -- tmux server this leksah shares ("IDE.Web.RemoteAgents" — their 'clHost' set).

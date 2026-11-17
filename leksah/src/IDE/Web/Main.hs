@@ -267,7 +267,8 @@ import IDE.Web.SaveRequest (requestSaveActiveFileWait)
 import IDE.Web.Claude
        (runClaudeCmd, claudeCommandLine, ClaudeCmd(..), ClaudeLive(..),
         claudeLiveBySession, paneCurrentPath, paneForSession, sendToSession,
-        showLiveSession, showLiveSessionHere, raiseTabOfPane, prepareAgentLaunchFiles)
+        showLiveSession, showLiveSessionHere, raiseTabOfPane, prepareAgentLaunchFiles,
+        setRemoteClaudeLauncher)
 import IDE.Web.AISession
        (AIChoice(..), AIRow(..), activeAIPaneRef, aiPickerChoices, choiceKey)
 #if !defined(ghcjs_HOST_OS)
@@ -276,7 +277,7 @@ import IDE.Web.ClaudeStatus
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
 import IDE.Web.RemoteAgents (setRemoteEventHandler, startLocalEventsPoll, startRemoteAgentsPoll)
-import IDE.Web.Agent (remoteAgentEvent)
+import IDE.Web.Agent (remoteAgentEvent, runRemoteClaudeCmd)
 #endif
 import IDE.Web.NewLwRequest
        (beginConversion, endConversion, conversionActive, consolidateLock,
@@ -1081,6 +1082,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         -- (remote.tmuxSockets): one ssh snapshot per host every few seconds,
         -- which the status poll and the Agents pane read.
         setRemoteEventHandler remoteAgentEvent
+        setRemoteClaudeLauncher runRemoteClaudeCmd
         rtid <- startRemoteAgentsPoll
         ltid <- startLocalEventsPoll
         when ghciMode $ registerGhciCleanupNamed "local-events-poll" (killThread ltid)

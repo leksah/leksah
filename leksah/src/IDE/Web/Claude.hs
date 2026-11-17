@@ -17,6 +17,8 @@
 -- "IDE.Web.Widget.FileTree".
 module IDE.Web.Claude
   ( claudeAvailable
+  , setRemoteClaudeLauncher
+  , claudeCmdDir
   , prepareAgentLaunchFiles
   , ClaudeSession(..)
   , csTitle
@@ -844,7 +846,40 @@ newAgentSessionId = do
 -- on screen but a normal quit tidies up (which also clears the tree's
 -- "running" dot and frees the per-directory key, see 'claudeRunning').
 runClaudeCmd :: ClaudeCmd -> IO ()
-runClaudeCmd cmd = void . forkIO $ do
+runClaudeCmd cmd = void . forkIO $ case parseRemotePath (claudeCmdDir cmd) of
+  -- (a project on another machine: the agent runs THERE, named in that
+  -- machine's stores — "IDE.Web.Agent", which this module can't import)
+  Just (host, rdir) -> readIORef remoteLauncherRef >>= \case
+    Just launch -> launch host rdir cmd
+    Nothing     -> return ()
+  Nothing -> runLocalClaudeCmd cmd
+
+-- | The directory a 'ClaudeCmd' runs in.
+claudeCmdDir :: ClaudeCmd -> FilePath
+claudeCmdDir = \case
+  ClaudeNew d            -> d
+  ClaudeContinue d       -> d
+  ClaudeResumePicker d   -> d
+  ClaudeResume d _       -> d
+  ClaudeResumeFork d _   -> d
+  ClaudeAsk d            -> d
+  ClaudePrompt d _       -> d
+  ClaudeAgent s          -> asDir s
+  CodexNew d             -> d
+  CodexResume d _        -> d
+
+-- | How 'runClaudeCmd' starts a command whose directory is on another
+-- machine (host, host-local dir): set at start-up by "IDE.Web.Agent"
+-- ('setRemoteClaudeLauncher'), which has the remote name store.
+{-# NOINLINE remoteLauncherRef #-}
+remoteLauncherRef :: IORef (Maybe (Text -> FilePath -> ClaudeCmd -> IO ()))
+remoteLauncherRef = unsafePerformIO (newIORef Nothing)
+
+setRemoteClaudeLauncher :: (Text -> FilePath -> ClaudeCmd -> IO ()) -> IO ()
+setRemoteClaudeLauncher = writeIORef remoteLauncherRef . Just
+
+runLocalClaudeCmd :: ClaudeCmd -> IO ()
+runLocalClaudeCmd cmd = do
   (d, key, line') <- claudeCommandLine cmd
   findRunPane key >>= \case
     -- (its own tab: the session's first would be another agent's, every
