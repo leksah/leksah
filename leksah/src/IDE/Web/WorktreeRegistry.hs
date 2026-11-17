@@ -72,7 +72,7 @@ import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Git (runGit)
-import IDE.Paths (sidecarPath)
+import IDE.Paths (sidecarPath, writeSidecar)
 import IDE.Utils.RemotePath (isRemotePath)
 
 --------------------------------------------------------------------------------
@@ -183,7 +183,7 @@ loadRegistry = (`catch` \(_ :: SomeException) -> return M.empty) $ do
 saveRegistry :: Map FilePath WorktreeInfo -> IO ()
 saveRegistry m = (`catch` \(_ :: SomeException) -> return ()) $ do
   p <- regPath
-  LBS.writeFile p (encode (M.elems m))
+  writeSidecar p (encode (M.elems m))
 
 -- | Update the (lazily loaded) store and persist it.  Vanished local worktrees
 -- are pruned here, on the write path — never on a poll's peek.

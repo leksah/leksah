@@ -4,6 +4,7 @@
 module IDE.Paths
   ( getDataDir
   , sidecarPath
+  , writeSidecar
   , isSubPath
   ) where
 
@@ -15,6 +16,7 @@ import System.Environment (getExecutablePath, lookupEnv)
 import System.FilePath
        ((</>), addTrailingPathSeparator, normalise, takeDirectory)
 import Data.List (isPrefixOf)
+import qualified Data.ByteString.Lazy as LBS
 
 import qualified Paths_leksah
 
@@ -59,16 +61,25 @@ packagedDataDir = do
     -- only the cabal data-files — masquerade as the real one.
     looksLikeDataDir d = doesDirectoryExist (d </> "cm6")
 
--- | A per-user sidecar file (@~\/.leksah-0.17\/\<name\>@), directory
--- ensured.  Session state, agent registry, queue files and friends live
--- here — state, not configuration, hence not under XDG config with
--- @settings.json@.
+-- | A per-user sidecar file (@~\/.leksah-0.17\/\<name\>@).  Session
+-- state, agent registry, queue files and friends live here — state, not
+-- configuration, hence not under XDG config with @settings.json@.
+--
+-- Only the PATH: resolving it touches nothing, so a reader (often a poll)
+-- costs no syscall and can't throw where the directory can't be made (the
+-- browser demo has no home to write to).  Write with 'writeSidecar', which
+-- creates the directory.
 sidecarPath :: MonadIO m => FilePath -> m FilePath
 sidecarPath name = liftIO $ do
     home <- getHomeDirectory
-    let dir = home </> ".leksah-0.17"
-    createDirectoryIfMissing True dir
-    return (dir </> name)
+    return (home </> ".leksah-0.17" </> name)
+
+-- | Write a sidecar file (a path from 'sidecarPath'), creating its directory
+-- first.
+writeSidecar :: FilePath -> LBS.ByteString -> IO ()
+writeSidecar p bytes = do
+    createDirectoryIfMissing True (takeDirectory p)
+    LBS.writeFile p bytes
 
 -- | Is @child@ inside (or equal to) @parent@?  Both sides get a trailing
 -- separator before the prefix test, so @\/a\/bc@ is not inside @\/a\/b@

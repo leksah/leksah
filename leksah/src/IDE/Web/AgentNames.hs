@@ -50,7 +50,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
 
-import IDE.Paths (sidecarPath)
+import IDE.Paths (sidecarPath, writeSidecar)
 
 -- | The pool, each short and distinct when spoken.  "IDE.Web.AgentFace" draws
 -- a face for every one of them — add the face with the name.
@@ -112,7 +112,7 @@ loadNames = (`catch` \(_ :: SomeException) -> return M.empty) $ do
 saveNames :: Map Text NameRec -> IO ()
 saveNames m = (`catch` \(_ :: SomeException) -> return ()) $ do
   p <- sidecarPath "agent-names.json"
-  LBS.writeFile p (encode m)
+  writeSidecar p (encode m)
 
 -- | Update the store, writing it back only when it changed.
 withNames :: (Double -> Map Text NameRec -> (Map Text NameRec, a)) -> IO a

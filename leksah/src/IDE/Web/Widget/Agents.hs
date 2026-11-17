@@ -37,6 +37,7 @@ module IDE.Web.Widget.Agents
   ) where
 
 import Control.Concurrent (forkIO)
+import Control.Exception (SomeException, catch)
 import Control.Lens ((^.), (.~), (&))
 import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
@@ -148,10 +149,14 @@ agentsWidget ctx mruNamesD = do
     (latestE, fireLatest) <- newTriggerEvent
     -- The read runs OFF the reflex thread: it stats transcripts of exited
     -- agents, and a synchronous performEvent would hitch the whole UI.
+    -- Each read stands alone: an exception in one (an unreadable sidecar, a
+    -- demo with no home directory) must neither kill the thread with an
+    -- uncaught exception nor skip the reads after it.
     let refresh = void . forkIO $ do
-          agentForest >>= fireForest
-          interruptedOffer >>= fireOffer
-          latestInterruption >>= fireLatest
+          safely (agentForest >>= fireForest)
+          safely (interruptedOffer >>= fireOffer)
+          safely (latestInterruption >>= fireLatest)
+        safely act = act `catch` \(_ :: SomeException) -> return ()
     forestD <- holdUniqDyn =<< holdDyn [] forestE
     offerD  <- holdUniqDyn =<< holdDyn (Nothing :: Maybe (RanOn, [Text])) offerE
     latestD <- holdUniqDyn =<< holdDyn (Nothing :: Maybe (RanOn, [Text])) latestE

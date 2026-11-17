@@ -33,14 +33,14 @@ import Data.Aeson
         (.=), (.:), (.:?))
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Aeson.Types (Parser)
-import qualified Data.ByteString.Lazy as LBS (readFile, writeFile)
+import qualified Data.ByteString.Lazy as LBS (readFile)
 import qualified Data.Map as M (fromList, toAscList)
 import Data.Text (Text)
 import qualified Data.Text as T (unpack)
 
 import GHC.Generics (Generic)
 
-import IDE.Paths (sidecarPath)
+import IDE.Paths (sidecarPath, writeSidecar)
 import IDE.Web.ProjectRecents (ProjectRecents(..))
 import IDE.Web.Model
        (AIPaneRef(..), TallVisibility(..), FlipItem(..), LeafId(..),
@@ -268,4 +268,4 @@ readWebSession = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 writeWebSession :: WebSession -> IO ()
 writeWebSession s = (`catch` \(_ :: SomeException) -> return ()) $ do
     path <- webSessionPath
-    LBS.writeFile path (encodePretty s { wsVersion = webSessionVersion })
+    writeSidecar path (encodePretty s { wsVersion = webSessionVersion })
