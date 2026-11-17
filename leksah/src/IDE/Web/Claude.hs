@@ -1023,7 +1023,11 @@ codexDiscover = (`catch` \(_ :: SomeException) -> return ()) $
                    , p `S.notMember` covered, p `S.notMember` rejected ]
   cands <- filterM (fmap not . codexKnownPid) cands0
   -- (Forget rejections of processes that are gone: pids are reused.)
-  writeIORef discoverRejected (S.filter (`M.member` procs) rejected)
+  -- STRICTLY: nothing else forces this set unless a codex process is
+  -- running, and a lazy write keeps this poll's whole process table (every
+  -- command line as a String) alive inside the thunk, chained to the last
+  -- poll's -- about 3.5GB an hour.
+  writeIORef discoverRejected $! S.filter (`M.member` procs) rejected
   unless (null cands) $ do
     panes <- livePanePids
     forM_ cands $ \cp ->
