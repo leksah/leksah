@@ -33,13 +33,19 @@ module IDE.Web.WindowScope
   , registerWindowScope
   , closeWindowScope
   , markFrameLoopDone
+    -- * A browser connection going away (the warp front end)
+  , ConnectionGone(..)
+  , registerContextWindow
+  , registerContextThread
+  , connectionClosed
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, readMVar, tryPutMVar)
-import Control.Exception (SomeException, finally, try)
+import Control.Exception (Exception, SomeException, finally, throwTo, try)
 import Control.Monad (forM, void)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import Data.Int (Int64)
 import qualified Data.Map.Strict as M
 import System.IO.Unsafe (unsafePerformIO)
 import System.Timeout (timeout)
@@ -120,3 +126,47 @@ closeWindowScope wid = do
 
 runCleanup :: IO () -> IO ()
 runCleanup act = void (try act :: IO (Either SomeException ()))
+
+--------------------------------------------------------------------------------
+-- A browser connection going away
+--
+-- In the warp front end a window IS a browser connection (a jsaddle context),
+-- and a reload or a closed tab ends it with no window-close event.  A frame
+-- waiting for a JavaScript reply then waits for ever — under the frame lock
+-- every window shares, so no window, the reloaded one included, can open
+-- again.  So each connection's window and frame thread are recorded here
+-- under its jsaddle context id, and when the connection goes
+-- ('IDE.Web.WarpJSaddle'), 'connectionClosed' closes the window's scope (its
+-- frame loop stops between frames) and — only if that does not finish within
+-- the scope's bound, i.e. a frame is stuck waiting on the dead browser —
+-- raises 'ConnectionGone' in the frame thread: in a JavaScript wait it is
+-- caught where a failing JavaScript call would be, the frame is abandoned and
+-- the frame lock released.
+
+-- | The window's browser connection has gone.
+data ConnectionGone = ConnectionGone deriving Show
+instance Exception ConnectionGone
+
+{-# NOINLINE contextsRef #-}
+contextsRef :: IORef (M.Map Int64 (Maybe Int, [ThreadId]))
+contextsRef = unsafePerformIO (newIORef M.empty)
+
+-- | Window @wid@ runs in jsaddle context @ctx@.
+registerContextWindow :: Int64 -> Int -> IO ()
+registerContextWindow ctx wid = atomicModifyIORef' contextsRef $ \m ->
+  (M.insertWith (\_ (_, ts) -> (Just wid, ts)) ctx (Just wid, []) m, ())
+
+-- | Thread @t@ (a window's frame loop) belongs to jsaddle context @ctx@.
+registerContextThread :: Int64 -> ThreadId -> IO ()
+registerContextThread ctx t = atomicModifyIORef' contextsRef $ \m ->
+  (M.insertWith (\_ (w, ts) -> (w, t : ts)) ctx (Nothing, [t]) m, ())
+
+-- | Context @ctx@'s browser connection has gone: see above.
+connectionClosed :: Int64 -> IO ()
+connectionClosed ctx = do
+  (mwid, ts) <- atomicModifyIORef' contextsRef $ \m ->
+    (M.delete ctx m, M.findWithDefault (Nothing, []) ctx m)
+  stopped <- maybe (return Nothing) closeWindowScope mwid
+  case stopped of
+    Just True -> return ()
+    _ -> mapM_ (`throwTo` ConnectionGone) ts

@@ -41,7 +41,7 @@ module IDE.Web.Attach
   ( mainWidgetWithCssGuarded
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.Chan (readChan, writeChan)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Exception
@@ -77,10 +77,14 @@ import Reflex.Dom.Core
         withJSContextSingleton)
 import Reflex.Host.Class (newEventWithTriggerRef)
 import qualified Language.Javascript.JSaddle as JS (eval)
+#if !defined(ghcjs_HOST_OS)
+import Language.Javascript.JSaddle (askJSM)
+import Language.Javascript.JSaddle.Types (JSContextRef(..))
+#endif
 
 import IDE.Web.WindowScope
        (WindowScope, markFrameLoopDone, onScopeClose, scopeIsClosed,
-        withCurrentScope)
+        withCurrentScope, registerContextThread)
 
 -- | Serializes everything that touches the Spider timeline, process-wide.
 --
@@ -199,7 +203,13 @@ attachGuarded scope onAbort rootElement jsSing w = do
           <> " stays blank until leksah restarts): " <> displayException e
     Right ((_, events), fc) -> do
       replaceElementContents rootElement df
-      liftIO $ guardedAsyncEvents scope onAbort events fc
+      t <- liftIO $ guardedAsyncEvents scope onAbort events fc
+#if !defined(ghcjs_HOST_OS)
+      ctx <- contextId <$> askJSM
+      liftIO $ registerContextThread ctx t
+#else
+      let _ = t
+#endif
 
 -- | reflex-dom applies EVERY DOM change (attribute updates, 'dyn' swaps, list
 -- inserts) inside @requestAnimationFrame@ ('runInAnimationFrame' in
@@ -247,10 +257,10 @@ rafFallbackJs = concat
 -- mid-propagation could leave it inconsistent for the windows that remain.
 guardedAsyncEvents
   :: WindowScope -> (String -> IO ()) -> EventChannel
-  -> FireCommand DomTimeline DomHost -> IO ()
+  -> FireCommand DomTimeline DomHost -> IO ThreadId
 guardedAsyncEvents scope onAbort events (FireCommand fire) = do
   onScopeClose scope (writeChan events [])
-  void (forkIO loop)
+  forkIO loop
  where
  loop = do
   ers <- readChan events

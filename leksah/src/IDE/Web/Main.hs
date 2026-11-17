@@ -145,6 +145,8 @@ import qualified Language.Javascript.JSaddle.Warp as JSW (run)
 import Language.Javascript.JSaddle.Warp
        (jsaddleJs, jsaddleOr, debugWrapper)
 import Language.Javascript.JSaddle.Terminal.Bootstrap (bootstrapHtml)
+import IDE.Web.WarpJSaddle (jsaddleOrWatched)
+import Language.Javascript.JSaddle.Types (JSContextRef(contextId))
 import IDE.Web.JsaddleTunnel (tunnelSyncRequest)
 import GHCJS.DOM.Debug (addDebugMenu)
 #endif
@@ -163,7 +165,7 @@ import Reflex.Dom.Core
 
 import IDE.Web.Attach (mainWidgetWithCssGuarded)
 import IDE.Web.WindowScope
-       (newWindowScope, registerWindowScope, onCurrentScopeClose,
+       (newWindowScope, registerWindowScope, registerContextWindow, onCurrentScopeClose,
         forkInCurrentScope)
 
 import IDE.App
@@ -2013,6 +2015,12 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- shared state and ends its frame loop.
   scope <- liftIO newWindowScope
   liftIO $ registerWindowScope (case wid of WindowId n -> n) scope
+  -- (and which browser connection it is, for the warp front end: a reload
+  -- retires the window — 'IDE.Web.WindowScope.connectionClosed')
+#if !defined(ghcjs_HOST_OS)
+  connCtx <- askJSM
+  liftIO $ registerContextWindow (contextId connCtx) (case wid of WindowId n -> n)
+#endif
   -- GUARDED attach ("IDE.Web.Attach"): reflex-dom's own frame loop has no
   -- exception handler, so anything escaping a performEvent/dyn body would
   -- end async event processing for this window — a frozen UI that still
@@ -2313,7 +2321,9 @@ debugJSaddle p f = do
   dataDir <- getDataDir
   debugWrapper $ \withRefresh registerContext ->
     runSettings (setPort p (setTimeout 3600 defaultSettings)) =<<
-      jsaddleOr defaultConnectionOptions
+      -- (leksah's jsaddleOr: a browser that reloads or closes retires its
+      -- window instead of wedging every other — "IDE.Web.WarpJSaddle")
+      jsaddleOrWatched defaultConnectionOptions
                 (registerContext >> addDebugMenu >> f >> syncPoint)
                 (withRefresh $ \req sendResponse ->
           case (W.requestMethod req, W.pathInfo req) of
