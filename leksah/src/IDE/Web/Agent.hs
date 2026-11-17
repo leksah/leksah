@@ -109,7 +109,7 @@ import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
         moveAgentRecord, recordAgentFork, setAgentManager, setAgentRole,
-        setAgentSuspended, acknowledgeInterrupted, titleForClaude)
+        setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
@@ -133,7 +133,8 @@ import IDE.Web.AgentEvents
         recordSubagentStart, recordSubagentStop, recordCompacting, recordSessionEnd,
         recordTaskCreated, recordTaskActive, recordTaskStatus, TaskInfo(..))
 import IDE.Web.AgentUsage (usageFor, usageLines, usageSummary)
-import IDE.Web.ClaudeStatus (pokeClaudeStatus)
+import IDE.Web.ClaudeStatus
+       (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow, pokeClaudeStatus)
 import IDE.Web.Codex
        (codexAvailable, codexInteractive, codexProcessOf, codexSessionStart, codexSetStatus, codexSessionEnd,
         codexPatchFiles, codexSessionDir, codexStarted, codexTranscriptOf, isCodexSession,
@@ -274,7 +275,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
       -- after this moment nothing on disk relates a child to its parent (nor
       -- says what the child was asked to do — its forked transcript starts with
       -- the PARENT's first prompt).
-      recordAgentFork (asParent spec) (asSession spec) (asDir spec) (asPrompt spec)
+      recordAgentFork (asParent spec) (asSession spec) (asDir spec) (asPrompt spec) (asFrom spec)
       -- (already chosen by 'claudeCommandLine', which told the agent its name)
       ownName <- agentNameFor (asSession spec)
       mapM_ (setAgentRole (asSession spec) . roleName) mrole
@@ -351,11 +352,16 @@ agentList withStopped me = do
   if M.null live && null stopped then return "No Claude Code sessions are running.\n" else do
     names  <- touchAgentNames (M.keys live)
     titles <- agentTitles
+    polled <- M.fromList . map (\r -> (csrSession r, csrTitle r)) . csRows <$> claudeStatusNow
     events <- sessionEvents
     rows <- forM (sortOn (\l -> (rank l, clDir l)) (M.elems live)) $ \l -> do
-      -- The same title every other surface shows: what the agent called
-      -- itself, else its /rename name, else its first prompt.
-      title <- case M.lookup (clSession l) titles <|> clName l of
+      -- The same title every other surface shows: the status poll's (what the
+      -- agent called itself, a /rename name, Claude Code's own title for the
+      -- conversation, the first prompt), else — a session the poll has not
+      -- seen yet — the agent's own title or its /rename name, else its first
+      -- prompt.
+      title <- case M.lookup (clSession l) polled <|> M.lookup (clSession l) titles
+                      <|> clName l of
         Just n  -> return n
         Nothing -> fromMaybe "" <$> claudeSessionLabel (clDir l) (clSession l)
       return $ T.intercalate "\t"
@@ -615,10 +621,6 @@ agentFind cwd q = do
           : [ "  " <> roleName ro <> " — " <> roleDescription ro | ro <- roleHits ])
     <> (if null ranked then []
         else [ "", "Hand it over with: leksah-cmd agent send NAME --submit '...'" ])
-  where
-    stripTags t = case T.breakOn "<" t of
-      (a, rest) | T.null rest -> a
-                | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
 
 -- | @agent done@: an agent saying it has finished.  Marks it ✓ in the Agents
 -- pane (with the summary), and — if another agent started it — submits the

@@ -79,7 +79,7 @@ import IDE.Web.Agent
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.AgentInfo
        (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
-        interruptedOffer, latestInterruption)
+        interruptedOffer, latestInterruption, stripTags)
 import IDE.Web.Claude (ClaudeCmd(..), claudeRemoveBackground, runClaudeCmd)
 import IDE.Web.Codex (codexAvailable)
 import IDE.Web.Theme
@@ -425,9 +425,6 @@ agentsWidget ctx mruNamesD = do
       "busy" -> anState n `elem` ["busy", "shell", "starting"]
       _      -> anState n == st
 
-    stripTags t = case T.breakOn "<" t of
-      (a, rest) | T.null rest -> a
-                | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
 
 -- | The agent you are working with: the first in flip-MRU order, preferring
 -- a live agent of that name.

@@ -63,7 +63,7 @@ import Reflex.Dom.Core
 import Language.Javascript.JSaddle (liftJSM)
 
 import IDE.Web.AgentFace (agentFaceSvg)
-import IDE.Web.AgentInfo (AgentNode(..))
+import IDE.Web.AgentInfo (AgentNode(..), stripTags)
 import IDE.Web.AgentUsage
        (usageChip, usageContextPct, usageLevel, usageLines)
 import IDE.Web.Frame (MonadWidget, performEvent_)
@@ -411,22 +411,21 @@ hidden :: Map Text Text
 hidden = "style" =: "display:none"
 
 -- | The third line: the API error its last turn ended on, else what it is
--- doing right now, else the first line of what it says about itself.
+-- doing right now, else the first line of what it says about itself, else the
+-- first line of the last thing it said (most agents never describe
+-- themselves: without this an idle one's card is its title alone).
 line3 :: AgentNode -> Text
 line3 n | Just err <- anError n = "⚠ API error: " <> err
 line3 n = case anActivity n of
   Just a | not (T.null a) -> a
-  _ -> T.take 160 . T.strip . T.takeWhile (/= '\n') . stripTags
-         $ fromMaybe "" (anDesc n)
+  _ -> case T.take 160 . T.strip . T.takeWhile (/= '\n') . stripTags
+              $ fromMaybe "" (anDesc n) of
+         "" -> maybe "" (T.take 160) (anLastSaid n)
+         d  -> d
 
 bioOf :: AgentNode -> Text
 bioOf n = fromMaybe "" (anBio n `orElse` anDesc n)
   where orElse a b = maybe b Just a
-
-stripTags :: Text -> Text
-stripTags t = case T.breakOn "<" t of
-  (a, rest) | T.null rest -> a
-            | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
 
 baseName :: FilePath -> FilePath
 baseName = reverse . takeWhile (/= '/') . dropWhile (== '/') . reverse

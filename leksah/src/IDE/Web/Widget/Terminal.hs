@@ -1450,7 +1450,9 @@ enrichClaudeTitles tree
       Nothing -> case M.lookup (tpId p) owners of
         Nothing -> p
         Just l  -> p { tpAgentName    = M.lookup (clSession l) names
-                     , tpClaudeTitle  = clName l
+                     -- (a name Claude Code derived is still a better tab
+                     -- title than none)
+                     , tpClaudeTitle  = clName l <|> clDerivedName l
                      , tpClaudeStatus = clStatus l }
       Just dir ->
         let ss    = M.findWithDefault [] dir byDir
@@ -1464,7 +1466,7 @@ enrichClaudeTitles tree
               -- plus the first-prompt fallback), else the bare live name.
               Just l  -> case find ((== clSession l) . csId) ss of
                            Just s  -> Just (csTitle s)
-                           Nothing -> clName l
+                           Nothing -> clName l <|> clDerivedName l
               Nothing -> case keySid of
                            Just sid -> csTitle <$> find ((== sid) . csId) ss
                            Nothing  -> Nothing

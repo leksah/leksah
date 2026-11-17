@@ -22,6 +22,8 @@ module IDE.Web.ClaudeStatus
   , ClaudeStatusRow(..)
   , emptyClaudeStatus
   , startClaudeStatusPoll
+  , TitleSource(..)
+  , chooseTitle
   , claudeStatusNow
   , registerClaudeStatusPush
   , claudeStatusRowsJson
@@ -36,7 +38,7 @@ import Control.Concurrent (ThreadId, forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, takeMVar, tryPutMVar)
 import System.Timeout (timeout)
 import Control.Exception (catch, SomeException)
-import Control.Monad (foldM, void, when)
+import Control.Monad (foldM, mfilter, void, when)
 
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as BL
@@ -58,7 +60,8 @@ import IDE.Web.AgentEvents (sePromptPending, sessionEvents)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou,
-        claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel, codexDiscover)
+        claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel, codexDiscover,
+        TranscriptGist(..), cachedTranscriptGist, liveTranscriptPath)
 
 -- | One live session, as a status surface shows it.
 data ClaudeStatusRow = ClaudeStatusRow
@@ -68,7 +71,8 @@ data ClaudeStatusRow = ClaudeStatusRow
                         --   "IDE.Web.AgentNames"): WHO it is, as against
                         --   'csrTitle', which says what it is doing
   , csrTitle   :: Text  -- ^ what the agent calls itself (@agent describe@), else
-                        --   the name @\/rename@ gave it, else its first prompt
+                        --   the name @\/rename@ gave it, else Claude Code's own
+                        --   title for the conversation, else its first prompt
   , csrDir     :: Text  -- ^ its working directory (absolute)
   , csrDetail  :: Text  -- ^ what it is doing, spelled out
   , csrSession :: Text  -- ^ session id — the handle for showing this session
@@ -77,6 +81,8 @@ data ClaudeStatusRow = ClaudeStatusRow
                           --   counts on every status surface, but is not a live
                           --   session (no pane; showing it resumes it)
   , csrAgent   :: Text  -- ^ which CLI runs it: @claude@ or @codex@
+  , csrLastSaid :: Maybe Text -- ^ the first line of the last thing it said
+                              --   ('IDE.Web.Claude.tgLastSaid')
   } deriving (Eq, Show)
 
 -- | The live sessions, worst state first.
@@ -150,7 +156,7 @@ registerClaudeStatusPush h = do
 -- ('IDE.Web.AgentInfo.agentsHeld'): the Agents pane shows those as such, so a
 -- blocked background session among them is not counted as needing you here
 -- either — the two would disagree.
-startClaudeStatusPoll :: IO (Map Text Text) -> IO [Text] -> IO ThreadId
+startClaudeStatusPoll :: IO (Map Text TitleSource) -> IO [Text] -> IO ThreadId
 startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
   where
     loop prev labels = do
@@ -171,6 +177,8 @@ startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
         labels' <- foldM addLabel labels
           [ l | l <- M.elems live, clName l == Nothing
               , not (clSession l `M.member` labels) ]
+        -- What each transcript says now (re-read only when it has changed).
+        gists <- liveGists live
         titles <- titlesIO
         -- A background session blocked on a question has no pane, so nothing
         -- else says it is waiting: it counts as needing you here too, while
@@ -188,7 +196,7 @@ startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
         names0 <- touchAgentNames (M.keys live)
         known  <- agentNames
         let names = names0 <> M.filterWithKey (\k _ -> k `elem` map cbSession blocked) known
-        return (summarize names titles labels' (M.elems live) blocked, labels')
+        return (summarize names titles labels' gists (M.elems live) blocked, labels')
       when (st /= prev) $ do
         -- Warm the shared rows JSON before anyone is told: the windows and
         -- the menu-bar push then all find it built.
@@ -203,12 +211,76 @@ startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
       Just lbl -> return (M.insert (clSession l) lbl m)
       Nothing  -> return m
 
+-- | Each live session's 'TranscriptGist', keyed by session
+-- ('cachedTranscriptGist': a stat each, a read only when it has changed).
+liveGists :: Map Text ClaudeLive -> IO (Map Text TranscriptGist)
+liveGists live = M.fromList . concat <$> mapM one (M.elems live)
+  where
+    one l = (`catch` \(_ :: SomeException) -> return []) $
+      liveTranscriptPath l >>= \case
+        Nothing -> return []
+        Just p  -> (\g -> [(clSession l, g)]) <$> cachedTranscriptGist p
+
+-- | What leksah holds about an agent's title ('IDE.Web.AgentInfo.agentTitleSources').
+data TitleSource = TitleSource
+  { tsTitle       :: Text
+  , tsProvisional :: Maybe Bool  -- ^ @Just True@: only the first line of the
+                                 --   prompt leksah launched it with; @Just
+                                 --   False@: one it chose (@agent describe@);
+                                 --   'Nothing': a record from before leksah kept
+                                 --   track — provisional if it is its first prompt
+  , tsInherited   :: [Text]      -- ^ the names and titles a fork took over from
+                                 --   the session it copied (its @\/rename@ name,
+                                 --   its own title, its conversation's title):
+                                 --   never this agent's own
+  } deriving (Eq, Show)
+
+-- | The one title chain, for a live session ('summarize') and a stopped one
+-- (the Agents pane) alike — so a card does not change its title when its agent
+-- stops.  From what leksah holds ('TitleSource'), the name Claude Code shows
+-- (a @\/rename@ — never one it derived), the transcript ('TranscriptGist') and
+-- the first prompt:
+--
+-- 1. a title the agent chose itself: it says what the session is FOR;
+-- 2. a name a person gave it;
+-- 3. the conversation's own title, Claude Code's @ai-title@;
+-- 4. the prompt leksah launched it with;
+-- 5. its first prompt.
+--
+-- A fork starts as a copy of another session, name and titles included, and
+-- Claude Code keeps re-writing the title it copied — so siblings would all read
+-- as their parent.  A name or title it inherited ('tsInherited', recorded when
+-- leksah forked it) is skipped, and so — for forks recorded before that — is a
+-- latest title that is just the one its transcript opened with (a fork's
+-- transcript heads its copy with the title, before any message).
+chooseTitle :: Maybe TitleSource -> Maybe Text -> Maybe TranscriptGist -> Maybe Text
+            -> Maybe Text
+chooseTitle src name gist label =
+  own <|> mfilter fresh name <|> conv <|> provisional <|> label
+  where
+    isProv ts = case tsProvisional ts of
+      Just p  -> p
+      Nothing -> maybe False ((== tsTitle ts) . T.take 70 . T.strip . T.takeWhile (/= '\n')) label
+    own         = [ tsTitle ts | Just ts <- [src], not (isProv ts) ] `firstOr` Nothing
+    provisional = [ tsTitle ts | Just ts <- [src], isProv ts ] `firstOr` Nothing
+    inherited   = maybe [] tsInherited src
+    fresh t     = t `notElem` inherited
+    conv = do
+      t <- gist >>= tgTitle
+      if not (fresh t) || copiedHead t then Nothing else Just t
+    copiedHead t = case (src, gist >>= tgFirstTitle) of
+      (Just ts, Just (ft, Nothing)) -> isProv ts && ft == t
+      _                             -> False
+    firstOr xs d = case xs of (x : _) -> Just x; [] -> d
+
 -- | Fold the live sessions into a 'ClaudeStatus': attention first (blocked on an
 -- approval prompt), then working, then idle, each group by title.  Takes the
--- agent-written titles (session → title) and the cached first-prompt labels.
-summarize :: Map Text Text -> Map Text Text -> Map Text Text -> [ClaudeLive]
-          -> [ClaudeBackground] -> ClaudeStatus
-summarize names titles labels ls bgs = ClaudeStatus
+-- titles leksah holds for agents (session → @(title, provisional, born)@ —
+-- 'IDE.Web.AgentInfo.agentTitleSources'), the cached first-prompt labels and
+-- each live session's 'TranscriptGist'.
+summarize :: Map Text Text -> Map Text TitleSource -> Map Text Text
+          -> Map Text TranscriptGist -> [ClaudeLive] -> [ClaudeBackground] -> ClaudeStatus
+summarize names titles labels gists ls bgs = ClaudeStatus
   { csState   = if null ls && null bgs then "none"
                 else if nWaiting > 0 then "waiting"
                 else if nWorking > 0 then "busy" else "idle"
@@ -238,16 +310,11 @@ summarize names titles labels ls bgs = ClaudeStatus
               [] -> ""
               ds -> " — " <> T.intercalate ", " ds
     num n = T.pack (show n)
-    -- What the agent calls ITSELF wins ('IDE.Web.AgentInfo.describeAgent' — the
-    -- Agents pane's title): it says what the session is FOR, where a /rename
-    -- name says what it was called and a first prompt says how it opened.  So
-    -- every surface that lists sessions reads the same, and an agent renames
-    -- itself everywhere at once.  Then the name, the cached first prompt, the
-    -- bare id.
+    -- The same title on every surface that lists sessions ('chooseTitle'),
+    -- so an agent that describes itself is renamed everywhere at once.
     title l = fromMaybe (T.take 8 (clSession l)) $
-      M.lookup (clSession l) titles
-        <|> clName l
-        <|> M.lookup (clSession l) labels
+      chooseTitle (M.lookup (clSession l) titles) (clName l)
+                  (M.lookup (clSession l) gists) (M.lookup (clSession l) labels)
     row l = ClaudeStatusRow
       { csrState   = case rank l of
           0 -> "waiting"
@@ -265,9 +332,10 @@ summarize names titles labels ls bgs = ClaudeStatus
       , csrSession = clSession l
       , csrBackground = False
       , csrAgent = clAgent l
+      , csrLastSaid = M.lookup (clSession l) gists >>= tgLastSaid
       }
     bgTitle b = fromMaybe (T.take 8 (cbSession b)) $
-      M.lookup (cbSession b) titles <|> cbName b
+      (tsTitle <$> M.lookup (cbSession b) titles) <|> cbName b
     bgRow b = ClaudeStatusRow
       { csrState   = "waiting"
       , csrName    = M.findWithDefault "" (cbSession b) names
@@ -277,6 +345,7 @@ summarize names titles labels ls bgs = ClaudeStatus
       , csrSession = cbSession b
       , csrBackground = True
       , csrAgent = "claude"
+      , csrLastSaid = Nothing
       }
 
 -- | One session in one line, as every list of them prints it: its name, then

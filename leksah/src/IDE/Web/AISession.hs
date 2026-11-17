@@ -300,10 +300,13 @@ aiPickerChoices app tree mref = do
     row names titles mdflt live sid = do
       let mlive = M.lookup sid live
           dir   = maybe "" clDir mlive
-      title <- case clName =<< mlive of
-        Just n  -> return n
-        Nothing -> case M.lookup sid titles of
-          Just t  -> return t
+      -- The poll's title first (its chain: the agent's own, a /rename name,
+      -- Claude Code's title for the conversation, the first prompt), so the
+      -- picker reads like every other list of sessions.
+      title <- case M.lookup sid titles of
+        Just t  -> return t
+        Nothing -> case clName =<< mlive of
+          Just n  -> return n
           -- Only a session the poll hasn't seen (i.e. a CLOSED default) costs a
           -- transcript read, and only if we know where it ran.
           Nothing -> do
