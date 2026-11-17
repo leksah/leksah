@@ -72,6 +72,7 @@ module IDE.Web.TmuxCC
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
 import IDE.Web.ThreadPriority (ThreadPriority(..), forkPriorityThread)
+import IDE.Web.TmuxServer (viewerId)
 import Control.Concurrent.STM
        (TChan, atomically, newTChanIO, readTChan, tryReadTChan, writeTChan)
 import Control.Exception (SomeException, catch, try)
@@ -603,17 +604,35 @@ ccSetWindowManual cc win =
 -- matter which client is \"latest\", so a control-mode UI stays
 -- authoritative over the window it displays while a regular client is also
 -- attached (iTerm2 does the same).
+--
+-- A window another leksah shows too (its session is in a group — a viewer
+-- session, "IDE.Web.TmuxServer") gets the SMALLEST size any of them wants:
+-- this leksah records its own on the window (@\@leksah_size_VIEWER@, with the
+-- session it views through), and the host's 'fitWindowScript' sizes it.  So
+-- no viewer's terminal is ever taller or wider than its pane (a top line
+-- cut off); the larger one has unused space instead.
 ccResizeWindow :: CC -> WindowId -> Int -> Int -> IO ()
-ccResizeWindow cc win w h =
-    ccSend cc $
-        "resize-window -t " <> win
-        <> " -x " <> T.pack (show w) <> " -y " <> T.pack (show h)
+ccResizeWindow cc win w h = do
+    viewer <- viewerId
+    let size = T.pack (show w) <> "x" <> T.pack (show h)
+    ccSend cc $ "set-option -F -w -t " <> win <> " @leksah_size_" <> viewer
+                <> " \"" <> size <> " #{client_session}\""
+    ccSend cc $ "if-shell -F -t " <> win <> " \"#{session_grouped}\""
+                <> " \"run-shell -b 'sh ~/.leksah/fit-window.sh " <> win <> "'\""
+                <> " \"resize-window -t " <> win
+                <> " -x " <> T.pack (show w) <> " -y " <> T.pack (show h) <> "\""
 
 -- | Back to the default sizing policy, e.g. when the widget stops
 -- displaying that window.
+-- (On a window another leksah shows too, only this leksah's own wanted size
+-- goes — the window is refitted to the others' — its policy stays theirs.)
 ccClearWindowSize :: CC -> WindowId -> IO ()
-ccClearWindowSize cc win = ccSend cc $
-    "set-option -w -t " <> win <> " -u window-size"
+ccClearWindowSize cc win = do
+    viewer <- viewerId
+    ccSend cc $ "if-shell -F -t " <> win <> " \"#{session_grouped}\""
+                <> " \"set-option -w -t " <> win <> " -u @leksah_size_" <> viewer
+                <> " ; run-shell -b 'sh ~/.leksah/fit-window.sh " <> win <> "'\""
+                <> " \"set-option -w -t " <> win <> " -u window-size\""
 
 -- | Is the client still running?
 ccAlive :: CC -> IO Bool

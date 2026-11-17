@@ -38,6 +38,8 @@ module IDE.Web.TmuxServer
   , viewerFilterArg
   , remoteViewerAttach
   , selectWindowAsViewer
+  , fitWindowScript
+  , installFitScript
   ) where
 
 import Control.Exception (SomeException, catch)
@@ -52,7 +54,9 @@ import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Char (isAlphaNum)
-import System.Directory (findExecutable)
+import Control.Monad (when)
+import System.Directory (createDirectoryIfMissing, findExecutable, getHomeDirectory)
+import System.FilePath ((</>))
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.Process (readProcessWithExitCode)
@@ -222,7 +226,8 @@ remoteViewerAttach host target = remoteTmux host >>= \case
     let sockName = case sock of ["-L", n] -> n; _ -> ""
     return . Right . unwords . map shellQuote $
       [ "sh", "-c", viewerAttachScript, "sh", bin, sockName
-      , maybe "" T.unpack target, T.unpack viewer ]
+      , maybe "" T.unpack target, T.unpack viewer
+      , reverse (dropWhile (== '\n') (reverse fitWindowScript)) ]
 
 -- | @$1@ tmux, @$2@ socket name (or empty), @$3@ target session (empty: the
 -- @leksah@ session), @$4@ the viewer.  The group is named after its leader,
@@ -232,6 +237,9 @@ remoteViewerAttach host target = remoteTmux host >>= \case
 viewerAttachScript :: String
 viewerAttachScript = concat
   [ "T=\"$1\"; S=\"$2\"; G=\"$3\"; V=\"$4\"; "
+  -- (the window-sizing script, for this host's tmux to run: 'fitWindowScript')
+  , "mkdir -p \"$HOME/.leksah\" && { [ \"$(cat \"$HOME/.leksah/fit-window.sh\" 2>/dev/null)\" = \"$5\" ] "
+  , "|| printf '%s\\n' \"$5\" > \"$HOME/.leksah/fit-window.sh\"; }; "
   , "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
   , "if [ -z \"$G\" ]; then tx has-session -t =leksah 2>/dev/null || tx new-session -d -s leksah || exit 1; G==leksah:; fi; "
   , "n=$(tx display-message -p -t \"$G\" '#{session_group}' 2>/dev/null); "
@@ -248,6 +256,54 @@ viewerAttachScript = concat
   , "fi; "
   , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
   , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
+
+-- | The script that sizes a window several leksahs show to the smallest size
+-- any of them wants: each records its wanted size on the window as
+-- @\@leksah_size_VIEWER = "WxH SESSION"@ ('IDE.Web.TmuxCC.ccResizeWindow'),
+-- and an entry whose session has no client any more is dropped.  So no
+-- leksah's view of a shared window is ever cut off; the larger one has unused
+-- space.  Kept at @~\/.leksah\/fit-window.sh@ on the machine the tmux server
+-- runs on ('installFitScript' here, 'remoteViewerAttach' there), run there by
+-- tmux's @run-shell@ — whose @tmux@ is that same server.  No argument: every
+-- window (after a viewer leaves).
+fitWindowScript :: String
+fitWindowScript = unlines
+  [ "# leksah: size each shared tmux window to the smallest size wanted by the"
+  , "# leksahs showing it (@leksah_size_VIEWER = \"WxH SESSION\", dropped once that"
+  , "# session has no client).  $1: a window id; none: every window."
+  , "fit() {"
+  , "  w=$1; mw=; mh="
+  , "  opts=$(tmux show-options -w -t \"$w\" 2>/dev/null | grep '^@leksah_size_')"
+  , "  [ -n \"$opts\" ] || return 0"
+  , "  while read -r k v; do"
+  , "    v=${v#\\\"}; v=${v%\\\"}; sz=${v%% *}; s=${v#* }"
+  , "    a=$(tmux display-message -p -t \"=$s:\" '#{session_attached}' 2>/dev/null)"
+  , "    if [ \"${a:-0}\" -gt 0 ]; then"
+  , "      W=${sz%x*}; H=${sz#*x}"
+  , "      if [ -z \"$mw\" ] || [ \"$W\" -lt \"$mw\" ]; then mw=$W; fi"
+  , "      if [ -z \"$mh\" ] || [ \"$H\" -lt \"$mh\" ]; then mh=$H; fi"
+  , "    else"
+  , "      tmux set-option -w -t \"$w\" -u \"$k\""
+  , "    fi"
+  , "  done <<OPTS"
+  , "$opts"
+  , "OPTS"
+  , "  [ -n \"$mw\" ] && tmux resize-window -t \"$w\" -x \"$mw\" -y \"$mh\""
+  , "}"
+  , "if [ -n \"$1\" ]; then fit \"$1\"; else"
+  , "  for w in $(tmux list-windows -a -F '#{window_id}' | sort -u); do fit \"$w\"; done"
+  , "fi" ]
+
+-- | Write 'fitWindowScript' to this machine's @~\/.leksah@ (when it differs).
+installFitScript :: IO ()
+installFitScript = (`catch` \(_ :: SomeException) -> return ()) $ do
+  home <- getHomeDirectory
+  let dir = home </> ".leksah"
+      f   = dir </> "fit-window.sh"
+  createDirectoryIfMissing True dir
+  old <- (`catch` \(_ :: SomeException) -> return "") (readFile' f)
+  when (old /= fitWindowScript) $ writeFile f fitWindowScript
+  where readFile' f = readFile f >>= \c -> length c `seq` return c
 
 -- | Make the window @target@ names (a window or pane id, or @session:index@)
 -- the current window of THIS viewer's session(s) on @srv@ — not the shared

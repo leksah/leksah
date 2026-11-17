@@ -180,7 +180,8 @@ import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.WakeOnLan (ensureAwake)
 import IDE.Web.TmuxServer
        (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn, tmuxStdoutOn,
-        tmuxOnIds, qualifyTmuxId, rawTmuxId, selectWindowAsViewer, viewerFilterArg)
+        tmuxOnIds, qualifyTmuxId, rawTmuxId, selectWindowAsViewer, viewerFilterArg,
+        installFitScript)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -656,6 +657,11 @@ terminalWidget ctx termId selectedE = do
           -- does this when a teammate wants input / finishes).  The hook passes
           -- the belling window's ids to the helper script (run in the background
           -- so it never blocks tmux).
+          -- Shared windows: the smallest size any leksah showing one wants
+          -- ('fitWindowScript'); refitted when a viewer leaves.
+          installFitScript
+          tmuxCmd [ "set-hook", "-g", "client-detached"
+                  , "run-shell -b 'sh ~/.leksah/fit-window.sh'" ]
           notifyPath <- writeNotifyScript
           -- (Only for this leksah's own sessions: a window another leksah
           -- shows too is also in that viewer's grouped session, and tmux runs
