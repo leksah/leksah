@@ -25,10 +25,10 @@ import Data.Ord (comparing)
 import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import qualified Data.Map as M
        (Map, elems, empty, filterWithKey, findWithDefault, fromList,
-        fromListWith, insert, keys, lookup, singleton, toList, null, union, size, member)
+        fromListWith, insert, keys, lookup, singleton, toList, null, union, unions, unionWith, size, member)
 import Data.Maybe (listToMaybe, fromMaybe, mapMaybe, isJust, isNothing, maybeToList)
 import Data.Set (Set)
-import qualified Data.Set as S (fromList, member)
+import qualified Data.Set as S (Set, delete, empty, fromList, insert, member)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.Aeson (FromJSON(..), withObject, (.:), eitherDecodeStrict)
 import Data.Text (Text)
@@ -55,7 +55,7 @@ import System.Info (os)
 import System.Process (proc, createProcess, readProcessWithExitCode)
 
 import IDE.Git (runGit)
-import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, remoteHost, renderRemotePath)
 import IDE.Web.RemoteSettingsRequest (requestRemoteSettings)
 import IDE.Web.GitLogRequest (requestGitLog)
 import IDE.Web.Worktree (requestReview)
@@ -80,10 +80,10 @@ import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffor,
         current, getPostBuild, holdUniqDyn, holdDyn, newTriggerEvent, Dynamic, updated, delay, tag,
         Event, never, fmapMaybe, tagPromptlyDyn, sample,
-        tickLossyFromPostBuildTime, zipDynWith)
+        tickLossyFromPostBuildTime, zipDynWith, mergeWith)
 import Reflex.Dom.Core
        (elDynClass, elAttr, dyn, (=:), elDynAttr,
-        divClass, text, el, elClass, dynText, domEvent, elDynHtmlAttr', EventName(..))
+        divClass, text, el, elClass, dynText, domEvent, elDynHtmlAttr', EventName(..), blank)
 
 import IDE.Web.Theme
        (selectionColor, hoverColor, dimColor, dimOpacity, fgColor,
@@ -107,7 +107,7 @@ import IDE.Ws.Types
         ProjectKey(..), ProjectType(..), Scope(..), ToolCmd(..), Verb(..),
         verbId)
 import IDE.Web.Command (Command(..), commandAction)
-import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..))
+import IDE.Web.Events (PackageEvent(..), ProjectEvent(..), ProjectEvents, FileEvent(..), TerminalsEvents(..))
 import Control.Lens (view)
 import Control.Applicative ((<|>))
 import IDE.Web.Widget.Flake
@@ -122,7 +122,10 @@ import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.Claude
        (claudeAvailable, runClaudeCmd, ClaudeCmd(..), ClaudeSession(..),
         claudeSessionsFor, claudeTranscriptPath, showLiveSession)
-import IDE.Web.AgentInfo (agentDirOf, agentTitles)
+import IDE.Web.AgentInfo (AgentNode(..), agentDirOf, agentForest, agentTitles)
+import IDE.Web.Agent (agentResume, agentSuspend, showAgentPane)
+import IDE.Web.AddProjectRequest (requestAddProjectOn)
+import IDE.Web.ServerState (ServerState(..), serverMenuItems)
 import IDE.Web.AgentNames (agentNames)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentWorktrees
@@ -137,7 +140,7 @@ import IDE.Web.WorktreeRegistry
         worktreeMainRoot)
 import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeItemDynAttrSet', treeSelect, treeSelect', treeItem,
-        treeItem', clickMods, dblclickMods)
+        treeItem', treeItemTracked, clickMods, dblclickMods)
 import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.GitInfo
        (ActiveGitInfo(..), prForBranch, scanActiveGitInfo)
@@ -216,6 +219,24 @@ workspaceCss = do
     -- its own row reads as provisional until it is pinned.
     "li.project.temporary" |> "div" ?
         fontStyle italic
+    -- A remote host's node ('serverNode'): its name, then what is known
+    -- about it — a leksah running there (green), none, or unreachable.
+    "li.server" ?
+        whiteSpace nowrap
+    ".server-name" ? fontWeight bold
+    ".server-down" ? ("opacity" -: "0.55")
+    ".server-badge" ? do
+        "margin-left" -: "8px"
+        "font-size" -: "11px"
+        "color" -: "var(--leksah-fg-dim)"
+    ".server-badge-up" ? ("color" -: "#3fb950")
+    ".server-badge-down" ? ("color" -: "#f85149")
+    "li.server-agents" ?
+        whiteSpace nowrap
+    "li.server-agent" ?
+        whiteSpace nowrap
+    -- (an agent there that is not running: resumable, so still listed)
+    "li.server-agent-gone" ? ("opacity" -: "0.55")
     "li.package" ?
         whiteSpace nowrap
     "li.component" ? do
@@ -1940,11 +1961,9 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
           void . dyn $ ffor facesD $ mapM_ $ \(_, name) ->
             elAttr "span" ("title" =: (name <> " works here")) $
               agentFace (constDyn (Just name))
-        -- Label = (for a remote project) the server name, then the
-        -- shortest right-anchored path suffix that uniquely identifies
-        -- this project among the workspace; the full path is the
-        -- tooltip.  The server name is plain text, not a highlighted
-        -- pill.
+        -- Label = the shortest right-anchored path suffix that uniquely
+        -- identifies this project among the workspace; the full path (with
+        -- the server's name, for a remote one) is the tooltip.
         let keyFileOrDir = fromMaybe (pkRoot pKey) (pkFile pKey)
             (mbHost, fullLocal) = case parseRemotePath keyFileOrDir of
                 Just (host, l) -> (Just host, l)
@@ -1957,8 +1976,9 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
           then return . constDyn $
                  T.pack (takeFileName (dropTrailingPathSeparator (pkRoot pKey)))
           else holdUniqDyn $ shortProjectSuffix (pkRoot pKey) <$> allProjectDirsD
-        let labelD = maybe id (\h s -> h <> ":" <> s) mbHost <$> suffixD
-        elAttr "span" ("title" =: fullTitle) $ dynText labelD
+        -- (no "host:" in front: a remote project sits under its server's
+        -- node — 'serverNode' — and the tooltip still names the host)
+        elAttr "span" ("title" =: fullTitle) $ dynText suffixD
         -- Git icon + branch + PR number, shown inline only while the
         -- project is collapsed (CSS keys off the li's tree-collapsed
         -- class); rendered only when the checkout has a branch.
@@ -2196,11 +2216,16 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
 workspaceWidget
   :: MonadWidget t m
   => Ctx t
+  -> Dynamic t (M.Map Text ServerState)
+                                  -- ^ the remote hosts to show a node for
+                                  --   (more come from the open projects)
   -> Dynamic t (Maybe FilePath)   -- ^ the focused file (highlighted in the tree)
   -> Dynamic t (Maybe FilePath)   -- ^ the file to reveal (expand/scroll to), or
                                   --   Nothing when an occurrence is already shown
-  -> m (Event t ProjectEvents)
-workspaceWidget ctx0 activeFileD0 revealFileD0 = do
+  -> m (Event t ProjectEvents, Event t TerminalsEvents)
+                                  -- ^ (a server node's host actions are the
+                                  --   Terminals tree's: Main handles them there)
+workspaceWidget ctx0 serversD activeFileD0 revealFileD0 = do
   env@PNEnv{..} <- mkPNEnv ctx0 activeFileD0 revealFileD0
   divClass "workspace leksah-nav" $
     divClass "workspace-body" $ do
@@ -2230,12 +2255,145 @@ workspaceWidget ctx0 activeFileD0 revealFileD0 = do
                   <> show (length (M.keys projs))
                   <> " projects in the model) — self-heal rebuild"
               fireRebuild 1
-        projE <- (switchHold never =<<) . dyn $ ffor rebuildD $ \_ ->
-            listViewWithKey (fst <$> groupedD) (projectNodeW env False)
+        -- Local projects at the top; each remote host's projects (and its
+        -- agents) under that host's node ('serverNode').
+        let topsD   = fst <$> groupedD
+            localD  = M.filterWithKey (\(_, k) _ -> not (isRemotePath (pkRoot k))) <$> topsD
+            byHostD = (\tops servers -> M.unionWith M.union
+                         (M.fromListWith M.union
+                            [ (h, M.singleton key p)
+                            | (key@(_, k), p) <- M.toList tops
+                            , Just h <- [remoteHost (pkRoot k)] ])
+                         (M.empty <$ servers))
+                      <$> topsD <*> serversD
+        forestD <- pollD [] agentForest
+        builtE <- dyn $ ffor rebuildD $ \_ -> do
+            localE <- listViewWithKey localD (projectNodeW env False)
+            hostE  <- listViewWithKey byHostD (serverNode env serversD forestD)
+            let hostProjs m = case M.unions [ ps | Left ps <- M.elems m ] of
+                  ps | M.null ps -> Nothing
+                     | otherwise -> Just ps
+            return ( mergeWith M.union [localE, fmapMaybe hostProjs hostE]
+                   , fmapMaybe (\m -> listToMaybe [ t | Right t <- M.elems m ]) hostE )
+        projE <- switchHold never (fst <$> builtE)
+        termE <- switchHold never (snd <$> builtE)
         -- Last: every agent and the worktrees it registered.
         agentWorktreesNode env
-        return projE
+        return (projE, termE)
 
+
+--------------------------------------------------------------------------------
+-- Remote hosts
+
+-- | The hosts whose node the user closed (open is the default), remembered
+-- across the rebuilds of the tree's lists.
+{-# NOINLINE collapsedServers #-}
+collapsedServers :: IORef (S.Set Text)
+collapsedServers = unsafePerformIO (newIORef S.empty)
+
+-- | One remote host: its name and state, then its projects, then the agents
+-- running there (every agent whose directory is on it, whoever started it).
+-- Its menu is the Terminals tree's server menu ('serverMenuItems' — Main
+-- handles those), plus adding a project there and starting a Claude session
+-- in its home directory.  Double-click opens the server connection.
+serverNode :: forall t m . MonadWidget t m
+           => PNEnv t -> Dynamic t (M.Map Text ServerState) -> Dynamic t [AgentNode]
+           -> Text -> Dynamic t (M.Map (Int, ProjectKey) Project)
+           -> m (Event t (Either ProjectEvents TerminalsEvents))
+serverNode env serversD forestD host projsD = do
+  stD <- holdUniqDyn (M.lookup host <$> serversD)
+  let agentsD = ffor forestD $ \ns -> M.fromList
+        [ ((not (anLive n), T.toLower (anName n), anSession n), n)
+        | n <- flattenForest ns, remoteHost (anDir n) == Just host ]
+      flattenForest = concatMap (\n -> n : flattenForest (anChildren n))
+  closed <- liftIO (S.member host <$> readIORef collapsedServers)
+  (outE, toggledE) <- treeItemTracked "server" (not closed)
+    (do let ticksD = maybe (False, False) (\st -> (svStartup st, svWake st)) <$> stD
+            homeD  = (>>= svHome) <$> stD
+            menuItems =
+              map (fmap (fmap Right) . (<$> ticksD)) (serverMenuItems host)
+              <> [ constDyn ("Add Project on " <> host <> "\8230", Left (requestAddProjectOn host))
+                 , ffor homeD $ \case
+                     Nothing -> ("", Left (return ()))     -- (hidden until known)
+                     Just h  -> ( "New Claude Session"
+                                , Left (runClaudeCmd (ClaudeNew (renderRemotePath host (T.unpack h))))) ]
+        (rowEl, mE) <- treeSelect' "workspace" (menu menuItems) $ do
+          elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-host-remote.svg") blank
+          elDynAttr "span" (ffor stD $ \st ->
+              "class" =: (if (st >>= svReachable) == Just False then "server-name server-down" else "server-name")) $
+            text host
+          let badge st = case st of
+                Just ServerState{ svReachable = Just False } ->
+                  Just ("unreachable", "server-badge server-badge-down", host <> " did not answer")
+                Just ServerState{ svLeksah = Just True } ->
+                  Just ("\9679 leksah", "server-badge server-badge-up", "A leksah is running on " <> host)
+                Just ServerState{ svLeksah = Just False } ->
+                  Just ("\9675 no leksah", "server-badge",
+                        "No leksah is running on " <> host
+                        <> ": its agents report through its event log")
+                _ -> Nothing
+          elDynAttr "span" (ffor stD $ \st -> case badge st of
+              Just (_, cls, tip) -> "class" =: cls <> "title" =: tip
+              Nothing            -> "style" =: "display:none") $
+            dynText (ffor stD $ maybe "" (\(t, _, _) -> t) . badge)
+          return never
+        performEvent_ $ ffor (fmapMaybe (either Just (const Nothing)) mE) liftIO
+        return $ leftmost
+          [ Right (SelectRemoteHost host) <$ domEvent Dblclick rowEl
+          , fmapMaybe (either (const Nothing) (Just . Right)) mE ])
+    (el "ul" $ do
+        projE <- listViewWithKey projsD (projectNodeW env False)
+        hostAgentsNode host agentsD
+        return (Left <$> projE))
+  performEvent_ $ ffor toggledE $ \open -> liftIO $
+    atomicModifyIORef' collapsedServers (\cs -> (if open then S.delete host cs else S.insert host cs, ()))
+  return outE
+
+-- | "Agents (N)" under a server node: one row per agent there, running ones
+-- first.  Self-hides when there are none.
+hostAgentsNode :: forall t m . MonadWidget t m
+               => Text -> Dynamic t (M.Map (Bool, Text, Text) AgentNode) -> m ()
+hostAgentsNode host agentsD = do
+  emptyD <- holdUniqDyn (M.null <$> agentsD)
+  void . dyn $ ffor emptyD $ \empty -> unless empty . void $
+    treeItem "server-agents" True
+      (treeSelect "workspace" (return never) $ do
+          elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") blank
+          elAttr "span" ("title" =: ("The agents running in " <> host <> "'s leksah tmux server")) $
+            dynText (ffor agentsD $ \m -> "Agents (" <> T.pack (show (M.size m)) <> ")")
+          return (never :: Event t ()))
+      (el "ul" $ do
+          void . listViewWithKey agentsD $ \(_, _, sid) nD -> hostAgentRow sid nD
+          return (never :: Event t ()))
+
+-- | One agent on a remote host: its face, name and title, and what it is
+-- doing.  Double-click (or Show Agent) brings its pane up; an agent that is
+-- not running is resumed there instead.
+hostAgentRow :: forall t m . MonadWidget t m => Text -> Dynamic t AgentNode -> m (Event t ())
+hostAgentRow sid nD = do
+  nameD <- holdUniqDyn ((\n -> if T.null (anName n) then Nothing else Just (anName n)) <$> nD)
+  liveD <- holdUniqDyn (anLive <$> nD)
+  let labelD = ffor nD $ \n ->
+        (if T.null (anName n) then T.take 8 sid else anName n)
+          <> (if T.null (anTitle n) then "" else " \8212 " <> anTitle n)
+      badgeD = ffor nD $ \n -> if not (anLive n) then Nothing else case anState n of
+        "waiting" -> Just ("\9650", "#f85149", "waiting for approval")
+        st | st `elem` ["busy", "shell"] -> Just ("\9679", "#d29922", "working")
+        _ -> Just ("\9679", "#3fb950", "idle")
+      bringUp live = void . forkIO $
+        if live then void (showAgentPane sid) else void (agentResume sid)
+  elDynAttr "li" (ffor liveD $ \l -> "class" =: ("agent-session server-agent" <> if l then "" else " server-agent-gone")) $ do
+    (rowEl, mE) <- treeSelect' "workspace"
+        (menu [ ffor liveD $ \l -> (if l then "Show Agent" else "Resume Agent", bringUp l)
+              , ffor liveD $ \l -> ( if l then "Suspend Agent" else ""
+                                   , void . forkIO . void $ agentSuspend sid False ) ]) $ do
+        agentFace nameD
+        elDynAttr "span" (ffor nD $ \n -> "title" =: anDetail n) $ dynText labelD
+        statusBadge badgeD
+        return (never :: Event t (IO ()))
+    performEvent_ $ liftIO . bringUp <$> tag (current liveD) (domEvent Dblclick rowEl)
+    performEvent_ $ liftIO <$> mE
+  return never
 
 --------------------------------------------------------------------------------
 -- Agents and their worktrees ("IDE.Web.AgentWorktrees")

@@ -36,6 +36,9 @@ module IDE.Web.RemoteAgents
   , remoteStartingPane
   , setRemoteEventHandler
   , startLocalEventsPoll
+  , HostStatus(..)
+  , remoteHostStatus
+  , startAliveWriter
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
@@ -56,9 +59,11 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Text.Encoding (decodeUtf8With)
+import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import System.Directory (createDirectoryIfMissing, getFileSize, getHomeDirectory)
+import System.Directory (createDirectoryIfMissing, getFileSize, getHomeDirectory, renameFile)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
@@ -91,10 +96,15 @@ data HostSnapshot = HostSnapshot
   , hsTails    :: Map Text (Text, TranscriptGist, Maybe Text)
                                        -- ^ session → (transcript stamp, gist,
                                        --   what it is doing)
+  , hsHome     :: Maybe Text           -- ^ its @$HOME@
+  , hsLeksahAge :: Maybe Integer       -- ^ seconds since a leksah there last
+                                       --   wrote @~\/.leksah\/alive@
+                                       --   ('startAliveWriter'), on the host's
+                                       --   own clock; 'Nothing' = never
   }
 
 emptySnapshot :: UTCTime -> HostSnapshot
-emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty
+emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty Nothing Nothing
 
 {-# NOINLINE snapshotsRef #-}
 snapshotsRef :: IORef (Map Text HostSnapshot)
@@ -111,6 +121,40 @@ remoteLiveSessions = do
   m <- readIORef snapshotsRef
   return [ l | hs <- M.elems m, fresh now hs, l <- hsLive hs ]
   where fresh now hs = realToFrac (diffUTCTime now (hsAt hs)) < staleAfter
+
+-- | What the last look at a shared host says about the host itself.
+data HostStatus = HostStatus
+  { hstFresh  :: Bool        -- ^ read within 'staleAfter' (else: unreachable)
+  , hstLeksah :: Bool        -- ^ a leksah there said it was alive lately
+  , hstHome   :: Maybe Text  -- ^ its home directory
+  } deriving (Eq, Show)
+
+-- | Every shared host this leksah has read at least once.
+remoteHostStatus :: IO (Map Text HostStatus)
+remoteHostStatus = do
+  now <- getCurrentTime
+  m <- readIORef snapshotsRef
+  return $ flip fmap m $ \hs ->
+    let fresh = realToFrac (diffUTCTime now (hsAt hs)) < staleAfter
+    in HostStatus fresh (fresh && maybe False (< aliveWithin) (hsLeksahAge hs)) (hsHome hs)
+
+-- | A leksah that has not touched its @alive@ file for this long is gone.
+aliveWithin :: Integer
+aliveWithin = 30
+
+-- | Say this leksah is running — @~\/.leksah\/alive@, the time, every 10s —
+-- for a leksah on another machine showing this one ('remoteHostStatus').
+startAliveWriter :: IO ThreadId
+startAliveWriter = forkIO $ do
+  home <- getHomeDirectory
+  let f = home </> ".leksah" </> "alive"
+  createDirectoryIfMissing True (home </> ".leksah") `catch` \(_ :: SomeException) -> return ()
+  forever $ do
+    (`catch` \(_ :: SomeException) -> return ()) $ do
+      t <- round <$> getPOSIXTime :: IO Integer
+      writeFile (f <> ".tmp") (show t <> "\n")
+      renameFile (f <> ".tmp") f
+    threadDelay 10000000
 
 remoteGist :: Text -> IO (Maybe TranscriptGist)
 remoteGist sid = fmap (\(_, g, _) -> g) . lookupTail sid <$> readIORef snapshotsRef
@@ -339,6 +383,11 @@ parseSnapshot host now p fs = HostSnapshot
   , hsNames = names
   , hsInfos = infos
   , hsTails = tails
+  , hsHome = case [ T.strip (decodeUtf8With lenientDecode b) | (t, _, b) <- fs, t == "H" ] of
+      (h : _) | not (T.null h) -> Just h
+      _ -> Nothing
+  , hsLeksahAge = listToMaybe [ n | (t, _, b) <- fs, t == "A"
+                                  , Just n <- [readMaybe (BC.unpack (BC.strip b))] ]
   }
   where
     sessions = mapMaybe (\(t, _, b) -> if t == "S" then parseSessionFile (Just host) b else Nothing) fs
@@ -423,6 +472,12 @@ snapshotScript = T.concat
   ,   "if [ \"$c\" = \"$2\" ]; then : > \"$tmp\"; frame \"$3\" \"=$c\" \"$tmp\"; "
   ,   "else frame \"$3\" \"$c\" \"$f\"; fi; }; "
   , "st agent-names.json \"$NK\" N; st agents.json \"$IK\" I; "
+  -- Its home (where a new agent there starts), and how long ago a leksah
+  -- there last said it was alive — worked out on the host, so the two
+  -- machines' clocks need not agree.
+  , "printf '%s\\n' \"$HOME\" > \"$tmp\"; frame H - \"$tmp\"; "
+  , "al=$(head -c 20 \"$HOME/.leksah/alive\" 2>/dev/null | tr -cd 0-9); "
+  , "if [ -n \"$al\" ]; then echo $(( $(date +%s) - al )) > \"$tmp\"; frame A - \"$tmp\"; fi; "
   -- The event log from where this leksah left off (a log that shrank was
   -- rotated: from its start); on first contact, only its last 64KB.  At
   -- most 256KB a time.

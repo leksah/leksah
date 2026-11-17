@@ -58,7 +58,7 @@ import qualified Data.ByteString.Char8 as BS (unlines)
 import qualified Data.ByteString.Lazy as BS (toStrict)
 import qualified Data.ByteString.Lazy as LBS (fromStrict, readFile)
 import Data.Char (isAlphaNum, isDigit)
-import qualified Data.Dependent.Map as DM (singleton, fromList, lookup)
+import qualified Data.Dependent.Map as DM (singleton, fromList, lookup, union)
 import Data.Dependent.Sum (DSum(..))
 import Data.Foldable (Foldable(..))
 import Data.Function ((&))
@@ -276,7 +276,10 @@ import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
-import IDE.Web.RemoteAgents (setRemoteEventHandler, startLocalEventsPoll, startRemoteAgentsPoll)
+import IDE.Web.RemoteAgents
+       (HostStatus(..), remoteHostStatus, setRemoteEventHandler, startAliveWriter,
+        startLocalEventsPoll, startRemoteAgentsPoll)
+import IDE.Web.ServerState (ServerState(..))
 import IDE.Web.Agent (remoteAgentEvent, runRemoteClaudeCmd)
 #endif
 import IDE.Web.NewLwRequest
@@ -1086,6 +1089,10 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         rtid <- startRemoteAgentsPoll
         ltid <- startLocalEventsPoll
         when ghciMode $ registerGhciCleanupNamed "local-events-poll" (killThread ltid)
+        -- …and tell a leksah on another machine showing this one that a
+        -- leksah runs here (its Workspace tree's server node).
+        atid <- startAliveWriter
+        when ghciMode $ registerGhciCleanupNamed "alive-writer" (killThread atid)
         when ghciMode $ registerGhciCleanupNamed "remote-agents-poll" (killThread rtid)
         -- Which agents are running, and — after a restart, or leksah's tmux
         -- server dying — which were interrupted (the Agents pane's ↻ cards
@@ -7696,6 +7703,25 @@ main showMenubar macTitlebar wid ctx = mdo
                 (Nothing, Nothing)          -> (False, M.empty))
             new)
         M.empty hostTreesE
+    -- What the Workspace tree's server nodes show: every host the Terminals
+    -- tree lists plus every host whose agents this leksah shares — reachable
+    -- (the agents poll's 3s look where there is one, else the tree poll),
+    -- whether a leksah runs there, its home, and its menu's ticks.
+    hostStatusPb   <- getPostBuild
+    hostStatusTick <- tickLossyFromPostBuildTime 3
+    hostStatusE <- performEvent $ liftIO remoteHostStatus
+                     <$ leftmost [() <$ hostStatusPb, () <$ hostStatusTick]
+    hostStatusD <- holdDyn M.empty hostStatusE
+    serverStatesD <- holdUniqDyn $ (\p hosts trees st ->
+        let rc = cfgRemote p
+            one h = let ms = M.lookup h st in ServerState
+              { svReachable = maybe (fst <$> M.lookup h trees) (Just . hstFresh) ms
+              , svLeksah    = hstLeksah <$> ms
+              , svHome      = ms >>= hstHome
+              , svStartup   = h `elem` rcStartup rc
+              , svWake      = h `elem` map wolHost (rcWake rc) }
+        in M.fromList [ (h, one h) | h <- nub (hosts <> M.keys (rcTmuxSockets rc)) ])
+      <$> prefsD <*> remoteHostsD <*> hostTreesD <*> hostStatusD
     -- The open remote tabs' trees, keyed by TAB key and merged into the same
     -- tree the flipper and tab ordering consume ('allTreeD'), so remote
     -- windows flip and order exactly like local ones.  A tab's target may be
@@ -8477,7 +8503,10 @@ main showMenubar macTitlebar wid ctx = mdo
     -- terminals, which render as tabs in the editor area (wide0).  Each terminal
     -- reports its window title up through `tabE`; we fold those into the
     -- id->title map the list pane and tab buttons label themselves from.
-    let terminalsListE = select (fan (select (fanMap tabE) (Const2 TerminalsKey))) TerminalsTab
+    -- (the Workspace tree's server nodes ask for the same host actions)
+    let terminalsListE = leftmost
+          [ select (fan (select (fanMap tabE) (Const2 TerminalsKey))) TerminalsTab
+          , select (fan (select (fanMap tabE) (Const2 WorkspaceKey))) TerminalsTab ]
         newTermClickE = fmapMaybe (^? _NewTerminal) terminalsListE
         selectTermE   = fmapMaybe (^? _SelectTerminal) terminalsListE
         -- The Terminals pane confirms before this fires, so just act on it:
@@ -10472,9 +10501,13 @@ main showMenubar macTitlebar wid ctx = mdo
     let serversD = ("local" :) <$> remoteHostsD
     addProjectOpenD <- holdDyn False $
         leftmost [ True <$ addProjectReqE, False <$ addProjectCloseE ]
+    -- (the Server it opens with: a server node's own host, else local)
+    addProjectServerD <- holdDyn Nothing addProjectReqE
     addProjectDlgE <- dyn (ffor addProjectOpenD $ \case
         False -> return (never, never)
-        True  -> addProjectDialog serversD pickedPathE)
+        True  -> do
+          srv <- sample (current addProjectServerD)
+          addProjectDialog serversD srv pickedPathE)
     addProjectCloseE <- switchHold never (fst <$> addProjectDlgE)
     addProjectAddedE <- switchHold never (snd <$> addProjectDlgE)
     -- "New Claude Session in Worktree…" (tree context menus drop the clicked
@@ -10706,7 +10739,9 @@ main showMenubar macTitlebar wid ctx = mdo
       (\k selectedE _v -> do
         let toDM x = fmap (DM.singleton x . Identity)
         case k of
-          WorkspaceKey   -> toDM WorkspaceTab <$> workspaceWidget ctx treeHighlightD treeRevealD
+          WorkspaceKey   -> (\(projE, termE) -> mergeWith DM.union
+                                [toDM WorkspaceTab projE, toDM TerminalsTab termE])
+                              <$> workspaceWidget ctx serverStatesD treeHighlightD treeRevealD
           ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ctx allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
           LogKey         -> toDM LogTab <$> logWidget ctx (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
@@ -10847,7 +10882,7 @@ main showMenubar macTitlebar wid ctx = mdo
       , wbSnap = fireSnapReq
       , wbConvert = fireConvertReq
       , wbSplitOpen = fireSplitOpen
-      , wbAddProject = fireAddProjectReq ()
+      , wbAddProject = fireAddProjectReq
       , wbPickedPath = firePickedPath
       , wbNewWorktree = fireNewWtReq
       , wbAddServer = fireAddServerReq ()
