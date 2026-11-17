@@ -86,7 +86,10 @@
             hixProject =
               final.haskell-nix.hix.project {
                 src = ./.;
-                evalSystem = "aarch64-darwin";
+                # (No evalSystem: it defaults to the build system.  Pinning it
+                # to aarch64-darwin made every other platform's planning steps
+                # need an Apple Silicon Mac, so `nix develop` could not even
+                # evaluate on Linux.)
                 # Wire the source-repository-packages in cabal.project to flake
                 # inputs so the haskell.nix planner resolves them without a
                 # network fetch (pure eval).
