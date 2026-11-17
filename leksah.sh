@@ -505,11 +505,14 @@ EOF
 fi
 
 # Heap census for the compiled instance: a breakdown of the live heap by
-# closure type (-hT, which needs no profiling build) every 10 minutes, appended
-# to ~/.leksah/leksah.hp (truncated at each launch).  It is how a space leak
+# closure type (-hT, which needs no profiling build), appended to
+# ~/.leksah/leksah.hp (truncated at each launch).  It is how a space leak
 # shows WHAT is growing, not just that live bytes are (the "RTS: major GC"
-# lines).  Each sample forces a major GC, hence the long interval.
-# LEKSAH_HEAP_CENSUS=0 turns it off; LEKSAH_HEAP_CENSUS=SECS sets the interval.
+# lines).  leksah itself asks for a sample every 10 minutes of wall-clock time
+# (the GC monitor in IDE.Web.Main): the RTS's -i interval counts only the time
+# it is busy, so an idle IDE barely samples on it.  Each sample forces a major
+# GC, hence the long intervals.
+# LEKSAH_HEAP_CENSUS=0 turns it off; LEKSAH_HEAP_CENSUS=SECS sets the -i one.
 # Word-split on purpose where the launch strings below use it.
 case "${LEKSAH_HEAP_CENSUS:-600}" in
   0) LEKSAH_RTS_ARGS="" ;;

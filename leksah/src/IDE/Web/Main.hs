@@ -45,6 +45,7 @@ import qualified System.IO as IO
        (hPutStrLn, stderr, stdout, hSetBuffering, BufferMode(..))
 #else
 import qualified System.IO as IO (hPutStrLn, stderr, hSetBuffering, BufferMode(..))
+import GHC.Profiling (requestHeapCensus)
 #endif
 import Control.Lens (view, (^.), (^..), (^?), (?~), (.~), (%~), (<&>), _Just)
 import Control.Applicative ((<|>), optional)
@@ -1088,10 +1089,17 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- collection with its pause to stderr, so UI hitches can be correlated
       -- with GC (or ruled out) by watching the leksah-nix.sh window.
       -- (JS backend: getRTSStatsEnabled has no JS-RTS shim.)
+      --
+      -- It also asks for a heap census every 10 minutes of WALL-CLOCK time.
+      -- That is a no-op unless leksah was started with a heap-profiling mode
+      -- (leksah.sh passes +RTS -hT; see LEKSAH_HEAP_CENSUS there).  The
+      -- RTS's own -i interval counts only the time it is busy, and an IDE is
+      -- mostly idle, so on its own it may not sample for hours.
       _ <- liftIO . forkIO $ do
           enabled <- getRTSStatsEnabled
           when enabled $ do
-              let loop prevMajor = do
+              let loop tick prevMajor = do
+                      when (tick > 0 && tick `mod` censusEvery == (0 :: Int)) requestHeapCensus
                       s <- getRTSStats
                       let mg = major_gcs s
                           d  = gc s
@@ -1102,8 +1110,9 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
                           <> " pause=" <> show (round (ms (gcdetails_elapsed_ns d)) :: Int) <> "ms"
                           <> " live=" <> show (gcdetails_live_bytes d `div` (1024 * 1024)) <> "MB"
                       threadDelay 250000
-                      loop mg
-              loop 0
+                      loop (tick + 1) mg
+                  censusEvery = 10 * 60 * 4   -- 10 minutes of 250ms ticks
+              loop 0 0
 #endif
       -- Develop mode: rebuilding the leksah package in the IDE triggers
       -- QuitToRestart.  The Gtk front end handles that via its application; the
