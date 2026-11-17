@@ -628,7 +628,9 @@ appendEventLog kind ev payload = (`catch` \(_ :: SomeException) -> return ()) $ 
   big <- (`catch` \(_ :: SomeException) -> return False) $ (> 4000000) <$> getFileSize f
   when big $ renameFile f (f <> ".1") `catch` \(_ :: SomeException) -> return ()
   t <- getPOSIXTime
-  let v = maybe (String (decodeUtf8With lenientDecode payload)) shrink
+  -- (A command is kept whole: its --html or --bio IS the content.)
+  let v = maybe (String (decodeUtf8With lenientDecode payload))
+                (if kind == "command" then id else shrink)
             (decodeStrict payload :: Maybe Value)
       line = BL.toStrict (encode (object
                [ "t" .= (realToFrac t :: Double), "kind" .= kind, "event" .= ev

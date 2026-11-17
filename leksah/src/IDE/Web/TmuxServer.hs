@@ -38,6 +38,7 @@ module IDE.Web.TmuxServer
   , viewerFilterArg
   , remoteViewerAttach
   , selectWindowAsViewer
+  , selectWindowAsViewerSoon
   , fitWindowScript
   , installFitScript
   ) where
@@ -64,6 +65,8 @@ import System.Process (readProcessWithExitCode)
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config (Config(..), RemoteC(..), currentConfig)
 import IDE.Web.Instance (leksahPort, tmuxServerSocket)
+import IDE.Utils.RemoteExec (runSsh)
+import Control.Concurrent (threadDelay)
 
 -- | A tmux server leksah can run commands on.
 data TmuxServer
@@ -239,7 +242,8 @@ viewerAttachScript = concat
   [ "T=\"$1\"; S=\"$2\"; G=\"$3\"; V=\"$4\"; "
   -- (the window-sizing script, for this host's tmux to run: 'fitWindowScript')
   , "mkdir -p \"$HOME/.leksah\" && { [ \"$(cat \"$HOME/.leksah/fit-window.sh\" 2>/dev/null)\" = \"$5\" ] "
-  , "|| printf '%s\\n' \"$5\" > \"$HOME/.leksah/fit-window.sh\"; }; "
+  , "|| printf '%s\\n' \"$5\" > \"$HOME/.leksah/fit-window.sh\"; "
+  , "printf '%s' \"$T\" > \"$HOME/.leksah/fit-window.tmux\"; }; "
   , "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
   , "if [ -z \"$G\" ]; then tx has-session -t =leksah 2>/dev/null || tx new-session -d -s leksah || exit 1; G==leksah:; fi; "
   , "n=$(tx display-message -p -t \"$G\" '#{session_group}' 2>/dev/null); "
@@ -271,6 +275,10 @@ fitWindowScript = unlines
   [ "# leksah: size each shared tmux window to the smallest size wanted by the"
   , "# leksahs showing it (@leksah_size_VIEWER = \"WxH SESSION\", dropped once that"
   , "# session has no client).  $1: a window id; none: every window."
+  , "# (The tmux to run: the one leksah found on this machine, which may be a"
+  , "# nix-built one off PATH - see fit-window.tmux.)"
+  , "T=$(cat \"$HOME/.leksah/fit-window.tmux\" 2>/dev/null); [ -n \"$T\" ] || T=tmux"
+  , "tmux() { command \"$T\" \"$@\"; }"
   , "fit() {"
   , "  w=$1; mw=; mh="
   , "  opts=$(tmux show-options -w -t \"$w\" 2>/dev/null | grep '^@leksah_size_')"
@@ -303,30 +311,46 @@ installFitScript = (`catch` \(_ :: SomeException) -> return ()) $ do
   createDirectoryIfMissing True dir
   old <- (`catch` \(_ :: SomeException) -> return "") (readFile' f)
   when (old /= fitWindowScript) $ writeFile f fitWindowScript
+  -- (which tmux the script runs: this one, wherever it is)
+  findExecutable "tmux" >>= mapM_ (writeFile (dir </> "fit-window.tmux"))
   where readFile' f = readFile f >>= \c -> length c `seq` return c
 
 -- | Make the window @target@ names (a window or pane id, or @session:index@)
 -- the current window of THIS viewer's session(s) on @srv@ — not the shared
 -- session's, which is another leksah's view.  Locally, plain @select-window@.
-selectWindowAsViewer :: TmuxServer -> String -> IO ()
+-- 'True' when some session took it (remotely: this viewer has a session there
+-- holding the window — none yet while its tab is still attaching).
+selectWindowAsViewer :: TmuxServer -> String -> IO Bool
 selectWindowAsViewer LocalServer t =
-  () <$ tmuxRunOn LocalServer ["select-window", "-t", t] ""
+  maybe False (\(c, _, _) -> c == ExitSuccess)
+    <$> tmuxRunOn LocalServer ["select-window", "-t", t] ""
 selectWindowAsViewer (SshServer host) t = remoteTmux host >>= \case
-  Left _ -> return ()
-  Right (bin, _) -> (`catch` \(_ :: SomeException) -> return ()) $ do
+  Left _ -> return False
+  Right (bin, _) -> (`catch` \(_ :: SomeException) -> return False) $ do
     sock   <- remoteSocketArgs host
     viewer <- viewerId
     let sockName = case sock of ["-L", n] -> n; _ -> ""
-        script = concat
-          [ "T=\"$1\"; S=\"$2\"; V=\"$3\"; t=\"$4\"; "
+        script = T.pack $ concat
+          [ "T=\"$0\"; S=\"$1\"; V=\"$2\"; t=\"$3\"; "
           , "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
-          , "w=$(tx display-message -p -t \"$t\" '#{window_id}') || exit 1; "
+          , "w=$(tx display-message -p -t \"$t\" '#{window_id}') || exit 1; n=0; "
           , "for v in $(tx list-sessions -F '#{session_name}' -f \"#{==:#{@leksah_viewer},$V}\"); do "
-          , "tx select-window -t \"=$v:$w\" 2>/dev/null; done; exit 0" ]
-    () <$ readProcessWithExitCode "ssh"
-      [ "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", T.unpack host
-      , unwords (map shellQuote ["sh", "-c", script, "sh", bin, sockName
-                                , T.unpack viewer, t]) ] ""
+          , "tx select-window -t \"=$v:$w\" 2>/dev/null && n=1; done; "
+          , "[ \"$n\" = 1 ]" ]
+    (code, _, _) <- runSsh host script
+      [T.pack bin, T.pack sockName, viewer, T.pack t] mempty
+    return (code == ExitSuccess)
+
+-- | 'selectWindowAsViewer', retried for a while until this viewer has a
+-- session there to take it: a tab just asked for (a launch, a show) attaches
+-- over ssh, which can take a while (a handshake, waking the host, building
+-- tmux there).  Run it off the caller's thread.
+selectWindowAsViewerSoon :: TmuxServer -> String -> IO ()
+selectWindowAsViewerSoon srv t = go (30 :: Int)
+  where
+    go 0 = return ()
+    go n = selectWindowAsViewer srv t >>= \ok ->
+      if ok then return () else threadDelay 500000 >> go (n - 1)
 
 -- | Single-quote one word for a remote (ssh) shell.
 shellQuote :: String -> String

@@ -90,7 +90,6 @@ import Data.Foldable (toList)
 import Data.Aeson.Types (Pair, parseMaybe)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (toStrict)
-import qualified Data.ByteString as BS (ByteString)
 import qualified Data.Aeson.KeyMap as KM (lookup)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import qualified Data.Set as S
@@ -107,19 +106,19 @@ import System.FilePath ((</>), dropTrailingPathSeparator, normalise)
 import System.IO
        (withFile, IOMode(ReadMode), hSeek, SeekMode(SeekFromEnd), hFileSize)
 
-import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
+import IDE.Utils.RemotePath (parseRemotePath, renderRemotePath)
 import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
         moveAgentRecord, recordAgentFork, recordRemoteFork, remoteAgentRecord,
-        setRemoteSuspended, applyRemoteCommand, setAgentManager, setAgentRole,
+        setRemoteSuspended, applyLoggedCommand, setAgentManager, setAgentRole,
         setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
        (adoptContinuation, agentContinuations, agentNameFor, agentNames, renameAgent,
         resolveAgentName, touchAgentNames)
-import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, roleNote)
+import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, findRemoteAgentRole, roleNote)
 import IDE.Web.Claude
        (AgentSpec(..), ClaudeBackground(..), ClaudeCmd(..), ClaudeLive(..), claudeAvailable,
         claudeBackgroundSessions,
@@ -148,7 +147,7 @@ import IDE.Web.ReplTmux
        (freshSessionName, liveRunPanes, newAgentWindow, newRemoteAgentWindow, pasteTo,
         sendKeysTo, splitPane, tmuxCmd, tmuxOut)
 import IDE.Web.TmuxServer
-       (TmuxServer(..), rawTmuxId, selectWindowAsViewer, tmuxCmdOn, tmuxOnIds, tmuxStdoutOn)
+       (TmuxServer(..), rawTmuxId, selectWindowAsViewerSoon, tmuxCmdOn, tmuxOnIds, tmuxStdoutOn)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.RemoteAgents
        (remoteAgentName, remoteHostOf, remoteLiveSessions, remotePaneOf, remoteStartingPane,
@@ -229,7 +228,10 @@ forkAgent fr1 = do
           | otherwise                    = fr1
   case frRole fr0 of
     Nothing -> forkAgentAs Nothing fr0
-    Just n  -> findAgentRole (fromMaybe (frCwd fr0) (frDir fr0)) n >>= \case
+    -- (a project on another machine: its roles are that machine's files)
+    Just n  -> (let d = fromMaybe (frCwd fr0) (frDir fr0)
+                in maybe (findAgentRole d n) (\(h, rd) -> findRemoteAgentRole h rd n)
+                         (parseRemotePath d)) >>= \case
       Left err   -> return (Left err)
       Right role -> forkAgentAs (Just role) fr0 { frFresh = True }
 
@@ -240,14 +242,17 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
       False -> return (Left (if frCodex fr then "the codex CLI is not on leksah's PATH"
                                            else "the claude CLI is not on leksah's PATH"))
       True  -> do
-        live <- claudeLiveBySession
+        -- (the parent may run on a shared host: its directory is then an
+        -- ssh:// path, so a fork of its conversation is started THERE)
+        live <- allLiveSessions
         let parent  = frFrom fr `orElse` frParent fr
             mParent = parent >>= (`M.lookup` live)
+            dirOf l = maybe (clDir l) (\h -> renderRemotePath h (clDir l)) (clHost l)
         case (parent, mParent) of
           (Just p, Nothing) | not (frFresh fr) -> return . Left $
             "session " <> p <> " is not running, so there is no conversation to \
             \fork — resume it first, or use --fresh"
-          _ -> go live parent (clDir <$> mParent)
+          _ -> go live parent (dirOf <$> mParent)
   where
     orElse a b = maybe b Just a
 
@@ -531,9 +536,8 @@ startRemoteAgent host name rdir spec = do
     Nothing -> return (Left ("could not start a window on " <> host))
     Just (s, _, pane) -> do
       requestRemoteTerm (host <> "#" <> rawTmuxId s)
-      _ <- forkIO $ do
-        threadDelay 1500000
-        selectWindowAsViewer (SshServer host) (T.unpack (rawTmuxId pane))
+      -- (once the tab's viewer session exists — however long its ssh attach takes)
+      _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
       return (Right ())
 
 -- | Every live session: this machine's, and those on the hosts whose leksah
@@ -571,8 +575,7 @@ showAgentPaneWith here sid = showLiveSessionWith' sid >>= \case
         Just (s, _, p) | Just (host, _) <- T.breakOn "#" <$> T.stripPrefix "ssh://" s -> do
           requestRemoteTerm (host <> "#" <> rawTmuxId s)
           _ <- forkIO $ do
-            threadDelay 1500000
-            selectWindowAsViewer (SshServer host) (T.unpack (rawTmuxId p))
+            selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId p))
             tmuxCmdOn (SshServer host) ["select-pane", "-t", T.unpack (rawTmuxId p)]
           return True
         _ -> return False
@@ -792,10 +795,14 @@ agentResume sid = remoteAgentRecord sid >>= \case
         | running -> showAgentPane sid >> return (Right (name <> " is already running; showing it.\n"))
         | otherwise -> do
             setRemoteSuspended host sid False
+            -- (its role's instructions come back with it, as for a local one)
+            mrole <- case aiRole i of
+              Nothing -> return Nothing
+              Just ro -> either (const Nothing) Just <$> findRemoteAgentRole host (aiDir i) ro
             r <- startRemoteAgent host name (aiDir i) AgentSpec
                    { asDir = renderRemotePath host (aiDir i), asSession = sid
                    , asFrom = Nothing, asPrompt = Nothing, asParent = aiParent i
-                   , asRoleNote = Nothing, asResume = True, asManager = aiManager i
+                   , asRoleNote = roleNote <$> mrole, asResume = True, asManager = aiManager i
                    , asCodex = False }
             return (("Resuming " <> name <> " on " <> host <> ".\n") <$ r)
   _ -> agentResumeHere sid
@@ -1134,27 +1141,38 @@ agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
 -- doing, its edits, its context use and what it waits for, whether or not a
 -- leksah runs on its machine.  (Recording only: no answer goes back, and the
 -- SessionStart briefing is the host's own leksah's business.)
-remoteAgentEvent :: Text -> BS.ByteString -> IO ()
-remoteAgentEvent host line = case decodeStrict' line of
+--
+-- @host@ @""@ is THIS machine's own log (only its logged commands: see
+-- 'IDE.Web.RemoteAgents.startLocalEventsPoll'); @history@ marks lines read on
+-- first contact, of which only the commands are applied (each once).
+remoteAgentEvent :: Text -> Bool -> BS.ByteString -> IO ()
+remoteAgentEvent host history line = case decodeStrict' line of
   Just (Object o)
     | Just (String kind) <- KM.lookup "kind" o
     , Just payload <- KM.lookup "payload" o -> do
         let raw = TE.decodeUtf8 (BL.toStrict (encode payload))
             ev  = case KM.lookup "event" o of Just (String e) -> e; _ -> ""
+            t   = case KM.lookup "t" o of Just (Number n) -> realToFrac n; _ -> 0
+            fresh = not history && not (T.null host)
         case kind of
-          "hook" | Just (String s) <- sessionOf payload, ev /= "SessionStart" -> do
+          "hook" | fresh, Just (String s) <- sessionOf payload, ev /= "SessionStart" -> do
             let h = parseHookIn raw
             recordHookEvent ev s h
             when (ev == "PostToolUse") $
               recordEdit s (editedFiles (hiTool h) (hiInput h) (hiResponse h))
             unless (ev `elem` quietHookEvents) pokeClaudeStatus
-          "statusline" -> recordStatusLine raw
-          -- (an agent's describe / done that found no leksah on its machine)
-          "command" | Just (String s) <- sessionOf payload -> do
-            let args = case payload of
-                  Object p | Just (Array a) <- KM.lookup "args" p -> [ t | String t <- toList a ]
+          "statusline" | fresh -> recordStatusLine raw
+          -- (an agent's describe / done that found no leksah on its machine;
+          -- a session named in it — `agent done Wren` — resolved to its id)
+          "command" | Just (String caller) <- sessionOf payload -> do
+            let args0 = case payload of
+                  Object p | Just (Array a) <- KM.lookup "args" p -> [ x | String x <- toList a ]
                   _ -> []
-            applyRemoteCommand host ev s args
+            (sid, args) <- case args0 of
+              (a : rest) | not ("-" `T.isPrefixOf` a) ->
+                either (const (a, rest)) (\s -> (s, rest)) <$> resolveAgentName [] a
+              _ -> return (caller, args0)
+            applyLoggedCommand (if T.null host then Nothing else Just host) t ev sid args
             pokeClaudeStatus
           _ -> return ()
   _ -> return ()

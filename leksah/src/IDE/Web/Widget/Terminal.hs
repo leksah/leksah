@@ -1617,7 +1617,7 @@ createRemoteSession host =
 -- session another leksah may be showing.
 selectRemoteTmuxWindow :: Text -> Text -> Int -> IO ()
 selectRemoteTmuxWindow host s w =
-    selectWindowAsViewer (SshServer host) (T.unpack s <> ":" <> show w)
+    void $ selectWindowAsViewer (SshServer host) (T.unpack s <> ":" <> show w)
 
 selectRemoteTmuxPane :: Text -> Text -> Int -> Int -> IO ()
 selectRemoteTmuxPane host s w p = do
@@ -1857,13 +1857,13 @@ moveTmuxWindow w dstS = tmuxOnIds [w, dstS] () $ \srv raw ->
 -- moved pane rather than snapping back to the destination's current window.
 selectTmuxWindowId :: Text -> IO ()
 selectTmuxWindowId w = tmuxOnIds [w] () $ \srv raw ->
-    selectWindowAsViewer srv (raw w)
+    void $ selectWindowAsViewer srv (raw w)
 
 -- | Make pane @p@ (@%N@ — server-global) the active pane of its window AND
 -- that window its session's current window (a pane id resolves both).
 selectTmuxPaneId :: Text -> IO ()
 selectTmuxPaneId p = tmuxOnIds [p] () $ \srv raw -> do
-    selectWindowAsViewer srv (raw p)
+    void $ selectWindowAsViewer srv (raw p)
     -- (a window's active pane is the window's own: shared by every viewer)
     tmuxCmdOn srv ["select-pane", "-t", raw p]
 

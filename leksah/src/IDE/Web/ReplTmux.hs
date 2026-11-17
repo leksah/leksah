@@ -55,7 +55,8 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (bracket_, catch, SomeException)
-import Control.Monad (void, mfilter, forM_)
+import Control.Monad (void, mfilter, forM_, when)
+import qualified Data.ByteString.Char8 as BC
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.List (find, isPrefixOf, sortOn)
 import Data.Map (Map)
@@ -84,7 +85,8 @@ import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.TmuxServer
        (TmuxServer(..), tmuxCmdOn, tmuxOkOn, tmuxOutOn, tmuxStdoutOn,
-        tmuxOnIds, qualifyTmuxId, remoteTmux, remoteSocketArgs, viewerFilterArg)
+        tmuxOnIds, qualifyTmuxId, remoteTmux, remoteSocketArgs, viewerFilterArg,
+        selectWindowAsViewerSoon)
 import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
 import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
@@ -459,8 +461,14 @@ ensureRemoteWindow host rdir name mbCmd = remoteTmux host >>= \case
     -- attaches to, so the window is one those tabs can show.
     sock <- remoteSocketArgs host
     let sockName = case sock of ["-L", n] -> T.pack n; _ -> ""
-    (code, _, _) <- runSsh host script
+    (code, out, _) <- runSsh host script
         [T.pack rdir, name, fromMaybe "" mbCmd, T.pack bin, sockName] mempty
+    -- (It names the window; it is made current in THIS leksah's view of the
+    -- session — its viewer session, once the tab the caller opens has
+    -- attached — not in the shared one another leksah may be showing.)
+    let win = T.strip (T.pack (BC.unpack out))
+    when (code == ExitSuccess && "@" `T.isPrefixOf` win) . void . forkIO $
+      selectWindowAsViewerSoon (SshServer host) (T.unpack win)
     return (code == ExitSuccess)
   where
     -- Like the local 'ensureCommandWindow', the identity lives on the *pane*
@@ -475,15 +483,17 @@ ensureRemoteWindow host rdir name mbCmd = remoteTmux host >>= \case
       <> "if tx has-session -t =leksah 2>/dev/null; then "
       <> "p=$(tx list-panes -s -t =leksah -F '#{pane_id}\t#{@leksah_run}' 2>/dev/null"
       <> " | awk -F '\t' -v k=\"$n\" '$2==k{print $1; exit}'); "
-      <> "if [ -n \"$p\" ]; then tx select-window -t \"$p\"; tx select-pane -t \"$p\"; exit $?; fi; "
+      <> "if [ -n \"$p\" ]; then tx select-pane -t \"$p\"; "
+      <> "tx display-message -p -t \"$p\" '#{window_id}'; exit $?; fi; "
       <> "if tx list-windows -t =leksah -F '#{window_name}' 2>/dev/null | grep -Fqx \"$n\"; then "
-      <> "tx select-window -t \"=leksah:$n\"; exit $?; fi; "
+      <> "tx display-message -p -t \"=leksah:$n\" '#{window_id}'; exit $?; fi; "
       <> "p=$(tx new-window -t =leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
       <> "else "
       <> "p=$(tx new-session -d -s leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
       <> "fi; "
       <> "[ -n \"$p\" ] || exit 1; "
-      <> "tx set-option -p -t \"$p\" @leksah_run \"$n\" 2>/dev/null; exit 0"
+      <> "tx set-option -p -t \"$p\" @leksah_run \"$n\" 2>/dev/null; "
+      <> "tx display-message -p -t \"$p\" '#{window_id}'; exit 0"
 
 -- | Open (or focus) a terminal whose working directory is @dir@ — local or
 -- @ssh:\/\/HOST\/…@.  Shared by "Open Terminal Here" (projectOpenTerminal) and

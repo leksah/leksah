@@ -275,7 +275,7 @@ import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
-import IDE.Web.RemoteAgents (setRemoteEventHandler, startRemoteAgentsPoll)
+import IDE.Web.RemoteAgents (setRemoteEventHandler, startLocalEventsPoll, startRemoteAgentsPoll)
 import IDE.Web.Agent (remoteAgentEvent)
 #endif
 import IDE.Web.NewLwRequest
@@ -1082,6 +1082,8 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         -- which the status poll and the Agents pane read.
         setRemoteEventHandler remoteAgentEvent
         rtid <- startRemoteAgentsPoll
+        ltid <- startLocalEventsPoll
+        when ghciMode $ registerGhciCleanupNamed "local-events-poll" (killThread ltid)
         when ghciMode $ registerGhciCleanupNamed "remote-agents-poll" (killThread rtid)
         -- Which agents are running, and — after a restart, or leksah's tmux
         -- server dying — which were interrupted (the Agents pane's ↻ cards

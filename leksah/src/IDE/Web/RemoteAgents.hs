@@ -35,16 +35,21 @@ module IDE.Web.RemoteAgents
   , remoteAgentName
   , remoteStartingPane
   , setRemoteEventHandler
+  , startLocalEventsPoll
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
-import Control.Exception (SomeException, catch)
-import Control.Monad (forM_, forever, unless, void)
-import Data.Aeson (decode', encode)
+import Control.Exception (SomeException, catch, finally)
+import Control.Monad (forM, forM_, forever, unless, void, when)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Data.Aeson (Value(..), decode')
+import qualified Data.Aeson.KeyMap as KM (lookup)
+import Data.Foldable (toList)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as LBS
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import System.IO (IOMode(ReadMode), SeekMode(AbsoluteSeek), hSeek, withFile)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
@@ -53,7 +58,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import System.Directory (createDirectoryIfMissing, getHomeDirectory)
+import System.Directory (createDirectoryIfMissing, getFileSize, getHomeDirectory)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
@@ -67,7 +72,7 @@ import IDE.Web.AgentNames
 import IDE.Web.Claude
        (ClaudeLive(..), TranscriptGist(..), gistOfTail, latestActivityOf,
         parseSessionFile, pidAncestors)
-import IDE.Web.SharedStore (remoteModify)
+import IDE.Web.SharedStore (remoteModifyJSON)
 import IDE.Web.TmuxServer (remoteSocketArgs, remoteTmux)
 
 -- | One host, as last seen.
@@ -182,7 +187,12 @@ remoteTranscriptTail sid = remoteHostOf sid >>= \case
 startRemoteAgentsPoll :: IO ThreadId
 startRemoteAgentsPoll = forkIO . forever $ do
   hosts <- sharedHosts
-  forM_ hosts $ \h -> pollHost h `catch` \(_ :: SomeException) -> return ()
+  -- (all at once: one slow or unreachable host must not hold up the others)
+  dones <- forM hosts $ \h -> do
+    done <- newEmptyMVar
+    _ <- forkIO $ (pollHost h `catch` \(_ :: SomeException) -> return ()) `finally` putMVar done ()
+    return done
+  mapM_ takeMVar dones
   -- (a host that went from the setting is forgotten)
   atomicModifyIORef' snapshotsRef (\m -> (M.restrictKeys m (S.fromList hosts), ()))
   threadDelay 3000000
@@ -213,9 +223,13 @@ pollHost host = remoteTmux host >>= \case
       atomicModifyIORef' snapshotsRef (\m -> (M.insert host hs m, ()))
       -- What the agents there did since the last look: into the same records
       -- their own leksah would keep ('setRemoteEventHandler').
+      -- (On first contact the lines are history, already recorded, if at all,
+      -- by whoever was watching then: only the logged commands are applied,
+      -- each once — 'IDE.Web.AgentInfo.applyLoggedCommand'.)
       unless (null eventLines) $ do
         handler <- readIORef eventHandlerRef
-        forM_ eventLines $ \l -> handler host l `catch` \(_ :: SomeException) -> return ()
+        let history = hsEventsAt p < 0
+        forM_ eventLines $ \l -> handler host history l `catch` \(_ :: SomeException) -> return ()
       setRemoteNames host (snd (hsNames hs))
       nameUnnamed host hs
 
@@ -226,10 +240,10 @@ remoteAgentName :: Text -> Text -> IO (Either Text Text)
 remoteAgentName host sid = do
   now <- realToFrac <$> getPOSIXTime
   elsewhere <- namesHeldElsewhere (Just host)
-  r <- remoteModify host "agent-names.json" $ \old -> do
-    let m  = fromMaybe M.empty (decode' old)
-        m' = nameSessions now elsewhere [sid] m
-    return (if m' == m then old else encode m', maybe "" nrName (M.lookup sid m'))
+  held <- maybe S.empty hostHeld . M.lookup host <$> readIORef snapshotsRef
+  r <- remoteModifyJSON host "agent-names.json" M.empty $ \m -> do
+    let m' = nameSessions now held elsewhere [sid] m
+    return (m', maybe "" nrName (M.lookup sid m'))
   case r of
     Right n | not (T.null n) -> noteRemoteName host sid n >> return (Right n)
     Right _  -> return (Left "the host's name store gave no name")
@@ -245,27 +259,72 @@ newEvents was fs = case [ (meta, b) | (t, meta, b) <- fs, t == "E" ] of
     in (off + fromIntegral (BS.length complete), filter (not . BS.null) (BC.lines complete))
   _ -> (was, [])
 
--- | Who folds a host's events into leksah's records: set once at startup by
--- "IDE.Web.Agent", which knows how ('IDE.Web.Agent.remoteAgentEvent').  The
--- host's name and one log line.
-setRemoteEventHandler :: (Text -> BS.ByteString -> IO ()) -> IO ()
+-- | Who folds a machine's events into leksah's records: set once at startup
+-- by "IDE.Web.Agent", which knows how ('IDE.Web.Agent.remoteAgentEvent').  The
+-- machine (@""@: this one — 'startLocalEventsPoll'), whether the line is
+-- history (read on first contact: only commands count), and the line.
+setRemoteEventHandler :: (Text -> Bool -> BS.ByteString -> IO ()) -> IO ()
 setRemoteEventHandler h = atomicModifyIORef' eventHandlerRef (const (h, ()))
 
 {-# NOINLINE eventHandlerRef #-}
-eventHandlerRef :: IORef (Text -> BS.ByteString -> IO ())
-eventHandlerRef = unsafePerformIO (newIORef (\_ _ -> return ()))
+eventHandlerRef :: IORef (Text -> Bool -> BS.ByteString -> IO ())
+eventHandlerRef = unsafePerformIO (newIORef (\_ _ _ -> return ()))
+
+-- | Follow THIS machine's own event log for the commands an agent logged
+-- while no leksah answered here — this leksah restarting, say
+-- (@leksah-cmd agent describe@ \/ @done@ — see @agentOffline@ in leksah-cmd).
+-- Hook events need no replay here: a running leksah got them through its
+-- socket, and the session files say the rest.  From the last 64KB at start,
+-- then every few seconds.
+startLocalEventsPoll :: IO ThreadId
+startLocalEventsPoll = forkIO $ do
+  home <- getHomeDirectory
+  let f = home </> ".leksah" </> "agent-events.jsonl"
+  offRef <- newIORef (-1 :: Integer)
+  forever $ do
+    (`catch` \(_ :: SomeException) -> return ()) $ do
+      size <- (`catch` \(_ :: SomeException) -> return 0) (getFileSize f)
+      off0 <- readIORef offRef
+      let off | off0 < 0    = max 0 (size - 65536)
+              | off0 > size = 0          -- rotated
+              | otherwise   = off0
+      when (size > off) $ do
+        bytes <- withFile f ReadMode $ \h -> hSeek h AbsoluteSeek off >> BS.hGet h (fromIntegral (size - off))
+        let complete = BS.take (maybe 0 (+ 1) (BC.elemIndexEnd '\n' bytes)) bytes
+        handler <- readIORef eventHandlerRef
+        forM_ (filter (not . BS.null) (BC.lines complete)) $ \l ->
+          handler "" True l `catch` \(_ :: SomeException) -> return ()
+        writeIORef offRef (off + fromIntegral (BS.length complete))
+      when (size <= off) $ writeIORef offRef off
+    threadDelay 3000000
 
 -- | Name, in the host's own store, its live sessions that have no name there.
+--
+-- Every live session is touched, named or not: with no leksah running on the
+-- host, nothing else keeps a named agent's last-seen time fresh, and its name
+-- would fall out of reservation and be handed to a newcomer.  (Written only
+-- when something changed: a new name, or a last-seen older than the slack.)
 nameUnnamed :: Text -> HostSnapshot -> IO ()
 nameUnnamed host hs = do
-  let unnamed = [ clSession l | l <- hsLive hs, not (clSession l `M.member` snd (hsNames hs)) ]
-  unless (null unnamed) $ do
-    now <- realToFrac <$> getPOSIXTime
+  let sids = map clSession (hsLive hs)
+      known = snd (hsNames hs)
+  now <- realToFrac <$> getPOSIXTime
+  let stale = [ s | s <- sids, maybe True (\r -> now - nrSeen r >= 600) (M.lookup s known) ]
+  unless (null stale) $ do
     elsewhere <- namesHeldElsewhere (Just host)
-    void . remoteModify host "agent-names.json" $ \old -> do
-      let m  = fromMaybe M.empty (decode' old)
-          m' = nameSessions now elsewhere unnamed m
-      return (if m' == m then old else encode m', ())
+    void . remoteModifyJSON host "agent-names.json" M.empty $ \m ->
+      return (nameSessions now (hostHeld hs) elsewhere sids m, ())
+
+-- | The sessions @host@'s agent store marks suspended or interrupted: their
+-- names stay reserved there ('nameSessions').  (Read from the raw store, as
+-- the record type belongs to "IDE.Web.AgentInfo".)
+hostHeld :: HostSnapshot -> S.Set Text
+hostHeld hs = case decode' (snd (hsInfos hs)) of
+  Just (Array xs) -> S.fromList
+    [ s | Object o <- toList xs
+        , Just (String s) <- [KM.lookup "session" o]
+        , any (\k -> maybe False (/= Null) (KM.lookup k o)) ["suspended", "interrupted"] ]
+  _ -> S.empty
 
 -- | One snapshot from the frames of the script's output.
 parseSnapshot :: Text -> UTCTime -> HostSnapshot -> [(BS.ByteString, BS.ByteString, BS.ByteString)]

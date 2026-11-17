@@ -196,8 +196,12 @@ agentNames = do
 -- | Name every one of @sids@ that has no name in @m@ (a machine's store) yet,
 -- and mark them seen: 'touchAgentNames' for a store that is not this
 -- machine's.
-nameSessions :: Double -> S.Set Text -> [Text] -> Map Text NameRec -> Map Text NameRec
-nameSessions now elsewhere sids m = foldl' (touch S.empty elsewhere now) m sids
+--
+-- @held@: sessions whose names stay reserved whatever their clock says (the
+-- machine's suspended agents — 'holdAgentNames' for this machine's store).
+nameSessions :: Double -> S.Set Text -> S.Set Text -> [Text] -> Map Text NameRec
+             -> Map Text NameRec
+nameSessions now held elsewhere sids m = foldl' (touch held elsewhere now) m sids
 
 -- | The names held — by a session seen within the reservation — in the stores
 -- of every machine this leksah knows of EXCEPT @forHost@'s ('Nothing': this
@@ -215,8 +219,16 @@ namesHeldElsewhere forHost = do
   return (local <> S.unions [ held m | (h, m) <- M.toList remote, Just h /= forHost ])
 
 -- | Replace what is known of @host@'s store.
+--
+-- A name this leksah has just given a session there ('noteRemoteName') and a
+-- snapshot taken before that write landed has not got yet is kept, as long as
+-- the session is still recent: one snapshot later the store has it.
 setRemoteNames :: Text -> Map Text NameRec -> IO ()
-setRemoteNames host m = atomicModifyIORef' remoteNamesRef (\r -> (M.insert host m r, ()))
+setRemoteNames host m = do
+  now <- realToFrac <$> getPOSIXTime
+  atomicModifyIORef' remoteNamesRef $ \r ->
+    let noted = M.filter (\x -> now - nrSeen x < 60) (M.findWithDefault M.empty host r)
+    in (M.insert host (m `M.union` noted) r, ())
 
 -- | Remember at once what @host@'s store now calls @sid@ (the next snapshot
 -- would bring it, but a launch needs the name before then).
