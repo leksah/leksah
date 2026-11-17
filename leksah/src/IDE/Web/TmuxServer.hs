@@ -250,13 +250,18 @@ viewerAttachScript = concat
   , "[ -n \"$n\" ] || n=$(tx display-message -p -t \"$G\" '#{session_name}' 2>/dev/null); "
   , "[ -n \"$n\" ] || { echo \"no tmux session $G\" >&2; exit 1; }; "
   , "v=\"$n~$V\"; "
+  -- This viewer's sessions that no client is on, left by a leksah that went
+  -- away (a minute old at least: never one another of its tabs is just about
+  -- to attach).  Not tmux's destroy-unattached: tmux 3.7b destroys the
+  -- session while the leaving client still points at it, and its
+  -- client-detached notification then crashes the whole server (every
+  -- session, every agent in it) when a viewer's connection drops.
+  , "old=$(( $(date +%s) - 60 )); "
+  , "for o in $(tx list-sessions -f \"#{&&:#{==:#{@leksah_viewer},$V},#{&&:#{==:#{session_attached},0},#{e|<:#{session_created},$old}}}\" "
+  ,   "-F '#{session_id}' 2>/dev/null); do tx kill-session -t \"$o\" 2>/dev/null; done; "
   , "if ! tx has-session -t \"=$v\" 2>/dev/null; then "
   ,   "tx new-session -d -t \"=$n\" -s \"$v\" || exit 1; "
   ,   "tx set-option -t \"=$v:\" @leksah_viewer \"$V\"; "
-  -- Gone with its last client — but set only once attached: tmux destroys
-  -- a never-attached session the moment the option is set.  (@keep-group@:
-  -- never the group's last session, whose windows would go with it.)
-  ,   "tx set-hook -t \"=$v:\" client-attached 'set-option destroy-unattached keep-group'; "
   , "fi; "
   , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
   , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
