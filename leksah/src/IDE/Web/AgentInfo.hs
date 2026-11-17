@@ -623,14 +623,20 @@ hostsVar = unsafePerformIO (newMVar Nothing)
 
 withHosts :: (HostsState -> (HostsState, a)) -> IO a
 withHosts f = modifyMVar hostsVar $ \h0 -> do
-  p <- sidecarPath "agent-hosts.json"
+  -- The path is resolved INSIDE the handlers: 'sidecarPath' creates the
+  -- directory, and where it can't (the browser demo has no home to write
+  -- to) that throw killed every Agents-pane refresh thread.  And only when
+  -- the file is actually read or written, not on every peek.
+  let path = sidecarPath "agent-hosts.json"
   h <- case h0 of
     Just h  -> return h
     Nothing -> (`catch` \(_ :: SomeException) -> return emptyHosts) $ do
+      p  <- path
       ex <- doesFileExist p
       if ex then fromMaybe emptyHosts . decode' <$> LBS.readFile p else return emptyHosts
   let (h', a) = f h
-  when (h' /= h) . (`catch` \(_ :: SomeException) -> return ()) $
+  when (h' /= h) . (`catch` \(_ :: SomeException) -> return ()) $ do
+    p <- path
     LBS.writeFile p (encode h')
   return (Just h', a)
   where emptyHosts = HostsState False []
