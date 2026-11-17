@@ -1712,6 +1712,44 @@ viewKeyOf lws n l = do
     PaneView k -> Just k
     _          -> Nothing
 
+-- | What a terminal VIEW leaf of session @s@ (the browser demo's showcase
+-- agent) shows: the session's current tmux window, and that window's active
+-- pane — the one its flipper entry, label and face stand for.
+viewLeafPane :: Map Text (Text, [TmuxWindow]) -> Text -> Maybe (TmuxWindow, TmuxPane)
+viewLeafPane tree s = do
+  (_, wins) <- M.lookup s tree
+  w <- listToMaybe (filter twActive wins ++ wins)
+  p <- windowActivePane w
+  pure (w, p)
+
+-- | The tmux windows terminal VIEW leaves show, @(session, window index)@,
+-- each to its leaf's 'FlipView'.  Such a window flips as that view, so its
+-- panes are left out of the flipper's list, and a recency bump naming one of
+-- them is credited to the view ('canonFlipItem').  The session's OTHER
+-- windows still flip as panes.
+viewLeafWindows :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> Map (Text, Int) FlipItem
+viewLeafWindows lws tree = M.fromList
+  [ ((s, twIndex w), FlipView n l)
+  | (n, lw) <- M.toList lws
+  , (LeafId l, PaneContent (PaneView (TerminalKey s)) _) <- M.toList (lwPanes lw)
+  , Just (w, _) <- [viewLeafPane tree s] ]
+
+-- | A flipper item as the list holds it: a pane of a window shown by a
+-- terminal VIEW leaf becomes that leaf's 'FlipView'.
+canonFlipItem :: Map Text LeksahWindow -> Map Text (Text, [TmuxWindow]) -> FlipItem -> FlipItem
+canonFlipItem lws tree fi = case fi of
+  FlipPane s w _ | Just v <- M.lookup (s, w) (viewLeafWindows lws tree) -> v
+  _ -> fi
+
+-- | The label of a view leaf wherever a pane is named (flipper, the window
+-- tab's pane icons, the toolbar strip): a terminal VIEW leaf reads like the
+-- pane it shows (agent name and title), any other view like its tab.
+flipViewLabel :: Map Text LeksahWindow -> Map Text Text -> Map Text (Text, [TmuxWindow]) -> Text -> Int -> Text
+flipViewLabel lws names tree n l = case viewKeyOf lws n l of
+  Just (TerminalKey s)
+    | Just (w, p) <- viewLeafPane tree s -> flipPaneLabel s (twIndex w) (tpIndex p) tree
+  mk -> maybe "(closed view)" (`tabLabelText` names) mk
+
 jsMain :: Bool -> Bool -> Maybe WindowId -> App -> JSM ()
 jsMain showMenubar macTitlebar mbWid app = do
   -- enableLogging True -- Uncomment this to add verbose JSaddle logging
@@ -2615,8 +2653,9 @@ flipIconSrc lws tree fi = case fi of
         FlipView n l            -> case viewKeyOf lws n l of
           -- A terminal shown as a VIEW leaf (the browser demo's showcase
           -- agent): its session's pane icon — the agent's face.
-          Just (TerminalKey s) -> Just (paneIcon s (activeWinIdx s) 0)
-          mk                   -> mk >>= tabIconSrc
+          Just (TerminalKey s)
+            | Just (win, pn) <- viewLeafPane tree s -> Just (paneIconSrc win pn)
+          mk -> mk >>= tabIconSrc
   where
     winIcon n w = case M.lookup n tree >>= find ((== w) . twIndex) . snd of
         Just win -> windowIconSrc win
@@ -2783,14 +2822,14 @@ flipSelHighlight owner front tree = \case
 -- ownership split in 'main').
 buildFlipItems :: Map Text LeksahWindow -> [FlipItem] -> [(Text, TabKey)] -> [TabKey] -> Map Text (Text, [TmuxWindow]) -> S.Set (Text, Int) -> [(Text, FlipItem)]
 buildFlipItems lws mru rt otherTabs tree hidden =
-  let -- A session shown by a terminal VIEW leaf (the browser demo's
-      -- showcase agent) flips as that leaf's 'FlipView'; listing its pane
-      -- too would show it twice, and the pane has no tab of its own to go to.
-      viewOwned = viewLeafSessions lws
+  let -- A tmux window shown by a terminal VIEW leaf (the browser demo's
+      -- showcase agent) flips as that leaf's 'FlipView'; listing its panes
+      -- too would show it twice ('viewLeafWindows').
+      viewShown = viewLeafWindows lws tree
       panes = [ FlipPane n (twIndex w) (tpIndex p)
               | (n, (_, wins)) <- M.toList tree, w <- wins, p <- twPanes w
               , not ((n, twIndex w) `S.member` hidden)
-              , not (n `S.member` viewOwned) ]
+              , not ((n, twIndex w) `M.member` viewShown) ]
       -- Terminal-family tabs are represented by their PANES (from the tree):
       -- a leksah window's tmux panes flip individually, and its native VIEW
       -- panes (editor/git-log/browser leaves) each flip as a 'FlipView'.
@@ -6509,8 +6548,7 @@ main showMenubar macTitlebar wid ctx = mdo
                                    ++ treeLeafIds (lwTree lw) of
                               (LeafId l : _) ->
                                 ( flipIconSrc lws tree (FlipView n l)
-                                , maybe "(closed view)" (`tabLabelText` names)
-                                        (viewKeyOf lws n l)
+                                , flipViewLabel lws names tree n l
                                 , maybe "" fullOf (viewKeyOf lws n l) )
                               [] -> (Nothing, tabLabelText k names, "")
                    _ -> ( flipIconSrc lws tree (FlipTab k)
@@ -7107,7 +7145,7 @@ main showMenubar macTitlebar wid ctx = mdo
                   , Just src <- [flipIconSrc lws tree fi]
                   , let lbl = case fi of
                           FlipPane s w p -> flipPaneLabel s w p tree
-                          FlipView n' l  -> maybe "" (`tabLabelText` names) (viewKeyOf lws n' l)
+                          FlipView n' l  -> flipViewLabel lws names tree n' l
                           FlipTab t      -> tabLabelText t names ])
                 <$> flipLiveD <*> leksahWindowsD' <*> allTreeD <*> terminalNamesD
               -- Which pane an icon stands for, for 'leafDragJs': dragging the
@@ -7779,7 +7817,11 @@ main showMenubar macTitlebar wid ctx = mdo
           (\tree ref -> let (s, pid) = splitPaneRef ref
                         in if T.null pid then Nothing else flipForPaneId s pid tree)
           (current allTreeD) becameKeyPaneIdE
-        flipBumpE = leftmost [ localFlipBumpE, becameKeyEditorE, becameKeyPaneFlipE ]
+        -- (a pane of a window a terminal VIEW leaf shows is credited to
+        -- that view, the entry the flipper lists for it)
+        flipBumpE = attachWith (\(lws, tree) -> canonFlipItem lws tree)
+          ((,) <$> current leksahWindowsD' <*> current allTreeD)
+          (leftmost [ localFlipBumpE, becameKeyEditorE, becameKeyPaneFlipE ])
     flipMruD <- holdUniqDyn (_flipMru <$> ide)
     performEvent_ $ ffor flipBumpE $ \fi -> wlog wid ("flipBump " <> show fi)
     performEvent_ $ ffor (updated flipMruD) $ \mru -> wlog wid ("flipMru<-shared front=" <> show (take 3 mru))
@@ -7904,13 +7946,7 @@ main showMenubar macTitlebar wid ctx = mdo
     let flipItemLabel lws names tree fi = case fi of
           FlipTab k      -> tabLabelText k names
           FlipPane n w p -> flipPaneLabel n w p tree
-          FlipView n l   -> case viewKeyOf lws n l of
-            -- A terminal shown as a VIEW leaf (the browser demo's showcase
-            -- agent) is labelled like its session's pane — the agent's name
-            -- and title — as 'flipIconSrc' gives it the pane's face.
-            Just (TerminalKey s)
-              | Just (_, w : _) <- M.lookup s tree -> flipPaneLabel s (twIndex w) 0 tree
-            mk -> maybe "(closed view)" (`tabLabelText` names) mk
+          FlipView n l   -> flipViewLabel lws names tree n l
         -- A small square before each entry, coloured by the OS window that owns
         -- the pane — a visual cue of where selecting it will take you.  Only when
         -- there is more than one window (a single window needs no disambiguation).
