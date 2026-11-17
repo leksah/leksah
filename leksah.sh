@@ -1,4 +1,7 @@
-#!/usr/bin/env bash -e
+#!/usr/bin/env bash
+# (set -e here, not in the #! line: Linux's env would look for a program
+# called "bash -e".)
+set -e
 
 # Build-and-relaunch loop for developing leksah with leksah.  Plain cabal in
 # the ambient environment: ghc/cabal/tmux must be on PATH, cabal picks the
