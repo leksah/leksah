@@ -17,6 +17,7 @@
 -- "IDE.Web.Widget.FileTree".
 module IDE.Web.Claude
   ( claudeAvailable
+  , prepareAgentLaunchFiles
   , ClaudeSession(..)
   , csTitle
   , claudeSessionsFor
@@ -908,16 +909,16 @@ claudeCommandLine cmd = do
   mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag plugin
   -- (on another machine: the hooks and MCP server a leksah THERE set up, when
   -- one has — their files name that machine's leksah-cmd — else none)
-  hooksFlag <- case parseRemotePath d of
+  (envPrefix, hooksFlag) <- case parseRemotePath d of
     Just (host, _) -> remoteAgentFlags host
-    Nothing        -> claudeHooksFlag plugin d
+    Nothing        -> (\f -> ("", f)) <$> claudeHooksFlag plugin d
   -- The agent's own name, when its session id is known at launch — so it can
   -- tell the user and other agents who it is.
   myName <- traverse agentNameFor ownSession
   let flags = mcpFlag <> hooksFlag <> allowFlag
            <> appendSystemPrompt (planHtmlNote : worktreeNote
                                    : maybe [] ((: []) . nameNote) myName <> notes)
-      line' = maybe line (\p -> p <> " " <> line) mbPrefix <> flags
+      line' = envPrefix <> maybe line (\p -> p <> " " <> line) mbPrefix <> flags
   return (d, key, line')
   where
     ownSession = case cmd of
@@ -1269,18 +1270,41 @@ claudeHooksFlag installed dir = (`catch` \(_ :: SomeException) -> return "") $
 -- hooks call ITS leksah-cmd, which reaches it — or, when it is not running,
 -- the machine's event log), or nothing when no leksah has run there.  One ssh
 -- round trip; absolute paths, as the host spells them.
-remoteAgentFlags :: Text -> IO Text
-remoteAgentFlags host = (`catch` \(_ :: SomeException) -> return "") $ do
+remoteAgentFlags :: Text -> IO (Text, Text)
+remoteAgentFlags host = (`catch` \(_ :: SomeException) -> return ("", "")) $ do
   (_, out, _) <- runSsh host
     (T.concat [ "for f in \"$HOME/.leksah/settings-statusline.json\" \"$HOME/.leksah/hooks.json\"; "
               , "do [ -f \"$f\" ] && { echo \"S $f\"; break; }; done; "
-              , "[ -f \"$HOME/.leksah/mcp.json\" ] && echo \"M $HOME/.leksah/mcp.json\"; exit 0" ])
+              , "[ -f \"$HOME/.leksah/mcp.json\" ] && echo \"M $HOME/.leksah/mcp.json\"; "
+              , "[ -f \"$HOME/.leksah/bin-dir\" ] && echo \"P $(head -n1 \"$HOME/.leksah/bin-dir\")\"; exit 0" ])
     [] mempty
-  return . T.concat $
-    [ case T.stripPrefix "S " l of
-        Just f  -> " --settings " <> shq f
-        Nothing -> maybe "" ((" --mcp-config " <>) . shq) (T.stripPrefix "M " l)
-    | l <- T.lines (T.pack (BS.unpack out)) ]
+  let ls = T.lines (T.pack (BS.unpack out))
+  return
+    -- (the host leksah's leksah-cmd on the agent's PATH: its system prompt
+    -- tells it to run @leksah-cmd agent …@, and the host's tmux server need
+    -- not have been started from a shell that has it)
+    ( T.concat [ "PATH=" <> shq dir <> ":\"$PATH\" "
+               | l <- ls, Just dir <- [T.stripPrefix "P " l], not (T.null dir) ]
+    , T.concat
+        [ case T.stripPrefix "S " l of
+            Just f  -> " --settings " <> shq f
+            Nothing -> maybe "" ((" --mcp-config " <>) . shq) (T.stripPrefix "M " l)
+        | l <- ls ] )
+
+-- | Write the files 'remoteAgentFlags' looks for — this leksah's hooks and
+-- status-line settings, its MCP config, and @~\/.leksah\/bin-dir@ (where its
+-- @leksah-cmd@ is) — at start-up rather than at its first launch of an agent,
+-- so a leksah on ANOTHER machine launching an agent here finds them even
+-- when no agent has been launched here yet.
+prepareAgentLaunchFiles :: IO ()
+prepareAgentLaunchFiles = (`catch` \(_ :: SomeException) -> return ()) $
+  findExecutable "leksah-cmd" >>= mapM_ (\exe -> do
+    home <- getHomeDirectory
+    plugin <- leksahPluginEnabledFor Nothing
+    _ <- claudeMcpFlag plugin
+    _ <- claudeHooksFlag plugin home
+    writeIfChanged (home </> ".leksah" </> "bin-dir")
+      (BS.fromStrict (encodeUtf8 (T.pack (takeDirectory exe <> "\n")))))
 
 -- | The two programs the hooks run: @leksah-cmd@ (its path), and the worktree
 -- PostToolUse script, which @leksah-cmd hooks write-script@ (re)writes.

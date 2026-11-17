@@ -267,7 +267,7 @@ import IDE.Web.SaveRequest (requestSaveActiveFileWait)
 import IDE.Web.Claude
        (runClaudeCmd, claudeCommandLine, ClaudeCmd(..), ClaudeLive(..),
         claudeLiveBySession, paneCurrentPath, paneForSession, sendToSession,
-        showLiveSession, showLiveSessionHere, raiseTabOfPane)
+        showLiveSession, showLiveSessionHere, raiseTabOfPane, prepareAgentLaunchFiles)
 import IDE.Web.AISession
        (AIChoice(..), AIRow(..), activeAIPaneRef, aiPickerChoices, choiceKey)
 #if !defined(ghcjs_HOST_OS)
@@ -1103,6 +1103,9 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         installFitScript
         void $ tmuxRunOn LocalServer
           [ "set-hook", "-g", "client-detached", "run-shell -b 'sh ~/.leksah/fit-window.sh'" ] ""
+        -- What a leksah on another machine needs to launch an agent here
+        -- with this one's hooks and leksah-cmd ('remoteAgentFlags').
+        void $ forkIO prepareAgentLaunchFiles
 #endif
 #if !defined(ghcjs_HOST_OS)
       -- GC monitor (needs +RTS -T, set via -with-rtsopts): log every major
