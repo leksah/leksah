@@ -83,7 +83,7 @@ import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.TmuxServer
        (TmuxServer(..), tmuxCmdOn, tmuxOkOn, tmuxOutOn, tmuxStdoutOn,
-        tmuxOnIds, qualifyTmuxId)
+        tmuxOnIds, qualifyTmuxId, remoteTmux, remoteSocketArgs, viewerFilterArg)
 import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
 import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
@@ -234,7 +234,7 @@ findReplWindow name = do
 -- tests, so that's harmless.
 liveRunKeys :: IO [Text]
 liveRunKeys =
-    filter (not . T.null) . T.lines <$> tmuxStdout ["list-panes", "-a", "-F", "#{@leksah_run}"]
+    filter (not . T.null) . T.lines <$> tmuxStdout ["list-panes", "-a", "-f", viewerFilterArg, "-F", "#{@leksah_run}"]
 
 -- | The first pane whose @\@leksah_run@ resolves to @key@, as
 -- @(session id, window id, pane id)@ — a pane option set by
@@ -245,7 +245,7 @@ liveRunKeys =
 findRunPane :: Text -> IO (Maybe (Text, Text, Text))
 findRunPane key = do
             out <- tmuxStdout
-                [ "list-panes", "-a", "-F"
+                [ "list-panes", "-a", "-f", viewerFilterArg, "-F"
                 , "#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ]
             return $ listToMaybe
                 [ (sid, wid, pid) | l <- T.lines out
@@ -258,7 +258,7 @@ findRunPane key = do
 liveRunPanes :: IO [(Text, Text, Text, Text)]
 liveRunPanes = do
             out <- tmuxStdout
-                [ "list-panes", "-a", "-F"
+                [ "list-panes", "-a", "-f", viewerFilterArg, "-F"
                 , "#{window_activity}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{@leksah_run}" ]
             return $ map snd $ sortOn (Down . fst)
                 [ (act, (key, sid, wid, pid))
@@ -278,7 +278,7 @@ liveRunPanes = do
 livePanePids :: IO [(Text, Text, Text, Int)]
 livePanePids = do
             out <- tmuxStdout
-                [ "list-panes", "-a", "-F"
+                [ "list-panes", "-a", "-f", viewerFilterArg, "-F"
                 , "#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_pid}" ]
             return [ (sid, wid, pid, ppid)
                    | l <- T.lines out
@@ -291,7 +291,7 @@ livePanePids = do
 livePaneTitles :: IO (Map Text Text)
 livePaneTitles = do
             out <- tmuxStdout
-                [ "list-panes", "-a", "-F", "#{pane_id}\t#{pane_title}" ]
+                [ "list-panes", "-a", "-f", viewerFilterArg, "-F", "#{pane_id}\t#{pane_title}" ]
             return $ M.fromList
                 [ (pid, T.intercalate "\t" t)
                 | l <- T.lines out, (pid : t) <- [T.splitOn "\t" l] ]
@@ -440,7 +440,8 @@ clipboardCopyCmd
 -- exit closes the window and only a FAILING @cmd@ keeps a shell (repl
 -- windows — exiting the repl should exit right out).
 -- | Remote analogue of 'ensureCommandWindow': ensure the REMOTE host's
--- default-socket tmux has a @leksah@ session (the one @ssh:\/\/HOST@ tabs
+-- leksah tmux server (its @remote.tmuxSockets@ entry, else its default one)
+-- has a @leksah@ session (the one @ssh:\/\/HOST@ tabs
 -- attach — see IDE.Web.Widget.TerminalCC) with a window named @name@ whose
 -- cwd is @rdir@, optionally running @cmd@ (dropping to a login shell when
 -- it ends), and select it.  ONE pooled ssh round trip.
@@ -449,9 +450,16 @@ ensureRemoteWindow :: Text      -- ^ host
                    -> Text      -- ^ window name
                    -> Maybe Text -- ^ optional command to run in the window
                    -> IO Bool
-ensureRemoteWindow host rdir name mbCmd = do
+ensureRemoteWindow host rdir name mbCmd = remoteTmux host >>= \case
+  Left _ -> return False
+  Right (bin, _) -> do
+    -- On the host's leksah tmux server (@remote.tmuxSockets@), with the tmux
+    -- binary 'remoteTmux' found there: the same server every @ssh://@ tab
+    -- attaches to, so the window is one those tabs can show.
+    sock <- remoteSocketArgs host
+    let sockName = case sock of ["-L", n] -> T.pack n; _ -> ""
     (code, _, _) <- runSsh host script
-        [T.pack rdir, name, fromMaybe "" mbCmd] mempty
+        [T.pack rdir, name, fromMaybe "" mbCmd, T.pack bin, sockName] mempty
     return (code == ExitSuccess)
   where
     -- Like the local 'ensureCommandWindow', the identity lives on the *pane*
@@ -460,20 +468,21 @@ ensureRemoteWindow host rdir name mbCmd = do
     -- fallback for panes created before tagging (or a remote tmux too old
     -- for pane options — set-option -p failures are ignored).
     script =
-      "d=\"$0\"; n=\"$1\"; c=\"$2\"; "
+      "d=\"$0\"; n=\"$1\"; c=\"$2\"; T=\"$3\"; S=\"$4\"; "
+      <> "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
       <> "if [ -n \"$c\" ]; then set -- sh -lc \"$c; exec \\\"${SHELL:-sh}\\\" -l\"; else set --; fi; "
-      <> "if tmux has-session -t =leksah 2>/dev/null; then "
-      <> "p=$(tmux list-panes -s -t =leksah -F '#{pane_id}\t#{@leksah_run}' 2>/dev/null"
+      <> "if tx has-session -t =leksah 2>/dev/null; then "
+      <> "p=$(tx list-panes -s -t =leksah -F '#{pane_id}\t#{@leksah_run}' 2>/dev/null"
       <> " | awk -F '\t' -v k=\"$n\" '$2==k{print $1; exit}'); "
-      <> "if [ -n \"$p\" ]; then tmux select-window -t \"$p\"; exec tmux select-pane -t \"$p\"; fi; "
-      <> "if tmux list-windows -t =leksah -F '#{window_name}' 2>/dev/null | grep -Fqx \"$n\"; then "
-      <> "exec tmux select-window -t \"=leksah:$n\"; fi; "
-      <> "p=$(tmux new-window -t =leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
+      <> "if [ -n \"$p\" ]; then tx select-window -t \"$p\"; tx select-pane -t \"$p\"; exit $?; fi; "
+      <> "if tx list-windows -t =leksah -F '#{window_name}' 2>/dev/null | grep -Fqx \"$n\"; then "
+      <> "tx select-window -t \"=leksah:$n\"; exit $?; fi; "
+      <> "p=$(tx new-window -t =leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
       <> "else "
-      <> "p=$(tmux new-session -d -s leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
+      <> "p=$(tx new-session -d -s leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
       <> "fi; "
       <> "[ -n \"$p\" ] || exit 1; "
-      <> "tmux set-option -p -t \"$p\" @leksah_run \"$n\" 2>/dev/null; exit 0"
+      <> "tx set-option -p -t \"$p\" @leksah_run \"$n\" 2>/dev/null; exit 0"
 
 -- | Open (or focus) a terminal whose working directory is @dir@ — local or
 -- @ssh:\/\/HOST\/…@.  Shared by "Open Terminal Here" (projectOpenTerminal) and
@@ -759,7 +768,7 @@ withAgentsSession act = withMVar agentsLock $ \_ -> findAgents >>= \case
         Nothing -> findAgents >>= act . fmap (\s -> (s, Nothing))
   where
     findAgents = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-      out <- tmuxStdout ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
+      out <- tmuxStdout ["list-sessions", "-f", viewerFilterArg, "-F", "#{session_id}\t#{session_name}"]
       return $ listToMaybe
         [ sid | l <- T.lines out, (sid : nm) <- [T.splitOn "\t" l]
               , T.intercalate "\t" nm == agentsSessionName ]

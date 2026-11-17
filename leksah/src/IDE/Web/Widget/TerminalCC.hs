@@ -82,7 +82,7 @@ import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newMVar, withMVar)
 import Control.Exception (AsyncException(ThreadKilled), SomeException, throwIO, try)
 import Control.Lens ((^.))
-import Control.Monad (forM, forM_, forever, unless, when, void)
+import Control.Monad (forM, forM_, forever, mfilter, unless, when, void)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64 as B64 (encode)
@@ -129,7 +129,7 @@ import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.WindowBridge (setFocusedLeaf)
 import IDE.Web.NewLwRequest (reportWindowGone)
 import IDE.Web.WakeOnLan (ensureAwake)
-import IDE.Web.TmuxServer (remoteTmux, remoteSocketArgs)
+import IDE.Web.TmuxServer (remoteViewerAttach)
 import IDE.Web.Dom
        (nextFrame, observeResize, holdsFocus, activeTagName, focusElement,
         focusFirst, toggleClassWhere)
@@ -343,32 +343,18 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
             Just hostTarget -> do
               let host0 = T.takeWhile (/= '#') hostTarget
               _ <- ensureAwake host0
-              -- The tmux to run there: its own, or nix's (see 'remoteTmux');
-              -- none at all → say so on the connection-error page and stop
-              -- (ThreadKilled ends this thread quietly).
-              bin <- remoteTmux host0 >>= \case
-                Right (b, _) -> return b
-                Left err     -> fireConnErr err >> throwIO ThreadKilled
+              -- Attach through this leksah's own grouped session for it
+              -- ('remoteViewerAttach'): the host's windows, shared with
+              -- whoever else shows them, but this viewer's own current
+              -- window.  On the host's leksah server ('remoteSocketArgs'),
+              -- with the tmux found there ('remoteTmux') — none at all → say
+              -- so on the connection-error page and stop (ThreadKilled ends
+              -- this thread quietly).
               let (host, hash) = T.breakOn "#" hostTarget
-                  attach = case T.stripPrefix "#" hash of
-                      Just target | not (T.null target) ->
-                          ["attach-session", "-t", T.unpack target]
-                      _ -> ["new-session", "-A", "-s", "leksah"]
-                  -- ssh joins the remote command's words with spaces and hands
-                  -- them to the login shell, so a tmux session id like "$0"
-                  -- (what the Terminals tree keys a listed remote session by)
-                  -- would be expanded by the remote shell — to the shell's own
-                  -- name — unless every word is single-quoted for it.  Without
-                  -- this, attaching any listed remote session ("ssh://host#$N")
-                  -- ran `attach-session -t <shellname>`, no such session, and
-                  -- the connection closed at once.  Same escaping as 'sshTmux'.
-                  shellQuote s = "'" <> concatMap esc s <> "'"
-                  esc '\'' = "'\\''"
-                  esc c    = [c]
-              -- leksah's tmux server there: the host's configured -L socket,
-              -- or its default server ('remoteSocketArgs').
-              sock <- remoteSocketArgs host0
-              let remoteCmd = unwords (map shellQuote (bin : sock <> ("-C" : attach)))
+                  target = mfilter (not . T.null) (T.stripPrefix "#" hash)
+              remoteCmd <- remoteViewerAttach host0 target >>= \case
+                Right c  -> return c
+                Left err -> fireConnErr err >> throwIO ThreadKilled
               startCCWith
                     [ "ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"
                     , T.unpack host, remoteCmd ]

@@ -107,7 +107,7 @@ import Text.Read (readMaybe)
 import IDE.Web.Model
        (LeafId(..), LeksahWindow(..), PaneContent(..), PaneKind(..),
         SplitOrientation(..), SplitTree(..), TabKey(..))
-import IDE.Web.TmuxServer (TmuxServer(..), serverOfTabKey, tmuxCmdOn, tmuxStdoutOn)
+import IDE.Web.TmuxServer (TmuxServer(..), serverOfTabKey, tmuxCmdOn, tmuxStdoutOn, viewerFilterArg)
 import IDE.Web.Session (viewLeafAllowed)   -- + orphan JSON instances
 
 -- | Version of the @\@leksah_layout@ JSON.  v1 (the retired per-session
@@ -950,9 +950,9 @@ saveSessionLayouts sid lws
 readLeksahWindows :: IO (Map Text LeksahWindow, Int)
 readLeksahWindows = (`catch` \(_ :: SomeException) -> return (mempty, 0)) $ do
       out <- T.unpack <$> tmuxStdoutOn LocalServer
-        [ "list-sessions", "-F", "#{session_id}\t#{@leksah_layout}" ]
+        [ "list-sessions", "-f", viewerFilterArg, "-F", "#{session_id}\t#{@leksah_layout}" ]
       wout <- T.unpack <$> tmuxStdoutOn LocalServer
-        [ "list-windows", "-a", "-F", "#{session_id}\t#{@leksah_lw}" ]
+        [ "list-windows", "-a", "-f", viewerFilterArg, "-F", "#{session_id}\t#{@leksah_lw}" ]
       let decodeLines o =
             [ p
             | line <- lines o
