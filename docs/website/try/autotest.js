@@ -287,22 +287,29 @@
   // rects at different x), that its leaves hold the expected views, and that
   // the ⌘-drag registries the gesture depends on are armed.
   function showcaseCheck(done) {
+    // newTerminalCheck just left its leksah-1 tab in front: bring the
+    // showcase's tab back, or every check below measures a hidden window.
+    var tabBtn = document.querySelector(
+      '.tab-buttons.area-wide0 .tab-wrap[data-tabkey="LeksahWinKey \\"lw-0\\""] button');
+    if (tabBtn) tabBtn.click();
+    else log('SHOWCASE: no lw-0 tab button');
     var t0 = Date.now();
     var timer = setInterval(function () {
       var lw = document.querySelector('.terminal-cc[data-lw="lw-0"]');
       var leaves = lw ? lw.querySelectorAll('.terminal-cc-leaf') : [];
-      if (leaves.length >= 2) {
+      if (leaves.length >= 2 && leaves[0].getBoundingClientRect().width > 0) {
         clearInterval(timer);
         var lefts = Array.prototype.map.call(leaves, function (l) {
           return l.style.left;
         });
         var split = lefts[0] !== lefts[1];
-        var hasEditor = !!lw.querySelector('.cm-editor');
+        // The game beside its agent (Otter's canned transcript).
+        var hasAgent = !!lw.querySelector('.terminal-cc-view-leaf .xterm');
         var hasBrowser = !!lw.querySelector('.browser');
         log('showcase window: ' + leaves.length + ' leaves at ' + lefts.join('/')
             + (split ? '' : ' (NOT SPLIT)')
-            + ' editor=' + hasEditor + ' browser=' + hasBrowser
-            + ((split && hasEditor && hasBrowser) ? ' — OK' : ' — BROKEN'));
+            + ' agent=' + hasAgent + ' browser=' + hasBrowser
+            + ((split && hasAgent && hasBrowser) ? ' — OK' : ' — BROKEN'));
         var geom = (window.__leksahLwGeom || {})['lw-0'];
         log('drag registries: lwGeom subs='
             + (geom && geom.subs ? geom.subs.length : 'MISSING')
@@ -370,8 +377,13 @@
   function breakoutCheck(done) {
     var t0 = Date.now();
     var timer = setInterval(function () {
+      // The pane navigates its frame with location.replace (keeping the game
+      // out of the tab's history), so there is no src attribute to read:
+      // ask the (same-origin) frame where it is.
       var f = document.querySelector('.browser .browser-frame');
-      var src = f && (f.getAttribute('src') || '');
+      var src = '';
+      try { src = (f && f.contentWindow && f.contentWindow.location.pathname) || ''; } catch (e) {}
+      if (!src && f) src = f.getAttribute('src') || '';
       if (f && /\/try\/breakout/.test(src)) {
         var body = null;
         try { body = f.contentDocument && f.contentDocument.body; } catch (e) {}
@@ -444,17 +456,16 @@
     btn.click();
     var t0 = Date.now();
     var timer = setInterval(function () {
-      var rows = document.querySelectorAll('.agents .agents-node');
+      var rows = document.querySelectorAll('.agents-pane .agent-card');
       if (rows.length > 0) {
         clearInterval(timer);
-        var first = rows[0].querySelector('.agents-title');
-        var badges = document.querySelectorAll('.agents .agents-badge').length;
-        log('agents pane: ' + rows.length + ' rows, ' + badges + ' badges, first="'
-            + (first ? first.textContent.trim() : '?') + '"');
+        var waiting = document.querySelectorAll('.agents-pane .agent-card-waiting').length;
+        log('agents pane: ' + rows.length + ' cards, ' + waiting + ' waiting, first="'
+            + (rows[0].getAttribute('data-agent-name') || '?') + '"');
         done();
       } else if (Date.now() - t0 > 8000) {
         clearInterval(timer);
-        var pane = document.querySelector('.agents');
+        var pane = document.querySelector('.agents-pane');
         log('AGENTS TIMEOUT — pane ' + (pane
             ? 'present, text: ' + pane.textContent.trim().slice(0, 60)
             : 'not in DOM'));
@@ -561,22 +572,44 @@
       var l = a && a.closest('.terminal-cc-leaf');
       return l ? l.getAttribute('data-leaf') : '(none)';
     }
-    var before = activeLeaf(), want = leaf.getAttribute('data-leaf');
-    if (before === want) { log('PANE-FOCUS SKIP — browser pane already active'); done(); return; }
-    try { frame.contentWindow.focus(); } catch (e) {}
-    var t0 = Date.now();
-    var timer = setInterval(function () {
-      if (activeLeaf() === want) {
-        clearInterval(timer);
-        log('browser pane click activates it: leaf ' + before + ' -> ' + want);
-        done();
-      } else if (Date.now() - t0 > 5000) {
-        clearInterval(timer);
-        log('PANE-FOCUS FAILED — active leaf still ' + activeLeaf()
-            + ' (wanted ' + want + ')');
+    var want = leaf.getAttribute('data-leaf');
+    // The showcase opens with the game's pane active: activate its neighbour
+    // (Otter's terminal) first, so the frame focus has something to change.
+    if (activeLeaf() === want) {
+      var other = Array.prototype.filter.call(lw.querySelectorAll('.terminal-cc-leaf'),
+        function (l) { return l !== leaf; })[0];
+      var tgt = other && (other.querySelector('.xterm-screen') || other);
+      if (tgt) {
+        tgt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        tgt.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      }
+    }
+    var tA = Date.now();
+    var waitOther = setInterval(function () {
+      if (activeLeaf() !== want) { clearInterval(waitOther); focusFrame(); }
+      else if (Date.now() - tA > 4000) {
+        clearInterval(waitOther);
+        log('PANE-FOCUS SKIP — could not activate the other leaf first');
         done();
       }
-    }, 300);
+    }, 200);
+    function focusFrame() {
+      var before = activeLeaf();
+      try { frame.contentWindow.focus(); } catch (e) {}
+      var t0 = Date.now();
+      var timer = setInterval(function () {
+        if (activeLeaf() === want) {
+          clearInterval(timer);
+          log('browser pane click activates it: leaf ' + before + ' -> ' + want);
+          done();
+        } else if (Date.now() - t0 > 5000) {
+          clearInterval(timer);
+          log('PANE-FOCUS FAILED — active leaf still ' + activeLeaf()
+              + ' (wanted ' + want + ')');
+          done();
+        }
+      }, 300);
+    }
   }
 
   function rendererCheck() {
