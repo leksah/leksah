@@ -336,11 +336,21 @@ agentGlyph "codex" =
   \694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 \
   \00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.84\
   \9.849 0 000-1.696h-4.848z\"/></svg>"
+-- Claude Code's: its little orange robot, exactly as its banner draws it in
+-- quadrant blocks:
+--
+-- >  ▐▛███▛█
+-- > ▝▜██████▀
+-- >  ▝▝   ▝▝
+--
+-- one unit per quadrant, two tall because a terminal cell is twice as tall as
+-- it is wide.  The eyes are the gaps in the second row: the badge shows
+-- through them.
 agentGlyph _ =
-  "<svg viewBox=\"0 0 10 10\" fill=\"none\" stroke=\"#d97757\" stroke-width=\"1.5\" \
-  \stroke-linecap=\"round\"><title>Claude Code agent</title>\
-  \<line x1=\"5\" y1=\"1\" x2=\"5\" y2=\"9\"/><line x1=\"1\" y1=\"5\" x2=\"9\" y2=\"5\"/>\
-  \<line x1=\"2.2\" y1=\"2.2\" x2=\"7.8\" y2=\"7.8\"/><line x1=\"7.8\" y1=\"2.2\" x2=\"2.2\" y2=\"7.8\"/></svg>"
+  "<svg class=\"agent-glyph-claude\" viewBox=\"1 0 17 10\" fill=\"#d97757\" \
+  \shape-rendering=\"crispEdges\"><title>Claude Code agent</title><path d=\"\
+  \M3 0h13v2H3zM3 2h2v2H3zM6 2h7v2H6zM14 2h2v2h-2zM1 4h17v2H1zM3 6h13v2H3z\
+  \M3 8h1v2H3zM5 8h1v2H5zM13 8h1v2h-1zM15 8h1v2h-1z\"/></svg>"
 managerAttrs n = if anManager n then "class" =: "agent-card-tag agent-card-tag-manager"
                                 else hidden
 roleAttrs n = maybe hidden (const ("class" =: "agent-card-tag")) (anRole n)
@@ -540,6 +550,10 @@ agentCardCss = do
   ".agent-card .agent-card-agent svg.agent-glyph-codex" ? do
     "width" -: "11px"
     "height" -: "11px"
+  -- The robot is wide and short (17:10): as wide as the badge allows.
+  ".agent-card .agent-card-agent svg.agent-glyph-claude" ? do
+    "width" -: "12px"
+    "height" -: "8px"
   ".agent-card .agent-card-head" ? do
     "flex" -: "1 1 auto"
     "min-width" -: "0"
