@@ -41,7 +41,8 @@ module IDE.Web.Claude
   , claudeCommandLine
   , claudeLatestActivity
   , TranscriptGist(..)
-  , transcriptGist
+  , noGist
+  , cachedTranscriptGist
   , liveTranscriptPath
   , codexDiscover
   , describeToolUse
@@ -88,7 +89,7 @@ import qualified Data.Set as S
 import Data.List (intercalate, sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (isNothing, mapMaybe, listToMaybe, fromMaybe)
+import Data.Maybe (isJust, isNothing, mapMaybe, listToMaybe, fromMaybe)
 import Data.Ord (Down(..))
 import Data.String (fromString)
 import Data.Text (Text)
@@ -1694,27 +1695,31 @@ data TranscriptGist = TranscriptGist
                               -- ^ the transcript's FIRST title, and roughly when
                               --   it was written (the timestamp of the last line
                               --   before it: its own line has none).  A fork's
-                              --   transcript starts with a copy of its parent's,
-                              --   titles included, and Claude Code goes on
-                              --   re-writing that title: a latest title equal to
-                              --   a first one that heads the file (no timestamp
-                              --   before it — copied in at the fork) or predates
-                              --   the fork's start is the parent's, not its own
-  , tgLastSaid :: !(Maybe Text) -- ^ the first line of the last thing the agent
-                              --   said (not a tool call, not thinking)
+                              --   transcript OPENS with the title it copied, before
+                              --   any message (no timestamp before it), and Claude
+                              --   Code goes on re-writing that title
+  , tgHeadDone :: !Bool       -- ^ the head has been searched for good: the first
+                              --   title was found, or the file is past the bound
+                              --   the search reads, so it never will be
+  , tgLastSaid :: !(Maybe Text) -- ^ the first line of prose in the last thing the
+                              --   agent said (not a tool call, not thinking)
   } deriving (Eq, Show)
+
+noGist :: TranscriptGist
+noGist = TranscriptGist Nothing Nothing False Nothing
 
 -- | The 'TranscriptGist' of a transcript (a Claude Code @.jsonl@, or a Codex
 -- rollout), from its last 256KB: both lines are appended every turn, so the
--- latest are near the end.  Callers cache it by the file's modification time.
+-- latest are near the end.  @prev@, an earlier gist of the same file, saves
+-- searching the head again once its first title is settled ('tgHeadDone').
 -- Its fields are strict, and their texts forced here: a lazy one would keep
--- the whole 256KB tail it was parsed from alive in that cache.
-transcriptGist :: FilePath -> IO TranscriptGist
-transcriptGist path
+-- the whole 256KB tail it was parsed from alive in a cache.
+-- Use 'cachedTranscriptGist'.
+transcriptGist :: Maybe TranscriptGist -> FilePath -> IO TranscriptGist
+transcriptGist prev path
   | isRollout path = (`catch` \(_ :: SomeException) -> return noGist) $
-      rolloutTurns path >>= \turns -> return $! forceGist
-        (TranscriptGist Nothing Nothing (firstLine <$> listToMaybe
-           (reverse [ t | (False, t) <- turns ])))
+      rolloutTurns path >>= \turns -> return $! forceGist noGist
+        { tgLastSaid = listToMaybe (mapMaybe proseLine (reverse [ t | (False, t) <- turns ])) }
   | otherwise = (`catch` \(_ :: SomeException) -> return noGist) $ do
     tailLines <- withFile path ReadMode $ \h -> do
       size <- hFileSize h
@@ -1725,28 +1730,30 @@ transcriptGist path
         latest p mark = listToMaybe . mapMaybe (\l -> decodeStrict' l >>= parseMaybe p)
                           . reverse $ filter (mark `BS.isInfixOf`) tailLines
     -- The first title, from the head: Claude Code titles a conversation after
-    -- its first exchange, so it is near the top (give up after 4000 lines).
-    first <- withFile path ReadMode $ \h ->
-      let go :: Int -> Maybe UTCTime -> IO (Maybe (Text, Maybe UTCTime))
-          go 0 _ = return Nothing
-          go n ts = hIsEOF h >>= \case
-            True  -> return Nothing
-            False -> do
-              l <- BS.hGetLine h
-              case titleOf l of
-                Just t  -> return (Just (t, ts))
-                Nothing -> go (n - 1) (stampOf l <|> ts)
-      in go 4000 Nothing
+    -- its first exchange (and a fork's copy opens with it), so it is near the
+    -- top.  Searched in the first 1MB only, and once found never again.
+    (first, done) <- case prev of
+      Just g | tgHeadDone g -> return (tgFirstTitle g, True)
+      _ -> withFile path ReadMode $ \h -> do
+        size <- hFileSize h
+        headLines <- BS.lines <$> BS.hGetSome h headBound
+        let go _ [] = Nothing
+            go ts (l : ls) = case titleOf l of
+              Just t  -> Just (t, ts)
+              Nothing -> go (stampOf l <|> ts) ls
+            found = go Nothing (if size > fromIntegral headBound
+                                  then initSafe headLines else headLines)
+        return (found, isJust found || size > fromIntegral headBound)
     return $! forceGist TranscriptGist
       { tgTitle      = latest (withObject "l" (.: "aiTitle")) "\"ai-title\""
                          >>= mfilter (not . T.null) . Just . T.strip
       , tgFirstTitle = first
+      , tgHeadDone   = done
       , tgLastSaid   = latest saidP "\"type\":\"assistant\"" }
   where
-    noGist = TranscriptGist Nothing Nothing Nothing
-    forceGist g = T.length (fromMaybe "" (tgTitle g)) `seq`
-                  T.length (fromMaybe "" (tgLastSaid g)) `seq`
-                  maybe () (\(t, ts) -> T.length t `seq` ts `seq` ()) (tgFirstTitle g) `seq` g
+    headBound = 1024 * 1024
+    -- (a line the bound cut in two parses as nothing anyway; drop it)
+    initSafe xs = if null xs then xs else init xs
     titleOf l
       | "\"ai-title\"" `BS.isInfixOf` l =
           mfilter (not . T.null) . fmap T.strip $
@@ -1766,15 +1773,63 @@ transcriptGist path
         cs <- m .: "content"
         case [ x | Object c <- reverse (cs :: [Value])
                  , Just ("text" :: Text) <- [parseMaybe (.: "type") c]
-                 , Just x <- [parseMaybe (.: "text") c]
-                 , not (T.null (T.strip x)) ] of
-          (x : _) -> return (firstLine x)
+                 , Just x <- [parseMaybe (.: "text") c] ] >>= maybe [] pure . proseLine of
+          (x : _) -> return x
           []      -> fail "no prose"
-    -- Its first line, as plain text: the card shows it raw, so markdown's
-    -- code ticks, emphasis and heading/bullet marks would show as noise.
-    firstLine = T.take 200 . T.strip . plain . T.takeWhile (/= '\n') . T.strip
-    plain = T.replace "**" "" . T.filter (/= '`')
-          . T.dropWhile (`elem` ("#-*> " :: String))
+
+forceGist :: TranscriptGist -> TranscriptGist
+forceGist g = T.length (fromMaybe "" (tgTitle g)) `seq`
+              T.length (fromMaybe "" (tgLastSaid g)) `seq`
+              maybe () (\(t, ts) -> T.length t `seq` ts `seq` ()) (tgFirstTitle g) `seq` g
+
+-- | The first line of prose in a message, as plain text — the card shows it
+-- raw, so markdown's code ticks, emphasis and heading, bullet and quote marks
+-- would show as noise, and a code fence, a rule or a table row is not prose
+-- at all.  'Nothing' when there is none.
+proseLine :: Text -> Maybe Text
+proseLine msg = listToMaybe
+  [ T.take 200 p
+  | l <- notFenced (T.lines msg)
+  , let s = T.strip l
+  , not (T.all (`elem` ("-=*_|: " :: String)) s)   -- rules, table rules, blanks
+  , not ("|" `T.isPrefixOf` s)                       -- table rows
+  , let p = T.strip (plain s)
+  , not (T.null p) ]
+  where
+    plain = T.replace "**" "" . T.filter (/= '`') . T.dropWhile (`elem` ("#-*> " :: String))
+    -- Drop fenced code blocks: everything from a ``` line to the next.
+    notFenced [] = []
+    notFenced (l : ls)
+      | "```" `T.isPrefixOf` T.strip l = notFenced (drop 1 (dropWhile (not . fence) ls))
+      | otherwise = l : notFenced ls
+    fence = ("```" `T.isPrefixOf`) . T.strip
+
+-- | 'transcriptGist', cached per file by modification time (one stat per call
+-- otherwise).  A re-read that finds no title or nothing said keeps the last
+-- ones it had: a large tool result can push them out of the tail it reads,
+-- and the card would otherwise flick back to the first prompt while the
+-- agent works.
+cachedTranscriptGist :: FilePath -> IO TranscriptGist
+cachedTranscriptGist p = (`catch` \(_ :: SomeException) -> maybe noGist snd . M.lookup p <$> readIORef gistCache) $ do
+  t <- getModificationTime p
+  prev <- M.lookup p <$> readIORef gistCache
+  case prev of
+    Just (t', g) | t' == t -> return g
+    _ -> do
+      g <- transcriptGist (snd <$> prev) p
+      let g' = case snd <$> prev of
+            Nothing -> g
+            Just o  -> forceGist g { tgTitle    = tgTitle g <|> tgTitle o
+                                   , tgLastSaid = tgLastSaid g <|> tgLastSaid o }
+      -- (Bounded: every live agent and the exited ones the Agents pane shows
+      -- fit many times over; past that, start again.)
+      atomicModifyIORef' gistCache $ \m ->
+        (M.insert p (t, g') (if M.size m > 500 then M.empty else m), ())
+      return g'
+
+{-# NOINLINE gistCache #-}
+gistCache :: IORef (Map FilePath (UTCTime, TranscriptGist))
+gistCache = unsafePerformIO (newIORef M.empty)
 
 -- | Where a live session's transcript is: its Codex rollout, or the Claude
 -- Code transcript for its directory.

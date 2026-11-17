@@ -45,6 +45,7 @@ module IDE.Web.AgentInfo
   , agentForest
   , agentTitles
   , agentTitleSources
+  , stripTags
   , agentDirOf
   , agentRefreshPrompt
   , sanitizeAgentHtml
@@ -94,10 +95,11 @@ import IDE.Web.AgentNames
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou, claudeBackgroundSessions,
         claudeFindTranscript, claudeLatestActivity, paneForSession,
-        claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath)
+        claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath,
+        TranscriptGist(..), cachedTranscriptGist, liveTranscriptPath)
 import IDE.Web.Codex (codexTranscriptOf, isCodexSession)
 import IDE.Web.ClaudeStatus
-       (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
+       (ClaudeStatus(..), ClaudeStatusRow(..), TitleSource(..), chooseTitle, claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
 import IDE.Web.WorktreeRegistry
        (SessionClaim(..), WorktreeInfo(..), claimsBySession, roleText)
@@ -110,10 +112,17 @@ data AgentInfo = AgentInfo
   , aiParent  :: Maybe Text    -- ^ the session that forked it: the tree's edges
   , aiDir     :: FilePath      -- ^ its working directory (transcript / resume)
   , aiTitle   :: Maybe Text    -- ^ what it last called itself
-  , aiTitleProvisional :: Bool -- ^ 'aiTitle' is only the first line of the prompt
-                               --   leksah started it with ('recordAgentFork'),
-                               --   not a title it chose: the conversation's own
-                               --   title outranks it once there is one
+  , aiTitleProvisional :: Maybe Bool
+                               -- ^ @Just True@: 'aiTitle' is only the first line
+                               --   of the prompt leksah started it with
+                               --   ('recordAgentFork'), not a title it chose, so
+                               --   the conversation's own title outranks it;
+                               --   @Just False@: it chose it; 'Nothing': a record
+                               --   from before this was kept (see
+                               --   'IDE.Web.ClaudeStatus.chooseTitle')
+  , aiInherited :: [Text]      -- ^ what a fork took over from the session it
+                               --   copied — its name and titles at that moment
+                               --   — so none of them is shown as the fork's own
   , aiDesc    :: Maybe Text    -- ^ its description, as sanitized HTML
   , aiWhen    :: Maybe Text    -- ^ when it last described itself (row tooltip)
   , aiBorn    :: Maybe Double  -- ^ when leksah started it (POSIX seconds) — so a
@@ -169,19 +178,14 @@ instance ToJSON AgentInfo where
     , "role" .= aiRole i, "bio" .= aiBio i, "bioAt" .= aiBioAt i
     , "suspended" .= aiSuspended i, "manager" .= aiManager i
     , "ranOn" .= aiRanOn i, "interrupted" .= aiInterrupted i
-    , "titleSent" .= aiTitleSent i, "titleProvisional" .= aiTitleProvisional i ]
+    , "titleSent" .= aiTitleSent i, "titleProvisional" .= aiTitleProvisional i
+    , "inherited" .= aiInherited i ]
 
 instance FromJSON AgentInfo where
-  parseJSON = withObject "AgentInfo" $ \o -> do
-   -- (Records written before the flag existed: a title that came with no
-   -- description ever written is a fork's prompt.)
-   title <- o .:? "title"
-   when' <- o .:? "when"
-   prov  <- fromMaybe (isJust (title :: Maybe Text) && isNothing (when' :: Maybe Text))
-              <$> o .:? "titleProvisional"
-   AgentInfo
+  parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
     <$> o .: "session" <*> o .:? "parent" <*> (fromMaybe "" <$> o .:? "dir")
-    <*> pure title <*> pure prov <*> o .:? "desc" <*> pure when' <*> o .:? "born"
+    <*> o .:? "title" <*> o .:? "titleProvisional" <*> (fromMaybe [] <$> o .:? "inherited")
+    <*> o .:? "desc" <*> o .:? "when" <*> o .:? "born"
     <*> o .:? "done" <*> o .:? "doneAt" <*> o .:? "role"
     <*> o .:? "bio" <*> o .:? "bioAt" <*> o .:? "suspended"
     <*> (fromMaybe False <$> o .:? "manager")
@@ -287,18 +291,38 @@ peekInfos = modifyMVar infoVar $ \m0 -> do
 -- Agents pane can all say the same thing — see 'IDE.Web.ClaudeStatus.summarize',
 -- which is handed this and prefers it over a @\/rename@ name or a first prompt.
 agentTitles :: IO (Map Text Text)
-agentTitles = M.map (\(t, _, _) -> t) <$> agentTitleSources
+agentTitles = M.map tsTitle <$> agentTitleSources
 
--- | 'agentTitles' with where each came from, for the status poll's title
--- chain: @(title, provisional, born)@ — provisional when it is only the
--- prompt leksah started the agent with ('aiTitleProvisional'), and when leksah
--- started it ('aiBorn'), so a conversation title written before then (one a
--- fork copied from its parent's transcript) is known not to be its own.
-agentTitleSources :: IO (Map Text (Text, Bool, Maybe Double))
-agentTitleSources = M.mapMaybe src <$> peekInfos
-  where src i = case T.strip <$> aiTitle i of
-          Just t | not (T.null t) -> Just (t, aiTitleProvisional i, aiBorn i)
-          _                       -> Nothing
+-- | The text of a little sanitized HTML (a description, a bio), for a line on
+-- a card, a filter or a search.  An inline tag (<code>, <b>, <a> …) is part of
+-- the text around it, so it goes without a trace ("in <code>main</code>."
+-- stays "in main."); any other (<p>, <br>, <li> …) separates words.  Runs of
+-- spaces collapse, but each line stays a line: a card shows the first.
+stripTags :: Text -> Text
+stripTags = T.intercalate "\n" . filter (not . T.null) . map (T.unwords . T.words)
+          . T.lines . go
+  where
+    go t = case T.breakOn "<" t of
+      (a, rest)
+        | T.null rest -> a
+        | otherwise ->
+            let (tg, after) = T.break (== '>') (T.drop 1 rest)
+                name = T.toLower . T.takeWhile (\c -> c /= ' ' && c /= '/')
+                     . T.dropWhile (== '/') $ tg
+                gap  = if name `elem` inlineTags then "" else " "
+            in a <> gap <> go (T.drop 1 after)
+    inlineTags = ["code", "b", "i", "em", "strong", "a", "span", "kbd", "tt", "u", "s"]
+
+-- | 'agentTitles' with where each came from, for 'IDE.Web.ClaudeStatus.chooseTitle':
+-- whether it is provisional (only the prompt leksah launched the agent with)
+-- and what a fork inherited.
+agentTitleSources :: IO (Map Text TitleSource)
+agentTitleSources = M.mapMaybe titleSourceOf <$> peekInfos
+
+titleSourceOf :: AgentInfo -> Maybe TitleSource
+titleSourceOf i = case T.strip <$> aiTitle i of
+  Just t | not (T.null t) -> Just (TitleSource t (aiTitleProvisional i) (aiInherited i))
+  _                       -> Nothing
 
 -- | Where a session lives, as far as leksah remembers (its 'aiDir') — how a
 -- worktree row resumes a session whose transcripts are in ANOTHER checkout.
@@ -318,20 +342,44 @@ agentDirOf sid = do
 -- the parent's @\/rename@ name AND a copy of its transcript, so both the name
 -- and the "first prompt" fallback would show the PARENT's — two rows reading
 -- identically, which is exactly what you don't want in a tree of forks.
-recordAgentFork :: Maybe Text -> Text -> FilePath -> Maybe Text -> IO ()
-recordAgentFork parent child dir mprompt = do
+--
+-- @mfrom@ is the session it was forked FROM (nothing for a @--fresh@ one): what
+-- that session is called right now — its name, its own title, its
+-- conversation's title — is what the fork starts out with, and is recorded as
+-- inherited ('aiInherited'), never to be shown as the fork's own.
+recordAgentFork :: Maybe Text -> Text -> FilePath -> Maybe Text -> Maybe Text -> IO ()
+recordAgentFork parent child dir mprompt mfrom = do
   now <- getCurrentTime
+  inherited <- maybe (return []) inheritedFrom mfrom
   withInfos $ \m ->
     let old = M.lookup child m
     in ( M.insert child (blank child dir)
            { aiParent = parent
            , aiTitle  = maybe (fmap firstLine mprompt) Just (old >>= aiTitle)
-           , aiTitleProvisional = maybe (isJust mprompt) aiTitleProvisional
+           , aiTitleProvisional = maybe (Just (isJust mprompt)) aiTitleProvisional
                                     (mfilter (isJust . aiTitle) old)
+           , aiInherited = inherited
            , aiDesc   = old >>= aiDesc
            , aiBorn   = Just (realToFrac (utcTimeToPOSIXSeconds now)) } m
        , () )
   where firstLine = T.take 70 . T.strip . T.takeWhile (/= '\n')
+
+-- | What a fork of session @src@ takes over from it: its @\/rename@ (or derived)
+-- name, the titles leksah holds for it, and its conversation's title.
+inheritedFrom :: Text -> IO [Text]
+inheritedFrom src = (`catch` \(_ :: SomeException) -> return []) $ do
+  live  <- claudeLiveBySession
+  infos <- peekInfos
+  let ml = M.lookup src live
+      mi = M.lookup src infos
+  conv <- case ml of
+    Just l  -> liveTranscriptPath l >>= maybe (return Nothing) (fmap tgTitle . cachedTranscriptGist)
+    Nothing -> case mi of
+      Just i | not (null (aiDir i)) ->
+        tgTitle <$> (claudeTranscriptPath (aiDir i) src >>= cachedTranscriptGist)
+      _ -> return Nothing
+  return . nub . filter (not . T.null) . map T.strip . catMaybes $
+    [ ml >>= clName, ml >>= clDerivedName, mi >>= aiTitle, mi >>= aiTitleSent, conv ]
 
 -- | Record what an agent says it is doing: a short title and\/or an HTML
 -- description (sanitized here, once, so every reader can trust the store).
@@ -348,7 +396,7 @@ describeAgent sid mtitle mhtml mbio = do
   withInfos $ \m ->
     let cur  = fromMaybe (blank sid dir) (M.lookup sid m)
         cur' = cur { aiTitle = maybe (aiTitle cur) (Just . T.strip) mtitle
-                   , aiTitleProvisional = maybe (aiTitleProvisional cur) (const False) mtitle
+                   , aiTitleProvisional = maybe (aiTitleProvisional cur) (const (Just False)) mtitle
                    , aiDesc  = maybe (aiDesc cur) (Just . sanitizeAgentHtml) mhtml
                    , aiBio   = maybe (aiBio cur) (Just . sanitizeAgentHtml) mbio
                    , aiBioAt = maybe (aiBioAt cur) (const (Just posix)) mbio
@@ -389,6 +437,7 @@ migrateContinued = do
       , aiTitle   = aiTitle n <|> aiTitle o
       , aiTitleProvisional = if isJust (aiTitle n) then aiTitleProvisional n
                                                    else aiTitleProvisional o
+      , aiInherited = aiInherited n <> aiInherited o
       , aiDesc    = aiDesc n <|> aiDesc o
       , aiWhen    = aiWhen n <|> aiWhen o
       , aiBorn    = aiBorn o <|> aiBorn n
@@ -407,7 +456,7 @@ migrateContinued = do
 moveAgentRecord :: Bool -> Text -> Text -> IO ()
 moveAgentRecord keepStory old new = withInfos $ \m ->
   let reparent i = i { aiParent = (\p -> if p == old then new else p) <$> aiParent i }
-      forget i = i { aiTitle = Nothing, aiTitleProvisional = False
+      forget i = i { aiTitle = Nothing, aiTitleProvisional = Nothing
                    , aiDesc = Nothing, aiWhen = Nothing
                    , aiBio = Nothing, aiBioAt = Nothing, aiDone = Nothing
                    , aiDoneAt = Nothing }
@@ -524,7 +573,7 @@ blank :: Text -> FilePath -> AgentInfo
 blank sid dir = AgentInfo
   { aiSession = sid, aiParent = Nothing
   , aiDir = dropTrailingPathSeparator dir
-  , aiTitle = Nothing, aiTitleProvisional = False
+  , aiTitle = Nothing, aiTitleProvisional = Nothing, aiInherited = []
   , aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
   , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing
   , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False
@@ -1031,7 +1080,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       -- A title the agent chose wins; a provisional one (its launch prompt)
       -- only through the poll's chain, behind the conversation's own title.
       , anTitle   = firstNonEmpty [ maybe "" T.strip
-                                      (mfilter (not . aiTitleProvisional) i >>= aiTitle)
+                                      (mfilter ((== Just False) . aiTitleProvisional) i >>= aiTitle)
                                   , csrTitle r
                                   , T.take 8 (csrSession r) ]
       , anState   = csrState r
@@ -1150,9 +1199,18 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
                                             , not (interrupted i) ] )
       goneNodes <- forM (suspendedCands <> interruptedCands <> take exitedMaxRows goneCands)
                      $ \(t, i) -> do
-        title <- case aiTitle i of
-          Just x | not (T.null (T.strip x)) -> return (T.strip x)
-          _ -> fromMaybe "" <$> claudeSessionLabel (aiDir i) (aiSession i)
+        -- The same title chain as a live agent's ('chooseTitle'), so a card
+        -- keeps its title when its agent stops.  (Its first prompt is read
+        -- only when the chain may need it.)
+        gist <- (`catch` \(_ :: SomeException) -> return Nothing) $
+          codexTranscriptOf (aiSession i)
+            >>= maybe (claudeTranscriptPath (aiDir i) (aiSession i)) return
+            >>= fmap Just . cachedTranscriptGist
+        let src = titleSourceOf i
+            needLabel = isNothing (chooseTitle src Nothing gist Nothing)
+                          || maybe False (isNothing . tsProvisional) src
+        lbl <- if needLabel then claudeSessionLabel (aiDir i) (aiSession i) else return Nothing
+        let title = fromMaybe "" (chooseTitle src Nothing gist lbl)
         (br, pr) <- agentGit posix (aiDir i)
         return . (,) (aiSession i) $ AgentNode
           { anSession = aiSession i

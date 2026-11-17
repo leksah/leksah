@@ -109,7 +109,7 @@ import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
         moveAgentRecord, recordAgentFork, setAgentManager, setAgentRole,
-        setAgentSuspended, acknowledgeInterrupted, titleForClaude)
+        setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
@@ -275,7 +275,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
       -- after this moment nothing on disk relates a child to its parent (nor
       -- says what the child was asked to do — its forked transcript starts with
       -- the PARENT's first prompt).
-      recordAgentFork (asParent spec) (asSession spec) (asDir spec) (asPrompt spec)
+      recordAgentFork (asParent spec) (asSession spec) (asDir spec) (asPrompt spec) (asFrom spec)
       -- (already chosen by 'claudeCommandLine', which told the agent its name)
       ownName <- agentNameFor (asSession spec)
       mapM_ (setAgentRole (asSession spec) . roleName) mrole
@@ -621,10 +621,6 @@ agentFind cwd q = do
           : [ "  " <> roleName ro <> " — " <> roleDescription ro | ro <- roleHits ])
     <> (if null ranked then []
         else [ "", "Hand it over with: leksah-cmd agent send NAME --submit '...'" ])
-  where
-    stripTags t = case T.breakOn "<" t of
-      (a, rest) | T.null rest -> a
-                | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
 
 -- | @agent done@: an agent saying it has finished.  Marks it ✓ in the Agents
 -- pane (with the summary), and — if another agent started it — submits the

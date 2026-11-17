@@ -63,7 +63,7 @@ import Reflex.Dom.Core
 import Language.Javascript.JSaddle (liftJSM)
 
 import IDE.Web.AgentFace (agentFaceSvg)
-import IDE.Web.AgentInfo (AgentNode(..))
+import IDE.Web.AgentInfo (AgentNode(..), stripTags)
 import IDE.Web.AgentUsage
        (usageChip, usageContextPct, usageLevel, usageLines)
 import IDE.Web.Frame (MonadWidget, performEvent_)
@@ -426,23 +426,6 @@ line3 n = case anActivity n of
 bioOf :: AgentNode -> Text
 bioOf n = fromMaybe "" (anBio n `orElse` anDesc n)
   where orElse a b = maybe b Just a
-
-stripTags :: Text -> Text
-stripTags = T.unwords . T.words . go
-  where
-    -- An inline tag (<code>, <b>, <a> …) is part of the text around it, so it
-    -- goes without a trace ("in <code>main</code>." stays "in main."); any
-    -- other (<p>, <br>, <li> …) separates words.
-    go t = case T.breakOn "<" t of
-      (a, rest)
-        | T.null rest -> a
-        | otherwise ->
-            let (tg, after) = T.break (== '>') (T.drop 1 rest)
-                name = T.toLower . T.takeWhile (\c -> c /= ' ' && c /= '/')
-                     . T.dropWhile (== '/') $ tg
-                gap  = if name `elem` inlineTags then "" else " "
-            in a <> gap <> go (T.drop 1 after)
-    inlineTags = ["code", "b", "i", "em", "strong", "a", "span", "kbd", "tt", "u", "s"]
 
 baseName :: FilePath -> FilePath
 baseName = reverse . takeWhile (/= '/') . dropWhile (== '/') . reverse
