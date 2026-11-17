@@ -58,6 +58,7 @@ import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentNames (agentNames, touchAgentNames)
 import IDE.Web.AgentEvents (sePromptPending, sessionEvents)
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import IDE.Web.RemoteAgents (remoteGist, remoteLiveSessions)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou,
         claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel, codexDiscover,
@@ -83,6 +84,9 @@ data ClaudeStatusRow = ClaudeStatusRow
   , csrAgent   :: Text  -- ^ which CLI runs it: @claude@ or @codex@
   , csrLastSaid :: Maybe Text -- ^ the first line of the last thing it said
                               --   ('IDE.Web.Claude.tgLastSaid')
+  , csrHost    :: Maybe Text  -- ^ the machine it runs on, when not this one
+                              --   ("IDE.Web.RemoteAgents"); then 'csrDir' is
+                              --   an @ssh:\/\/HOST\/…@ path
   } deriving (Eq, Show)
 
 -- | The live sessions, worst state first.
@@ -195,8 +199,17 @@ startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
         -- reads.  A blocked background session's name is only looked up.)
         names0 <- touchAgentNames (M.keys live)
         known  <- agentNames
-        let names = names0 <> M.filterWithKey (\k _ -> k `elem` map cbSession blocked) known
-        return (summarize names titles labels' gists (M.elems live) blocked, labels')
+        -- The agents on the hosts whose leksah tmux server this leksah shares
+        -- ("IDE.Web.RemoteAgents"): their names come from their own machine's
+        -- store (in 'known'), their gists from the host's snapshot.
+        remote <- filter (\l -> not (clSession l `M.member` live)) <$> remoteLiveSessions
+        rgists <- M.fromList . concat <$> mapM (\l -> maybe [] (\g -> [(clSession l, g)])
+                                                   <$> remoteGist (clSession l)) remote
+        let names = names0
+                 <> M.filterWithKey (\k _ -> k `elem` map cbSession blocked
+                                           || k `elem` map clSession remote) known
+        return ( summarize names titles labels' (gists <> rgists) (M.elems live <> remote) blocked
+               , labels' )
       when (st /= prev) $ do
         -- Warm the shared rows JSON before anyone is told: the windows and
         -- the menu-bar push then all find it built.
@@ -322,7 +335,7 @@ summarize names titles labels gists ls bgs = ClaudeStatus
           _ -> "idle"
       , csrName    = M.findWithDefault "" (clSession l) names
       , csrTitle   = title l
-      , csrDir     = T.pack (clDir l)
+      , csrDir     = maybe "" (\h -> "ssh://" <> h) (clHost l) <> T.pack (clDir l)
       , csrDetail  = case clStatus l of
           Just "waiting" -> "Waiting for approval" <> maybe "" (": " <>) (clWaitingFor l)
           Just "busy"    -> "Working"
@@ -333,6 +346,7 @@ summarize names titles labels gists ls bgs = ClaudeStatus
       , csrBackground = False
       , csrAgent = clAgent l
       , csrLastSaid = M.lookup (clSession l) gists >>= tgLastSaid
+      , csrHost  = clHost l
       }
     bgTitle b = fromMaybe (T.take 8 (cbSession b)) $
       (tsTitle <$> M.lookup (cbSession b) titles) <|> cbName b
@@ -346,6 +360,7 @@ summarize names titles labels gists ls bgs = ClaudeStatus
       , csrBackground = True
       , csrAgent = "claude"
       , csrLastSaid = Nothing
+      , csrHost  = Nothing
       }
 
 -- | One session in one line, as every list of them prints it: its name, then

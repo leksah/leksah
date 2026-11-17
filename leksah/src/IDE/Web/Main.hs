@@ -273,6 +273,7 @@ import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
+import IDE.Web.RemoteAgents (startRemoteAgentsPoll)
 #endif
 import IDE.Web.NewLwRequest
        (beginConversion, endConversion, conversionActive, consolidateLock,
@@ -1072,6 +1073,11 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       liftIO $ do
         tid <- startClaudeStatusPoll agentTitleSources agentsHeld
         when ghciMode $ registerGhciCleanupNamed "claude-status-poll" (killThread tid)
+        -- The agents on the hosts whose leksah tmux server this leksah shares
+        -- (remote.tmuxSockets): one ssh snapshot per host every few seconds,
+        -- which the status poll and the Agents pane read.
+        rtid <- startRemoteAgentsPoll
+        when ghciMode $ registerGhciCleanupNamed "remote-agents-poll" (killThread rtid)
         -- Which agents are running, and — after a restart, or leksah's tmux
         -- server dying — which were interrupted (the Agents pane's ↻ cards
         -- and its "Resume all" offer).  Once now, then on every change of the
