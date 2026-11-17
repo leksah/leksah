@@ -96,9 +96,10 @@ import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import Data.Time (UTCTime, getCurrentTime, diffUTCTime)
+import Data.Time (NominalDiffTime, UTCTime, getCurrentTime, diffUTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Numeric (showHex)
+import System.IO (hPutStrLn, stderr)
 import System.Process (createProcess, proc)
 import Text.Read (readMaybe)
 
@@ -192,6 +193,9 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
           <$> cUi ctx
     (evE, fireEv) <- newTriggerEvent
     (ccStartedE, fireCCStarted) <- newTriggerEvent
+    -- A pane whose resync never completed ('staleResync'): restart it once
+    -- the control client is in scope (see the 'Right cc' branch).
+    (resyncE, fireResync) <- newTriggerEvent
     -- Pane-level affordances (same contract as the classic widget): a clicked
     -- project-file path asks to open it; a Ctrl/Cmd-clicked identifier asks
     -- for a metadata lookup; the bell raises attention.  The panes are keyed
@@ -948,6 +952,12 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                     when (M.member p terms) $
                         requestReplay cc pausedRef ReplayScreenOnly p
                 _ -> return ()
+            -- A resync that never completed (its capture or state reply
+            -- lost): the output handler dropped it; start a fresh one.
+            performEvent_ $ ffor resyncE $ \p -> liftIO $ do
+                terms <- readIORef termsRef
+                when (M.member p terms) $
+                    requestReplay cc pausedRef ReplayScreenOnly p
             -- Selecting this tab: repaint every pane — the tab is revealed by
             -- a visibility:hidden→visible flip (see Tabs.hs) that no resize
             -- observer sees, so an xterm whose window container was hidden
@@ -1642,24 +1652,39 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                         <> T.unpack pane <> " bytes=" <> show (BS.length dat)
                     liftJSM . forM_ (M.lookup pane terms) $ \term ->
                         writePane sessionId pane term dat
-                Just (_, PauseDropping) -> return ()   -- stale: the capture will include it
-                Just (t0, PauseGotCap cap buf) -> liftIO $
-                    writeIORef pausedRef (M.insert pane (t0, PauseGotCap cap (dat : buf)) st)
+                Just (t0, ps) -> liftIO $ do
+                  now <- getCurrentTime
+                  case staleResync (diffUTCTime now t0) ps of
+                    -- Its capture or state reply is lost: it would drop or
+                    -- buffer this pane's output forever (a deaf pane, and
+                    -- with buffering an unbounded leak — gigabytes in a
+                    -- day).  Forget it and resync afresh.
+                    Just why -> do
+                        hPutStrLn stderr $ "LEK [" <> T.unpack sessionId
+                            <> "] pane " <> T.unpack pane
+                            <> " resync never completed (" <> why <> "); restarting it"
+                        writeIORef pausedRef (M.delete pane st)
+                        fireResync pane
+                    Nothing -> case ps of
+                        PauseDropping -> return ()   -- stale: the capture will include it
+                        PauseGotCap cap n buf ->
+                            writeIORef pausedRef $ M.insert pane
+                                (t0, PauseGotCap cap (n + BS.length dat) (dat : buf)) st
         EvReply rtag res
           | Just p <- T.stripPrefix "cap:" rtag -> liftIO $ case res of
               Right ls -> modifyIORef' pausedRef
                   -- Keep the replay's START time: the staleness escape hatch in
                   -- 'requestReplay' measures the whole cap→cur round trip.
                   (\st -> M.insert p ( maybe (posixSecondsToUTCTime 0) fst (M.lookup p st)
-                                     , PauseGotCap ls [] ) st)
+                                     , PauseGotCap ls 0 [] ) st)
               Left e   -> do   -- give up: resume raw
-                  focusLog $ "[" <> T.unpack sessionId <> "] replay cap FAILED pane="
+                  hPutStrLn stderr $ "LEK [" <> T.unpack sessionId <> "] replay cap FAILED pane="
                       <> T.unpack p <> ": " <> T.unpack (T.strip e)
                   modifyIORef' pausedRef (M.delete p)
           | Just p <- T.stripPrefix "cur:" rtag -> do
               st <- liftIO $ readIORef pausedRef
               case M.lookup p st of
-                Just (_, PauseGotCap cap buf) -> do
+                Just (_, PauseGotCap cap _ buf) -> do
                     terms <- liftIO $ readIORef termsRef
                     liftJSM . forM_ (M.lookup p terms) $ \term -> do
                         case res of
@@ -1669,7 +1694,7 @@ terminalCCWidget ctx lwId sessionId selectedE leafViewW closeMenuD renderCloseMe
                           -- whatever it had) — but the BUFFERED live output
                           -- must still flush, or everything typed since the
                           -- capture silently vanishes (a deaf pane).
-                          _ -> focusLog $ "[" <> T.unpack sessionId
+                          _ -> liftIO . hPutStrLn stderr $ "LEK [" <> T.unpack sessionId
                                   <> "] replay cur FAILED pane=" <> T.unpack p
                         forM_ (reverse buf) $ writePane sessionId p term
                     liftIO $ writeIORef pausedRef (M.delete p st)
@@ -2524,8 +2549,27 @@ data ReplayDepth
 -- | Output routing while a pane is being (re)synced — see 'requestReplay'.
 data PauseState
   = PauseDropping                       -- ^ waiting for the capture; drop stale output
-  | PauseGotCap [Text] [BS.ByteString]  -- ^ capture arrived; buffering newer output
-                                        --   (reversed) until the state line lands
+  | PauseGotCap [Text] !Int [BS.ByteString]
+    -- ^ capture arrived; buffering newer output (reversed, with its total
+    --   size) until the state line lands
+
+-- | Why a pane's resync must be presumed lost, given its age and state:
+-- older than 'requestReplay''s own 10s in-flight window, or (buffering)
+-- holding more output than any healthy capture round trip could.  Without
+-- this a lost reply leaves the pane deaf and, once its capture is in,
+-- buffering every byte it prints until leksah exits.
+staleResync :: NominalDiffTime -> PauseState -> Maybe String
+staleResync age ps
+  | age > 10 = Just (show (round age :: Int) <> "s" <> held)
+  | PauseGotCap _ n _ <- ps, n > resyncBufferLimit = Just (show n <> " bytes buffered")
+  | otherwise = Nothing
+  where held = case ps of
+          PauseGotCap _ n _ -> ", " <> show n <> " bytes buffered"
+          PauseDropping     -> ", waiting for its capture"
+
+-- | The most output buffered behind one resync before it is abandoned.
+resyncBufferLimit :: Int
+resyncBufferLimit = 16 * 1024 * 1024
 
 -- | @LeksahTerm.write@: base64 the raw bytes into the pane's xterm.
 --

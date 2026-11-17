@@ -504,6 +504,19 @@ EOF
   fi
 fi
 
+# Heap census for the compiled instance: a breakdown of the live heap by
+# closure type (-hT, which needs no profiling build) every 10 minutes, appended
+# to ~/.leksah/leksah.hp (truncated at each launch).  It is how a space leak
+# shows WHAT is growing, not just that live bytes are (the "RTS: major GC"
+# lines).  Each sample forces a major GC, hence the long interval.
+# LEKSAH_HEAP_CENSUS=0 turns it off; LEKSAH_HEAP_CENSUS=SECS sets the interval.
+# Word-split on purpose where the launch strings below use it.
+case "${LEKSAH_HEAP_CENSUS:-600}" in
+  0) LEKSAH_RTS_ARGS="" ;;
+  *) LEKSAH_RTS_ARGS="+RTS -hT -i${LEKSAH_HEAP_CENSUS:-600} -po$HOME/.leksah/leksah -RTS" ;;
+esac
+export LEKSAH_RTS_ARGS
+
 # ===========================================================================
 # Zero-downtime handoff supervisor (opt-in: LEKSAH_HANDOFF=1; native web UI
 # only — not --warp, and ghci has its own arm above).  Keeps the
@@ -524,9 +537,9 @@ if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "warp" ]; then
     if [ "$app" = "1" ]; then
       macos="$(pwd)/Leksah.app/Contents/MacOS"
       ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
-      exec "$macos/leksah" --develop-leksah "$@"
+      exec "$macos/leksah" --develop-leksah $LEKSAH_RTS_ARGS "$@"
     fi
-    exec "$bin" --develop-leksah "$@"'
+    exec "$bin" --develop-leksah $LEKSAH_RTS_ARGS "$@"'
 
   handoff_build() {
     rm -f .ghc.environment.*
@@ -640,9 +653,9 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
       # so leksah'\''s exit code still drives the relaunch loop.
       macos="$(pwd)/Leksah.app/Contents/MacOS"
       ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
-      exec "$macos/leksah" --develop-leksah "$@"
+      exec "$macos/leksah" --develop-leksah $LEKSAH_RTS_ARGS "$@"
     fi
-    exec "$bin" --develop-leksah "$@"'
+    exec "$bin" --develop-leksah $LEKSAH_RTS_ARGS "$@"'
 
   LEKSAH_EXIT_CODE=0
   if [ "$IN_TMUX" = "1" ]; then
