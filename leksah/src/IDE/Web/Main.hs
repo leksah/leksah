@@ -170,7 +170,7 @@ import IDE.Web.WindowScope
 
 import IDE.App
        (App(..), AppAction, RunState(..), appNote, getGlobalApp, newApp,
-        registerJsContext, unregisterJsContext, setGlobalApp, withApp)
+        registerJsContext, setGlobalApp, withApp)
 import IDE.Builder (buildActiveTarget)
 import IDE.Config
        (AiC(..), BuildC(..), Config(..), Editor(..), EditorC(..), FontC(..),
@@ -2021,7 +2021,7 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- retires the window — 'IDE.Web.WindowScope.connectionClosed')
 #if !defined(ghcjs_HOST_OS)
   connCtx <- askJSM
-  liftIO $ registerContextWindow (contextId connCtx) (case wid of WindowId n -> n)
+  liftIO $ registerContextWindow (contextId connCtx) scope
 #endif
   -- GUARDED attach ("IDE.Web.Attach"): reflex-dom's own frame loop has no
   -- exception handler, so anything escaping a performEvent/dyn body would
@@ -2052,10 +2052,10 @@ jsMain showMenubar macTitlebar mbWid app = do
           wlog wid "EXIT appAction"
       -- Register this context so process-wide JS (leksah-cmd js eval,
       -- appJSM fan-outs) reaches this window too.
-      liftIO $ registerJsContext app wid jsCtx
+      unregister <- liftIO $ registerJsContext app wid jsCtx
       -- …until it closes: process-wide JS must not keep evaluating into a
       -- page that is gone.
-      liftIO $ onCurrentScopeClose (unregisterJsContext app wid)
+      liftIO $ onCurrentScopeClose unregister
       wlog wid "network attached"
       pb <- getPostBuild
       -- Leave the start-up state (commands gate on it).

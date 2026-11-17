@@ -15,7 +15,6 @@ module IDE.App
   , appJSM
   , appJSMResults
   , registerJsContext
-  , unregisterJsContext
     -- * Actions
   , AppAction
   , setGlobalApp
@@ -28,6 +27,7 @@ import Control.Monad (void)
 import Data.IORef
        (IORef, newIORef, readIORef, writeIORef)
 import Data.Text (Text)
+import Data.Unique (Unique, newUnique)
 import Language.Javascript.JSaddle (JSContextRef, JSM, runJSM)
 import System.Exit (ExitCode(..))
 import System.IO.Unsafe (unsafePerformIO)
@@ -57,7 +57,7 @@ data App = App
     , appUi          :: Cell WebUi
     , appRunState    :: Cell RunState
     , appExit        :: IORef ExitCode
-    , appJsContexts  :: Cell [(WindowId, JSContextRef)]
+    , appJsContexts  :: Cell [(WindowId, Unique, JSContextRef)]
     , appDevelopLeksah :: Bool
     }
 
@@ -103,7 +103,7 @@ appNote = blNote . appBuildLog
 appJSM :: App -> JSM () -> IO ()
 appJSM app act = do
     ctxs <- readCell (appJsContexts app)
-    mapM_ (\(_, ctx) -> void . forkIO $ runJSM act ctx) ctxs
+    mapM_ (\(_, _, ctx) -> void . forkIO $ runJSM act ctx) ctxs
 
 -- | Run a JSM in every live window and collect the results (the @js eval@
 -- backend).  Sequential; call from a worker thread, never from a window's
@@ -111,15 +111,18 @@ appJSM app act = do
 appJSMResults :: App -> JSM a -> IO [a]
 appJSMResults app act = do
     ctxs <- readCell (appJsContexts app)
-    mapM (\(_, ctx) -> runJSM act ctx) ctxs
+    mapM (\(_, _, ctx) -> runJSM act ctx) ctxs
 
-registerJsContext :: App -> WindowId -> JSContextRef -> IO ()
-registerJsContext app wid ctx =
-    modifyCell (appJsContexts app) (((wid, ctx) :) . filter ((/= wid) . fst))
-
-unregisterJsContext :: App -> WindowId -> IO ()
-unregisterJsContext app wid =
-    modifyCell (appJsContexts app) (filter ((/= wid) . fst))
+-- | Window @wid@'s page is @ctx@ (replacing any earlier one); answers the
+-- action that unregisters THIS registration.  It is a no-op once another
+-- page has registered as @wid@: a reloaded warp page takes the same window id
+-- while the old connection may still be retiring, and the old window's
+-- cleanup must not cut the new page off.
+registerJsContext :: App -> WindowId -> JSContextRef -> IO (IO ())
+registerJsContext app wid ctx = do
+    u <- newUnique
+    modifyCell (appJsContexts app) (((wid, u, ctx) :) . filter (\(w, _, _) -> w /= wid))
+    return $ modifyCell (appJsContexts app) (filter (\(_, u', _) -> u' /= u))
 
 -- | One IDE-shaped action: everything a menu item, socket verb or widget
 -- event ultimately runs.

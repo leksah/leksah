@@ -55,6 +55,9 @@ import System.Timeout (timeout)
 -- exactly once however the two race), and the frame loop's exit signal.
 data WindowScope = WindowScope (IORef (Maybe [IO ()])) (MVar ())
 
+instance Eq WindowScope where
+  WindowScope a _ == WindowScope b _ = a == b
+
 newWindowScope :: IO WindowScope
 newWindowScope = WindowScope <$> newIORef (Just []) <*> newEmptyMVar
 
@@ -119,10 +122,18 @@ registerWindowScope wid s = atomicModifyIORef' scopesRef $ \m -> (M.insert wid s
 closeWindowScope :: Int -> IO (Maybe Bool)
 closeWindowScope wid = do
   ms <- atomicModifyIORef' scopesRef $ \m -> (M.delete wid m, M.lookup wid m)
-  forM ms $ \(WindowScope r done) -> do
-    cs <- atomicModifyIORef' r $ \m -> (Nothing, maybe [] id m)
-    mapM_ runCleanup (reverse cs)
-    maybe False (const True) <$> timeout 5000000 (readMVar done)
+  forM ms closeScope
+
+-- | 'closeWindowScope' for one particular scope — the one a browser
+-- connection built.  A reloaded warp page takes the same window id as the
+-- page it replaces, so the old connection's scope is closed by identity, and
+-- the registry entry is dropped only if it is still that scope.
+closeScope :: WindowScope -> IO Bool
+closeScope s@(WindowScope r done) = do
+  atomicModifyIORef' scopesRef $ \m -> (M.filter (/= s) m, ())
+  cs <- atomicModifyIORef' r $ \m -> (Nothing, maybe [] id m)
+  mapM_ runCleanup (reverse cs)
+  maybe False (const True) <$> timeout 5000000 (readMVar done)
 
 runCleanup :: IO () -> IO ()
 runCleanup act = void (try act :: IO (Either SomeException ()))
@@ -148,13 +159,14 @@ data ConnectionGone = ConnectionGone deriving Show
 instance Exception ConnectionGone
 
 {-# NOINLINE contextsRef #-}
-contextsRef :: IORef (M.Map Int64 (Maybe Int, [ThreadId]))
+contextsRef :: IORef (M.Map Int64 (Maybe WindowScope, [ThreadId]))
 contextsRef = unsafePerformIO (newIORef M.empty)
 
--- | Window @wid@ runs in jsaddle context @ctx@.
-registerContextWindow :: Int64 -> Int -> IO ()
-registerContextWindow ctx wid = atomicModifyIORef' contextsRef $ \m ->
-  (M.insertWith (\_ (_, ts) -> (Just wid, ts)) ctx (Just wid, []) m, ())
+-- | The window with scope @s@ runs in jsaddle context @ctx@.  (Its scope, not
+-- its window id: a reloaded page reuses the id while this one retires.)
+registerContextWindow :: Int64 -> WindowScope -> IO ()
+registerContextWindow ctx s = atomicModifyIORef' contextsRef $ \m ->
+  (M.insertWith (\_ (_, ts) -> (Just s, ts)) ctx (Just s, []) m, ())
 
 -- | Thread @t@ (a window's frame loop) belongs to jsaddle context @ctx@.
 registerContextThread :: Int64 -> ThreadId -> IO ()
@@ -164,9 +176,9 @@ registerContextThread ctx t = atomicModifyIORef' contextsRef $ \m ->
 -- | Context @ctx@'s browser connection has gone: see above.
 connectionClosed :: Int64 -> IO ()
 connectionClosed ctx = do
-  (mwid, ts) <- atomicModifyIORef' contextsRef $ \m ->
+  (ms, ts) <- atomicModifyIORef' contextsRef $ \m ->
     (M.delete ctx m, M.findWithDefault (Nothing, []) ctx m)
-  stopped <- maybe (return Nothing) closeWindowScope mwid
+  stopped <- traverse closeScope ms
   case stopped of
     Just True -> return ()
     _ -> mapM_ (`throwTo` ConnectionGone) ts

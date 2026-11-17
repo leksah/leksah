@@ -111,15 +111,26 @@ jsaddleOrWatched opts entryPoint otherApp = do
                               _ -> error "jsaddle WebSocket unexpected binary data"
                 _ -> error "jsaddle WebSocket unexpected binary data"
 
-        -- Ping every 3s until the socket fails (jsaddle-warp: 10s, and only
-        -- after the build — see the module header).
+        -- Until the socket is gone: a browser that closes it properly (a
+        -- reload: close code 1001) is seen at once, by reading — nothing else
+        -- reads this socket after its first message (results come on the
+        -- page's second one) — and one that vanishes (a dropped network) by
+        -- a ping every 3s failing.  (jsaddle-warp: pings only, every 10s and
+        -- only after the build; a cleanly closed peer can keep accepting
+        -- pings for a while — a reload took 20s to be noticed.)
         waitTillClosed :: Connection -> IO ()
-        waitTillClosed conn = ignore `handle` go (1 :: Int)
+        waitTillClosed conn = do
+            gone <- newEmptyMVar
+            let done = void (tryPutMVar gone ())
+            r <- forkIO $ (ignore `handle` forever (void (receiveDataMessage conn))) >> done
+            p <- forkIO $ (ignore `handle` ping (1 :: Int)) >> done
+            readMVar gone
+            killThread r >> killThread p
           where
-            go i = do
+            ping i = do
                 threadDelay (3 * 1000 * 1000)
                 sendPing conn (T.pack $ show i)
-                go (i + 1)
+                ping (i + 1)
 
         ignore :: SomeException -> IO ()
         ignore e = case fromException e of
