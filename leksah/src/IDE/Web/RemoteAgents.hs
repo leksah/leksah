@@ -33,6 +33,8 @@ module IDE.Web.RemoteAgents
   , remoteHostOf
   , remoteTranscriptTail
   , remoteAgentName
+  , remoteStartingPane
+  , setRemoteEventHandler
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
@@ -60,7 +62,8 @@ import Text.Read (readMaybe)
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config (Config(..), RemoteC(..), currentConfig)
 import IDE.Utils.RemoteExec (runSsh)
-import IDE.Web.AgentNames (NameRec(..), nameSessions, noteRemoteName, setRemoteNames)
+import IDE.Web.AgentNames
+       (NameRec(..), nameSessions, namesHeldElsewhere, noteRemoteName, setRemoteNames)
 import IDE.Web.Claude
        (ClaudeLive(..), TranscriptGist(..), gistOfTail, latestActivityOf,
         parseSessionFile, pidAncestors)
@@ -74,15 +77,19 @@ data HostSnapshot = HostSnapshot
   , hsPanes    :: Map Text Text        -- ^ tmux pane id → the session it shows
   , hsPaneAt   :: Map Text (Text, Text) -- ^ tmux pane id → its tmux session and
                                        --   window ids (raw, on the host)
+  , hsRunKeys  :: Map Text Text        -- ^ tmux pane id → its @\@leksah_run@ key
   , hsNames    :: (Text, Map Text NameRec)   -- ^ its name store, and its cksum
   , hsInfos    :: (Text, LBS.ByteString)     -- ^ its agents.json, and its cksum
+  , hsEventsAt :: Integer              -- ^ how far into the host's event log
+                                       --   (@~\/.leksah\/agent-events.jsonl@)
+                                       --   this leksah has read; -1 = not yet
   , hsTails    :: Map Text (Text, TranscriptGist, Maybe Text)
                                        -- ^ session → (transcript stamp, gist,
                                        --   what it is doing)
   }
 
 emptySnapshot :: UTCTime -> HostSnapshot
-emptySnapshot t = HostSnapshot t [] M.empty M.empty ("", M.empty) ("", "") M.empty
+emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty
 
 {-# NOINLINE snapshotsRef #-}
 snapshotsRef :: IORef (Map Text HostSnapshot)
@@ -133,6 +140,17 @@ remotePaneOf sid = do
     | (h, hs) <- M.toList m, (pane, sid') <- M.toList (hsPanes hs), sid' == sid
     , Just (s, w) <- [M.lookup pane (hsPaneAt hs)] ]
   where q h x = "ssh://" <> h <> "#" <> x
+
+-- | A pane on a shared host that was started for session @sid@ (its run key
+-- names it) but whose session has not registered yet — nearly always a
+-- first-run question there (the folder-trust one).  The qualified pane id.
+remoteStartingPane :: Text -> IO (Maybe Text)
+remoteStartingPane sid = do
+  m <- readIORef snapshotsRef
+  return $ listToMaybe
+    [ "ssh://" <> h <> "#" <> pane
+    | (h, hs) <- M.toList m, not (any ((== sid) . clSession) (hsLive hs))
+    , (pane, key) <- M.toList (hsRunKeys hs), ("#claude#" <> sid) `T.isSuffixOf` key ]
 
 -- | The host a remote session runs on.
 remoteHostOf :: Text -> IO (Maybe Text)
@@ -186,10 +204,18 @@ pollHost host = remoteTmux host >>= \case
         sockName = case sock of ["-L", n] -> T.pack n; _ -> ""
         known = [ sid <> "=" <> st | (sid, (st, _, _)) <- M.toList (hsTails p) ]
     (code, out, _) <- runSsh host snapshotScript
-      ([T.pack bin, sockName, fst (hsNames p), fst (hsInfos p)] <> known) mempty
+      ([ T.pack bin, sockName, fst (hsNames p), fst (hsInfos p)
+       , T.pack (show (hsEventsAt p)) ] <> known) mempty
     unless (code /= ExitSuccess) $ do
-      let hs = parseSnapshot host now p (frames out)
+      let fs = frames out
+          (eventsAt, eventLines) = newEvents (hsEventsAt p) fs
+          hs = (parseSnapshot host now p fs) { hsEventsAt = eventsAt }
       atomicModifyIORef' snapshotsRef (\m -> (M.insert host hs m, ()))
+      -- What the agents there did since the last look: into the same records
+      -- their own leksah would keep ('setRemoteEventHandler').
+      unless (null eventLines) $ do
+        handler <- readIORef eventHandlerRef
+        forM_ eventLines $ \l -> handler host l `catch` \(_ :: SomeException) -> return ()
       setRemoteNames host (snd (hsNames hs))
       nameUnnamed host hs
 
@@ -199,14 +225,35 @@ pollHost host = remoteTmux host >>= \case
 remoteAgentName :: Text -> Text -> IO (Either Text Text)
 remoteAgentName host sid = do
   now <- realToFrac <$> getPOSIXTime
+  elsewhere <- namesHeldElsewhere (Just host)
   r <- remoteModify host "agent-names.json" $ \old -> do
     let m  = fromMaybe M.empty (decode' old)
-        m' = nameSessions now [sid] m
+        m' = nameSessions now elsewhere [sid] m
     return (if m' == m then old else encode m', maybe "" nrName (M.lookup sid m'))
   case r of
     Right n | not (T.null n) -> noteRemoteName host sid n >> return (Right n)
     Right _  -> return (Left "the host's name store gave no name")
     Left err -> return (Left err)
+
+-- | The new whole lines of a host's event log in this snapshot (frame @E@,
+-- META the offset it starts at), and the offset to ask from next time.  A
+-- line the snapshot cut short is left for the next one.
+newEvents :: Integer -> [(BS.ByteString, BS.ByteString, BS.ByteString)] -> (Integer, [BS.ByteString])
+newEvents was fs = case [ (meta, b) | (t, meta, b) <- fs, t == "E" ] of
+  ((meta, b) : _) | Just off <- readMaybe (BC.unpack meta) ->
+    let complete = BS.take (maybe 0 (+ 1) (BC.elemIndexEnd '\n' b)) b
+    in (off + fromIntegral (BS.length complete), filter (not . BS.null) (BC.lines complete))
+  _ -> (was, [])
+
+-- | Who folds a host's events into leksah's records: set once at startup by
+-- "IDE.Web.Agent", which knows how ('IDE.Web.Agent.remoteAgentEvent').  The
+-- host's name and one log line.
+setRemoteEventHandler :: (Text -> BS.ByteString -> IO ()) -> IO ()
+setRemoteEventHandler h = atomicModifyIORef' eventHandlerRef (const (h, ()))
+
+{-# NOINLINE eventHandlerRef #-}
+eventHandlerRef :: IORef (Text -> BS.ByteString -> IO ())
+eventHandlerRef = unsafePerformIO (newIORef (\_ _ -> return ()))
 
 -- | Name, in the host's own store, its live sessions that have no name there.
 nameUnnamed :: Text -> HostSnapshot -> IO ()
@@ -214,9 +261,10 @@ nameUnnamed host hs = do
   let unnamed = [ clSession l | l <- hsLive hs, not (clSession l `M.member` snd (hsNames hs)) ]
   unless (null unnamed) $ do
     now <- realToFrac <$> getPOSIXTime
+    elsewhere <- namesHeldElsewhere (Just host)
     void . remoteModify host "agent-names.json" $ \old -> do
       let m  = fromMaybe M.empty (decode' old)
-          m' = nameSessions now unnamed m
+          m' = nameSessions now elsewhere unnamed m
       return (if m' == m then old else encode m', ())
 
 -- | One snapshot from the frames of the script's output.
@@ -227,6 +275,8 @@ parseSnapshot host now p fs = HostSnapshot
   , hsLive  = live
   , hsPanes = panes
   , hsPaneAt = paneAt
+  , hsRunKeys = M.fromList [ (T.pack (BC.unpack pid), T.pack (BC.unpack (BC.unwords key)))
+                           | (pid : _ : _ : _ : key) <- paneRows, not (null key) ]
   , hsNames = names
   , hsInfos = infos
   , hsTails = tails
@@ -301,19 +351,27 @@ frames bs
 -- @SID=STAMP=same@ and no body when unchanged).
 snapshotScript :: Text
 snapshotScript = T.concat
-  [ "T=\"$0\"; S=\"$1\"; NK=\"$2\"; IK=\"$3\"; shift 3; "
+  [ "T=\"$0\"; S=\"$1\"; NK=\"$2\"; IK=\"$3\"; EO=\"$4\"; shift 4; "
   , "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
   , "tmp=$(mktemp) || exit 1; trap 'rm -f \"$tmp\"' EXIT; "
   , "frame() { printf '@@%s %s %s\\n' \"$1\" \"$2\" \"$(wc -c < \"$3\" | tr -d ' ')\"; cat \"$3\"; }; "
   , "for f in \"$HOME\"/.claude/sessions/*.json; do [ -f \"$f\" ] && frame S - \"$f\"; done; "
   , "ps -Ao pid=,ppid= > \"$tmp\"; frame P - \"$tmp\"; "
-  , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid} #{session_id} #{window_id}' > \"$tmp\" 2>/dev/null; "
+  , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid} #{session_id} #{window_id} #{@leksah_run}' > \"$tmp\" 2>/dev/null; "
   , "frame T - \"$tmp\"; "
   , "st() { f=\"$HOME/.leksah-0.17/$1\"; [ -f \"$f\" ] || return 0; "
   ,   "c=$(cksum < \"$f\" | cut -d' ' -f1,2 | tr ' ' :); "
   ,   "if [ \"$c\" = \"$2\" ]; then : > \"$tmp\"; frame \"$3\" \"=$c\" \"$tmp\"; "
   ,   "else frame \"$3\" \"$c\" \"$f\"; fi; }; "
   , "st agent-names.json \"$NK\" N; st agents.json \"$IK\" I; "
+  -- The event log from where this leksah left off (a log that shrank was
+  -- rotated: from its start); on first contact, only its last 64KB.  At
+  -- most 256KB a time.
+  , "ev=\"$HOME/.leksah/agent-events.jsonl\"; if [ -f \"$ev\" ]; then "
+  ,   "sz=$(wc -c < \"$ev\" | tr -d ' '); off=$EO; "
+  ,   "if [ \"$off\" -lt 0 ]; then off=$((sz > 65536 ? sz - 65536 : 0)); fi; "
+  ,   "if [ \"$off\" -gt \"$sz\" ]; then off=0; fi; "
+  ,   "tail -c +$((off + 1)) \"$ev\" | head -c 262144 > \"$tmp\"; frame E \"$off\" \"$tmp\"; fi; "
   , "for f in \"$HOME\"/.claude/sessions/*.json; do [ -f \"$f\" ] || continue; "
   ,   "sid=$(sed -n 's/.*\"sessionId\" *: *\"\\([^\"]*\\)\".*/\\1/p' \"$f\" | head -1); "
   ,   "[ -n \"$sid\" ] || continue; "

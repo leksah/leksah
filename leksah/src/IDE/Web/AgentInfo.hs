@@ -26,6 +26,9 @@ module IDE.Web.AgentInfo
   , AgentNode(..)
   , recordAgentFork
   , recordRemoteFork
+  , remoteAgentRecord
+  , applyRemoteCommand
+  , setRemoteSuspended
   , describeAgent
   , dismissAgent
   , markAgentDone
@@ -56,7 +59,7 @@ import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar, modifyMVar_)
 import Control.Exception (catch, SomeException)
 import Control.Applicative ((<|>))
-import Control.Monad (forM, mfilter, unless, void, when)
+import Control.Monad (forM, forM_, mfilter, unless, void, when)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
@@ -328,6 +331,25 @@ remoteInfos = (`catch` \(_ :: SomeException) -> return M.empty) $ do
         return m
   return (M.unions ms)
 
+-- | Which shared host's store holds a record of @sid@, and the record — an
+-- agent on that machine that is not running now (suspended, or ended).
+remoteAgentRecord :: Text -> IO (Maybe (Text, AgentInfo))
+remoteAgentRecord sid = do
+  _ <- remoteInfos   -- (decode any store that changed)
+  m <- readIORef remoteInfosRef
+  return $ listToMaybe [ (h, i) | (h, (_, im)) <- M.toList m, Just i <- [M.lookup sid im] ]
+
+-- | Mark an agent on @host@ suspended, or not, in THAT machine's store.
+setRemoteSuspended :: Text -> Text -> Bool -> IO ()
+setRemoteSuspended host sid on = do
+  now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
+  void . (`catch` \(_ :: SomeException) -> return (Left "")) $
+    remoteModify host "agents.json" $ \old -> do
+      let is = fromMaybe [] (decode' old) :: [AgentInfo]
+          m  = M.fromList [ (aiSession i, i) | i <- is ]
+          m' = M.adjust (\i -> i { aiSuspended = if on then Just now else Nothing }) sid m
+      return (if m' == m then old else encode (M.elems m'), ())
+
 {-# NOINLINE remoteInfosRef #-}
 remoteInfosRef :: IORef (Map Text (LBS.ByteString, Map Text AgentInfo))
 remoteInfosRef = unsafePerformIO (newIORef M.empty)
@@ -430,19 +452,47 @@ describeAgent sid mtitle mhtml mbio = do
       posix = realToFrac (utcTimeToPOSIXSeconds now) :: Double
   withInfos $ \m ->
     let cur  = fromMaybe (blank sid dir) (M.lookup sid m)
-        cur' = cur { aiTitle = maybe (aiTitle cur) (Just . T.strip) mtitle
-                   , aiTitleProvisional = maybe (aiTitleProvisional cur) (const (Just False)) mtitle
-                   , aiDesc  = maybe (aiDesc cur) (Just . sanitizeAgentHtml) mhtml
-                   , aiBio   = maybe (aiBio cur) (Just . sanitizeAgentHtml) mbio
-                   , aiBioAt = maybe (aiBioAt cur) (const (Just posix)) mbio
-                   , aiWhen  = Just stamp
-                   , aiDir   = if null (aiDir cur) then dir else aiDir cur }
+        cur' = describedAs stamp posix mtitle mhtml mbio cur
+                 { aiDir = if null (aiDir cur) then dir else aiDir cur }
     in ( M.insert sid cur' m
        , T.unlines $
            [ "Recorded. The Agents pane now shows " <> sid <> " as:" ]
            <> [ "  title: " <> t | Just t <- [aiTitle cur'] ]
            <> [ "  description: " <> T.take 200 d | Just d <- [aiDesc cur'] ]
            <> [ "  bio: " <> T.take 200 b | Just b <- [aiBio cur'] ] )
+
+-- | What @agent describe@ makes of a record (at @stamp@ \/ @posix@): its title,
+-- description and bio, each one only when given.
+describedAs :: Text -> Double -> Maybe Text -> Maybe Text -> Maybe Text -> AgentInfo -> AgentInfo
+describedAs stamp posix mtitle mhtml mbio cur = cur
+  { aiTitle = maybe (aiTitle cur) (Just . T.strip) mtitle
+  , aiTitleProvisional = maybe (aiTitleProvisional cur) (const (Just False)) mtitle
+  , aiDesc  = maybe (aiDesc cur) (Just . sanitizeAgentHtml) mhtml
+  , aiBio   = maybe (aiBio cur) (Just . sanitizeAgentHtml) mbio
+  , aiBioAt = maybe (aiBioAt cur) (const (Just posix)) mbio
+  , aiWhen  = Just stamp }
+
+-- | An agent's @agent describe@ \/ @agent done@ that reached no leksah on its
+-- own machine (@leksah-cmd@ put it on that machine's event log), applied now
+-- to that machine's store by the leksah that read it ("IDE.Web.RemoteAgents").
+-- @args@ are the command's own: an optional session, then its flags.
+applyRemoteCommand :: Text -> Text -> Text -> [Text] -> IO ()
+applyRemoteCommand host verb caller args = do
+  now <- getCurrentTime
+  let posix = realToFrac (utcTimeToPOSIXSeconds now) :: Double
+      stamp = T.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M" now)
+      flag f = listToMaybe [ v | (k, v) <- zip args (drop 1 args), k == f ]
+      sid = case args of (a : _) | not ("-" `T.isPrefixOf` a) -> a; _ -> caller
+      change = case verb of
+        "describe" -> Just (describedAs stamp posix (flag "--title") (flag "--html") (flag "--bio"))
+        "done"     -> Just (\i -> i { aiDone = flag "--summary" <|> Just "", aiDoneAt = Just posix })
+        _          -> Nothing
+  forM_ change $ \upd -> void . (`catch` \(_ :: SomeException) -> return (Left "")) $
+    remoteModify host "agents.json" $ \old -> do
+      let is = fromMaybe [] (decode' old) :: [AgentInfo]
+          m  = M.fromList [ (aiSession i, i) | i <- is ]
+          m' = M.alter (Just . upd . fromMaybe (blank sid "")) sid m
+      return (if m' == m then old else encode (M.elems m'), ())
 
 -- | A session that carried on under a new id ('agentContinuations' — Claude
 -- Code backgrounding it, say) is the same agent: what leksah knows about the

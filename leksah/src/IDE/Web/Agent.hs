@@ -42,6 +42,7 @@ module IDE.Web.Agent
   ( ForkPlace(..)
   , ForkRequest(..)
   , emptyForkRequest
+  , remoteAgentEvent
   , forkAgent
   , agentList
   , agentStatus
@@ -89,6 +90,8 @@ import Data.Foldable (toList)
 import Data.Aeson.Types (Pair, parseMaybe)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL (toStrict)
+import qualified Data.ByteString as BS (ByteString)
+import qualified Data.Aeson.KeyMap as KM (lookup)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import qualified Data.Set as S
 import qualified Data.Aeson.Key as Key
@@ -108,7 +111,8 @@ import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
-        moveAgentRecord, recordAgentFork, recordRemoteFork, setAgentManager, setAgentRole,
+        moveAgentRecord, recordAgentFork, recordRemoteFork, remoteAgentRecord,
+        setRemoteSuspended, applyRemoteCommand, setAgentManager, setAgentRole,
         setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
@@ -132,7 +136,7 @@ import IDE.Web.AgentEvents
         recordToolEnd, recordToolStart, recordTurnEnd, recordPromptSubmit,
         recordSubagentStart, recordSubagentStop, recordCompacting, recordSessionEnd,
         recordTaskCreated, recordTaskActive, recordTaskStatus, TaskInfo(..))
-import IDE.Web.AgentUsage (usageFor, usageLines, usageSummary)
+import IDE.Web.AgentUsage (recordStatusLine, usageFor, usageLines, usageSummary)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow, pokeClaudeStatus)
 import IDE.Web.Codex
@@ -147,7 +151,8 @@ import IDE.Web.TmuxServer
        (TmuxServer(..), rawTmuxId, selectWindowAsViewer, tmuxCmdOn, tmuxOnIds, tmuxStdoutOn)
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.RemoteAgents
-       (remoteAgentName, remoteHostOf, remoteLiveSessions, remotePaneOf, remoteTranscriptTail)
+       (remoteAgentName, remoteHostOf, remoteLiveSessions, remotePaneOf, remoteStartingPane,
+        remoteTranscriptTail)
 
 -- | Where the child's pane goes.
 data ForkPlace
@@ -298,17 +303,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                                    , asResume  = False
                                    , asManager = frManager fr
                                    , asCodex   = False }
-              (_, _, line) <- claudeCommandLine (ClaudeAgent spec)
-              -- (the run key as a leksah on that machine spells it: host-local)
-              let key = T.pack rdir <> "#claude#" <> child
-              newRemoteAgentWindow host name rdir key line >>= \case
-                Nothing -> return (Left ("could not start a window on " <> host))
-                Just (s, _, pane) -> do
-                  requestRemoteTerm (host <> "#" <> rawTmuxId s)
-                  _ <- forkIO $ do
-                    threadDelay 1500000
-                    selectWindowAsViewer (SshServer host) (T.unpack (rawTmuxId pane))
-                  return (Right (child, name))
+              fmap (const (child, name)) <$> startRemoteAgent host name rdir spec
 
     -- Beside the parent when we can find its pane; its own tab otherwise.
     place live spec key line = do
@@ -488,7 +483,8 @@ detailWith me l = case (liveState l, me) of
 -- what @leksah-cmd agent wait@ polls.
 agentStatus :: Text -> IO Text
 agentStatus sid = allLiveSessions >>= \live -> case M.lookup sid live of
-  Nothing -> startingPane sid >>= \case
+  -- (here, else a pane on a shared host started for it — "IDE.Web.RemoteAgents")
+  Nothing -> ((<|>) <$> startingPane sid <*> remoteStartingPane sid) >>= \case
     -- Its pane is there but the CLI hasn't registered the session.  Nearly
     -- always the first-run question a directory gets asked once ("is this a
     -- project you trust?"), which no amount of waiting will answer.
@@ -522,6 +518,24 @@ agentStatus sid = allLiveSessions >>= \live -> case M.lookup sid live of
 -- registered yet.  A fork parked on a first-run question ('agentStatus'\'s
 -- @starting@) has a pane but no session for 'showLiveSession' to find, and that
 -- pane is exactly where someone needs to look.
+-- | Start agent @spec@ on @host@ (its directory @rdir@, host-local) under the
+-- name it has in that machine's store: a window in the Agents session of the
+-- host's leksah tmux server, with the run key a leksah there would give it,
+-- then this leksah's tab on that session brought up with the agent's window
+-- current.  Used by a fork onto the host and by resuming an agent there.
+startRemoteAgent :: Text -> Text -> FilePath -> AgentSpec -> IO (Either Text ())
+startRemoteAgent host name rdir spec = do
+  (_, _, line) <- claudeCommandLine (ClaudeAgent spec)
+  let key = T.pack rdir <> "#claude#" <> asSession spec
+  newRemoteAgentWindow host name rdir key line >>= \case
+    Nothing -> return (Left ("could not start a window on " <> host))
+    Just (s, _, pane) -> do
+      requestRemoteTerm (host <> "#" <> rawTmuxId s)
+      _ <- forkIO $ do
+        threadDelay 1500000
+        selectWindowAsViewer (SshServer host) (T.unpack (rawTmuxId pane))
+      return (Right ())
+
 -- | Every live session: this machine's, and those on the hosts whose leksah
 -- tmux server this leksah shares ("IDE.Web.RemoteAgents" — their 'clHost' set).
 allLiveSessions :: IO (Map Text ClaudeLive)
@@ -744,8 +758,8 @@ agentSuspend sid force = do
           Nothing -> return $ name <> " is not in a pane leksah can reach, so it \
                                      \cannot be suspended from here.\n"
           Just (_, _, pane) -> do
-            -- (the record is its own machine's: a remote one is not marked here)
-            when (isNothing (clHost l)) $ setAgentSuspended sid True
+            -- (the record is its own machine's: a remote one is marked there)
+            maybe (setAgentSuspended sid True) (\h -> setRemoteSuspended h sid True) (clHost l)
             _ <- sendKeysTo pane ["C-u"]
             _ <- sendKeysTo pane ["-l", "/exit"]
             _ <- sendKeysTo pane ["Enter"]
@@ -767,7 +781,27 @@ agentSuspend sid force = do
 -- to report back to it), its role's instructions, and the manager's brief if it
 -- is the manager.  A plain @claude --resume@ would lose all three.
 agentResume :: Text -> IO (Either Text Text)
-agentResume sid = do
+agentResume sid = remoteAgentRecord sid >>= \case
+  -- An agent on a shared host: back on that host ('startRemoteAgent'), named
+  -- and marked running again in that machine's stores.
+  Just (host, i) | not (null (aiDir i)) -> do
+    running <- M.member sid <$> allLiveSessions
+    remoteAgentName host sid >>= \case
+      Left err -> return (Left ("could not name the agent on " <> host <> ": " <> err))
+      Right name
+        | running -> showAgentPane sid >> return (Right (name <> " is already running; showing it.\n"))
+        | otherwise -> do
+            setRemoteSuspended host sid False
+            r <- startRemoteAgent host name (aiDir i) AgentSpec
+                   { asDir = renderRemotePath host (aiDir i), asSession = sid
+                   , asFrom = Nothing, asPrompt = Nothing, asParent = aiParent i
+                   , asRoleNote = Nothing, asResume = True, asManager = aiManager i
+                   , asCodex = False }
+            return (("Resuming " <> name <> " on " <> host <> ".\n") <$ r)
+  _ -> agentResumeHere sid
+
+agentResumeHere :: Text -> IO (Either Text Text)
+agentResumeHere sid = do
   live <- claudeLiveBySession
   name <- agentNameFor sid
   if sid `M.member` live
@@ -1093,6 +1127,39 @@ agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
         "PostToolUse" -> noteEdits s (editedFiles (hiTool h) (hiInput h) (hiResponse h))
         _ -> return ""
     _ -> pokeClaudeStatus >> return ""
+
+-- | One line of a shared host's event log ("IDE.Web.RemoteAgents"): what an
+-- agent THERE told its hooks (or its status line), recorded here as this
+-- leksah records its own agents' — so a remote agent's card shows what it is
+-- doing, its edits, its context use and what it waits for, whether or not a
+-- leksah runs on its machine.  (Recording only: no answer goes back, and the
+-- SessionStart briefing is the host's own leksah's business.)
+remoteAgentEvent :: Text -> BS.ByteString -> IO ()
+remoteAgentEvent host line = case decodeStrict' line of
+  Just (Object o)
+    | Just (String kind) <- KM.lookup "kind" o
+    , Just payload <- KM.lookup "payload" o -> do
+        let raw = TE.decodeUtf8 (BL.toStrict (encode payload))
+            ev  = case KM.lookup "event" o of Just (String e) -> e; _ -> ""
+        case kind of
+          "hook" | Just (String s) <- sessionOf payload, ev /= "SessionStart" -> do
+            let h = parseHookIn raw
+            recordHookEvent ev s h
+            when (ev == "PostToolUse") $
+              recordEdit s (editedFiles (hiTool h) (hiInput h) (hiResponse h))
+            unless (ev `elem` quietHookEvents) pokeClaudeStatus
+          "statusline" -> recordStatusLine raw
+          -- (an agent's describe / done that found no leksah on its machine)
+          "command" | Just (String s) <- sessionOf payload -> do
+            let args = case payload of
+                  Object p | Just (Array a) <- KM.lookup "args" p -> [ t | String t <- toList a ]
+                  _ -> []
+            applyRemoteCommand host ev s args
+            pokeClaudeStatus
+          _ -> return ()
+  _ -> return ()
+  where sessionOf (Object p) = KM.lookup "session_id" p
+        sessionOf _          = Nothing
 
 -- | One hook's JSON, parsed once.
 data HookIn = HookIn

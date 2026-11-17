@@ -560,4 +560,6 @@ executable leksah-cmd
         -- markers unique (so a poll never matches a previous run's stale window
         -- still sitting in the pane scrollback).
         unix >=2.7 && <2.9,
+        -- time: the event log's timestamps (`agent hook`).
+        time >=0.1 && <1.13,
         text >=0.11.1.5 && <2.2

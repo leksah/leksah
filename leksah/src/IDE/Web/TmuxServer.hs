@@ -170,8 +170,10 @@ remoteSocketArgs host = getGlobalApp >>= \case
 -- keeps them on the window.)
 
 -- | Who this leksah is to the servers it shares ('RemoteC.rcViewerId', else
--- @user-host@, plus the port when it is not the default one): letters, digits,
--- @-@ and @_@ only, as it is part of a tmux session name.
+-- this machine's name, lower case — plus the port when it is not the default
+-- one): letters, digits, @-@ and @_@ only, as it is part of a tmux session
+-- name.  (Two leksahs on one machine under different accounts would need
+-- @remote.viewerId@ to tell them apart.)
 viewerId :: IO Text
 viewerId = readIORef viewerIdRef >>= \case
   Just v  -> return v
@@ -184,7 +186,7 @@ viewerId = readIORef viewerIdRef >>= \case
       host <- (`catch` \(_ :: SomeException) -> return "") $
         (\(_, o, _) -> T.takeWhile (/= '.') (T.strip (T.pack o)))
           <$> readProcessWithExitCode "uname" ["-n"] ""
-      return $ T.intercalate "-" (filter (not . T.null) [user, host])
+      return $ T.toLower (if T.null host then user else host)
                  <> (if leksahPort == 3367 then "" else "-" <> T.pack (show leksahPort))
     let clean = T.map (\c -> if isAlphaNum c || c == '-' || c == '_' then c else '-') v
         v' = if T.null clean then "leksah" else clean
