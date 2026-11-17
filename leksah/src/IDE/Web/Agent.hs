@@ -133,7 +133,8 @@ import IDE.Web.AgentEvents
         recordSubagentStart, recordSubagentStop, recordCompacting, recordSessionEnd,
         recordTaskCreated, recordTaskActive, recordTaskStatus, TaskInfo(..))
 import IDE.Web.AgentUsage (usageFor, usageLines, usageSummary)
-import IDE.Web.ClaudeStatus (pokeClaudeStatus)
+import IDE.Web.ClaudeStatus
+       (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow, pokeClaudeStatus)
 import IDE.Web.Codex
        (codexAvailable, codexInteractive, codexProcessOf, codexSessionStart, codexSetStatus, codexSessionEnd,
         codexPatchFiles, codexSessionDir, codexStarted, codexTranscriptOf, isCodexSession,
@@ -351,11 +352,16 @@ agentList withStopped me = do
   if M.null live && null stopped then return "No Claude Code sessions are running.\n" else do
     names  <- touchAgentNames (M.keys live)
     titles <- agentTitles
+    polled <- M.fromList . map (\r -> (csrSession r, csrTitle r)) . csRows <$> claudeStatusNow
     events <- sessionEvents
     rows <- forM (sortOn (\l -> (rank l, clDir l)) (M.elems live)) $ \l -> do
-      -- The same title every other surface shows: what the agent called
-      -- itself, else its /rename name, else its first prompt.
-      title <- case M.lookup (clSession l) titles <|> clName l of
+      -- The same title every other surface shows: the status poll's (what the
+      -- agent called itself, a /rename name, Claude Code's own title for the
+      -- conversation, the first prompt), else — a session the poll has not
+      -- seen yet — the agent's own title or its /rename name, else its first
+      -- prompt.
+      title <- case M.lookup (clSession l) polled <|> M.lookup (clSession l) titles
+                      <|> clName l of
         Just n  -> return n
         Nothing -> fromMaybe "" <$> claudeSessionLabel (clDir l) (clSession l)
       return $ T.intercalate "\t"

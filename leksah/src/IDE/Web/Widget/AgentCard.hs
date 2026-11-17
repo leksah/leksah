@@ -411,22 +411,38 @@ hidden :: Map Text Text
 hidden = "style" =: "display:none"
 
 -- | The third line: the API error its last turn ended on, else what it is
--- doing right now, else the first line of what it says about itself.
+-- doing right now, else the first line of what it says about itself, else the
+-- first line of the last thing it said (most agents never describe
+-- themselves: without this an idle one's card is its title alone).
 line3 :: AgentNode -> Text
 line3 n | Just err <- anError n = "⚠ API error: " <> err
 line3 n = case anActivity n of
   Just a | not (T.null a) -> a
-  _ -> T.take 160 . T.strip . T.takeWhile (/= '\n') . stripTags
-         $ fromMaybe "" (anDesc n)
+  _ -> case T.take 160 . T.strip . T.takeWhile (/= '\n') . stripTags
+              $ fromMaybe "" (anDesc n) of
+         "" -> maybe "" (T.take 160) (anLastSaid n)
+         d  -> d
 
 bioOf :: AgentNode -> Text
 bioOf n = fromMaybe "" (anBio n `orElse` anDesc n)
   where orElse a b = maybe b Just a
 
 stripTags :: Text -> Text
-stripTags t = case T.breakOn "<" t of
-  (a, rest) | T.null rest -> a
-            | otherwise   -> a <> " " <> stripTags (T.drop 1 (T.dropWhile (/= '>') rest))
+stripTags = T.unwords . T.words . go
+  where
+    -- An inline tag (<code>, <b>, <a> …) is part of the text around it, so it
+    -- goes without a trace ("in <code>main</code>." stays "in main."); any
+    -- other (<p>, <br>, <li> …) separates words.
+    go t = case T.breakOn "<" t of
+      (a, rest)
+        | T.null rest -> a
+        | otherwise ->
+            let (tg, after) = T.break (== '>') (T.drop 1 rest)
+                name = T.toLower . T.takeWhile (\c -> c /= ' ' && c /= '/')
+                     . T.dropWhile (== '/') $ tg
+                gap  = if name `elem` inlineTags then "" else " "
+            in a <> gap <> go (T.drop 1 after)
+    inlineTags = ["code", "b", "i", "em", "strong", "a", "span", "kbd", "tt", "u", "s"]
 
 baseName :: FilePath -> FilePath
 baseName = reverse . takeWhile (/= '/') . dropWhile (== '/') . reverse

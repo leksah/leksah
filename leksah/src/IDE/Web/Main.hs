@@ -272,7 +272,7 @@ import IDE.Web.AISession
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
-import IDE.Web.AgentInfo (agentTitles, agentsHeld, syncAgentLiveness)
+import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
 #endif
 import IDE.Web.NewLwRequest
        (beginConversion, endConversion, conversionActive, consolidateLock,
@@ -1070,7 +1070,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- named itself.  Killed at ghci teardown, or every :reload would leave
       -- another poll running.
       liftIO $ do
-        tid <- startClaudeStatusPoll agentTitles agentsHeld
+        tid <- startClaudeStatusPoll agentTitleSources agentsHeld
         when ghciMode $ registerGhciCleanupNamed "claude-status-poll" (killThread tid)
         -- Which agents are running, and — after a restart, or leksah's tmux
         -- server dying — which were interrupted (the Agents pane's ↻ cards

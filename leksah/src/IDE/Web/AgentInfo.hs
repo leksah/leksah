@@ -44,6 +44,7 @@ module IDE.Web.AgentInfo
   , agentParentOf
   , agentForest
   , agentTitles
+  , agentTitleSources
   , agentDirOf
   , agentRefreshPrompt
   , sanitizeAgentHtml
@@ -109,6 +110,10 @@ data AgentInfo = AgentInfo
   , aiParent  :: Maybe Text    -- ^ the session that forked it: the tree's edges
   , aiDir     :: FilePath      -- ^ its working directory (transcript / resume)
   , aiTitle   :: Maybe Text    -- ^ what it last called itself
+  , aiTitleProvisional :: Bool -- ^ 'aiTitle' is only the first line of the prompt
+                               --   leksah started it with ('recordAgentFork'),
+                               --   not a title it chose: the conversation's own
+                               --   title outranks it once there is one
   , aiDesc    :: Maybe Text    -- ^ its description, as sanitized HTML
   , aiWhen    :: Maybe Text    -- ^ when it last described itself (row tooltip)
   , aiBorn    :: Maybe Double  -- ^ when leksah started it (POSIX seconds) — so a
@@ -164,12 +169,19 @@ instance ToJSON AgentInfo where
     , "role" .= aiRole i, "bio" .= aiBio i, "bioAt" .= aiBioAt i
     , "suspended" .= aiSuspended i, "manager" .= aiManager i
     , "ranOn" .= aiRanOn i, "interrupted" .= aiInterrupted i
-    , "titleSent" .= aiTitleSent i ]
+    , "titleSent" .= aiTitleSent i, "titleProvisional" .= aiTitleProvisional i ]
 
 instance FromJSON AgentInfo where
-  parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
+  parseJSON = withObject "AgentInfo" $ \o -> do
+   -- (Records written before the flag existed: a title that came with no
+   -- description ever written is a fork's prompt.)
+   title <- o .:? "title"
+   when' <- o .:? "when"
+   prov  <- fromMaybe (isJust (title :: Maybe Text) && isNothing (when' :: Maybe Text))
+              <$> o .:? "titleProvisional"
+   AgentInfo
     <$> o .: "session" <*> o .:? "parent" <*> (fromMaybe "" <$> o .:? "dir")
-    <*> o .:? "title" <*> o .:? "desc" <*> o .:? "when" <*> o .:? "born"
+    <*> pure title <*> pure prov <*> o .:? "desc" <*> pure when' <*> o .:? "born"
     <*> o .:? "done" <*> o .:? "doneAt" <*> o .:? "role"
     <*> o .:? "bio" <*> o .:? "bioAt" <*> o .:? "suspended"
     <*> (fromMaybe False <$> o .:? "manager")
@@ -215,6 +227,8 @@ data AgentNode = AgentNode
   , anBackground :: Maybe Text  -- ^ a Claude Code BACKGROUND session's id (the
                                 --   short one @claude rm@\/@attach@ take), for a
                                 --   row that came from @claude agents@
+  , anLastSaid :: Maybe Text  -- ^ the first line of the last thing it said
+                              --   (from its transcript; live agents only)
   , anUsage    :: Maybe SessionUsage -- ^ its context use, cost and rate limits,
                                 --   from its status line ("IDE.Web.AgentUsage")
   , anAgent    :: Text          -- ^ which CLI runs it: @claude@ or @codex@ (the
@@ -273,9 +287,17 @@ peekInfos = modifyMVar infoVar $ \m0 -> do
 -- Agents pane can all say the same thing — see 'IDE.Web.ClaudeStatus.summarize',
 -- which is handed this and prefers it over a @\/rename@ name or a first prompt.
 agentTitles :: IO (Map Text Text)
-agentTitles = M.mapMaybe title <$> peekInfos
-  where title i = case T.strip <$> aiTitle i of
-          Just t | not (T.null t) -> Just t
+agentTitles = M.map (\(t, _, _) -> t) <$> agentTitleSources
+
+-- | 'agentTitles' with where each came from, for the status poll's title
+-- chain: @(title, provisional, born)@ — provisional when it is only the
+-- prompt leksah started the agent with ('aiTitleProvisional'), and when leksah
+-- started it ('aiBorn'), so a conversation title written before then (one a
+-- fork copied from its parent's transcript) is known not to be its own.
+agentTitleSources :: IO (Map Text (Text, Bool, Maybe Double))
+agentTitleSources = M.mapMaybe src <$> peekInfos
+  where src i = case T.strip <$> aiTitle i of
+          Just t | not (T.null t) -> Just (t, aiTitleProvisional i, aiBorn i)
           _                       -> Nothing
 
 -- | Where a session lives, as far as leksah remembers (its 'aiDir') — how a
@@ -304,6 +326,8 @@ recordAgentFork parent child dir mprompt = do
     in ( M.insert child (blank child dir)
            { aiParent = parent
            , aiTitle  = maybe (fmap firstLine mprompt) Just (old >>= aiTitle)
+           , aiTitleProvisional = maybe (isJust mprompt) aiTitleProvisional
+                                    (mfilter (isJust . aiTitle) old)
            , aiDesc   = old >>= aiDesc
            , aiBorn   = Just (realToFrac (utcTimeToPOSIXSeconds now)) } m
        , () )
@@ -324,6 +348,7 @@ describeAgent sid mtitle mhtml mbio = do
   withInfos $ \m ->
     let cur  = fromMaybe (blank sid dir) (M.lookup sid m)
         cur' = cur { aiTitle = maybe (aiTitle cur) (Just . T.strip) mtitle
+                   , aiTitleProvisional = maybe (aiTitleProvisional cur) (const False) mtitle
                    , aiDesc  = maybe (aiDesc cur) (Just . sanitizeAgentHtml) mhtml
                    , aiBio   = maybe (aiBio cur) (Just . sanitizeAgentHtml) mbio
                    , aiBioAt = maybe (aiBioAt cur) (const (Just posix)) mbio
@@ -362,6 +387,8 @@ migrateContinued = do
       { aiParent  = aiParent n <|> aiParent o
       , aiDir     = if null (aiDir n) then aiDir o else aiDir n
       , aiTitle   = aiTitle n <|> aiTitle o
+      , aiTitleProvisional = if isJust (aiTitle n) then aiTitleProvisional n
+                                                   else aiTitleProvisional o
       , aiDesc    = aiDesc n <|> aiDesc o
       , aiWhen    = aiWhen n <|> aiWhen o
       , aiBorn    = aiBorn o <|> aiBorn n
@@ -380,7 +407,8 @@ migrateContinued = do
 moveAgentRecord :: Bool -> Text -> Text -> IO ()
 moveAgentRecord keepStory old new = withInfos $ \m ->
   let reparent i = i { aiParent = (\p -> if p == old then new else p) <$> aiParent i }
-      forget i = i { aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing
+      forget i = i { aiTitle = Nothing, aiTitleProvisional = False
+                   , aiDesc = Nothing, aiWhen = Nothing
                    , aiBio = Nothing, aiBioAt = Nothing, aiDone = Nothing
                    , aiDoneAt = Nothing }
       moved = case M.lookup old m of
@@ -496,7 +524,8 @@ blank :: Text -> FilePath -> AgentInfo
 blank sid dir = AgentInfo
   { aiSession = sid, aiParent = Nothing
   , aiDir = dropTrailingPathSeparator dir
-  , aiTitle = Nothing, aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
+  , aiTitle = Nothing, aiTitleProvisional = False
+  , aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
   , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing
   , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False
   , aiRanOn = Nothing, aiInterrupted = Nothing, aiTitleSent = Nothing }
@@ -840,7 +869,7 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anBorn     = Nothing
   , anParentName = Nothing
   , anChildNames = map (\(DemoAgent _ _ _ _ _ _ _ _ _ _ nm _ _) -> fromMaybe "" nm) kids
-  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = "claude"
+  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anLastSaid = Nothing, anAgent = "claude"
   , anChildren = map demoNode kids
   }
 #else
@@ -999,7 +1028,10 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     node r i = AgentNode
       { anSession = csrSession r
       , anName    = csrName r
-      , anTitle   = firstNonEmpty [ maybe "" T.strip (i >>= aiTitle)
+      -- A title the agent chose wins; a provisional one (its launch prompt)
+      -- only through the poll's chain, behind the conversation's own title.
+      , anTitle   = firstNonEmpty [ maybe "" T.strip
+                                      (mfilter (not . aiTitleProvisional) i >>= aiTitle)
                                   , csrTitle r
                                   , T.take 8 (csrSession r) ]
       , anState   = csrState r
@@ -1017,7 +1049,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       , anWorktrees = []
       , anBio = Nothing, anManager = False, anBorn = Nothing
       , anParentName = Nothing, anChildNames = []
-      , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = csrAgent r
+      , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = csrAgent r, anLastSaid = csrLastSaid r
       , anChildren = [] }
 
     -- A background session with no process, as a row: not live (a click
@@ -1060,7 +1092,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         , anWorktrees = []
         , anBio = Nothing, anManager = False, anBorn = Nothing
         , anParentName = Nothing, anChildNames = []
-        , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anApproval = Nothing
+        , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anApproval = Nothing, anLastSaid = Nothing
         , anAgent = "claude"
         , anChildren = [] }
 
@@ -1107,7 +1139,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = "claude"
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anLastSaid = Nothing, anAgent = "claude"
           , anChildren = [] }
       let exitedCands = sortOn (Down . fst) [ x | Right x <- cands ]
           interrupted i = isNothing (aiSuspended i) && isInterrupted posix i
@@ -1153,7 +1185,7 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
           , anWorktrees = []
           , anBio = Nothing, anManager = False, anBorn = Nothing
           , anParentName = Nothing, anChildNames = []
-          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anAgent = "claude"
+          , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing, anBackground = Nothing, anApproval = Nothing, anLastSaid = Nothing, anAgent = "claude"
           , anChildren = [] }
       return (startedNodes <> goneNodes)
 

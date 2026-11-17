@@ -40,6 +40,9 @@ module IDE.Web.Claude
   , runClaudeCmd
   , claudeCommandLine
   , claudeLatestActivity
+  , TranscriptGist(..)
+  , transcriptGist
+  , liveTranscriptPath
   , codexDiscover
   , describeToolUse
   , claudeProcessOf
@@ -93,11 +96,12 @@ import qualified Data.Text as T
 import Data.Time
        (UTCTime, NominalDiffTime, getCurrentTime, diffUTCTime)
 import Data.Time.Clock.POSIX (getPOSIXTime, posixSecondsToUTCTime)
+import Data.Time.Format.ISO8601 (iso8601ParseM)
 
 import Data.Aeson
        (Object, Value(..), decodeStrict', withObject, (.:), (.:?), object, (.=),
         encode)
-import Data.Aeson.Types (Pair, parseMaybe, FromJSON)
+import Data.Aeson.Types (Pair, Parser, parseMaybe, FromJSON)
 import qualified Data.Aeson.Key as Key (fromText)
 import qualified Data.Aeson.KeyMap as KM (lookup)
 import qualified Data.ByteString.Char8 as BS
@@ -134,7 +138,7 @@ import IDE.Web.Codex
        (CodexLive(..), codexLiveRecords, codexEnsureInstalled, codexWriteScripts,
         codexClaimLaunch, codexRememberLaunch, codexStarted, isCodexProgram,
         codexAvailable, codexInteractive, codexKnownPid,
-        codexTranscriptOf, rolloutFirstPrompt)
+        codexTranscriptOf, rolloutFirstPrompt, rolloutTurns, isRollout)
 import IDE.Reactive (readCell)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.DemoAgents (demoShowAgent)
@@ -195,7 +199,15 @@ data ClaudeLive = ClaudeLive
   { clPid        :: Int         -- ^ pid of the @claude@ process
   , clSession    :: Text        -- ^ session id (matches a transcript's 'csId')
   , clDir        :: FilePath    -- ^ its working directory
-  , clName       :: Maybe Text  -- ^ the name @/rename@ gave it, if any
+  , clName       :: Maybe Text  -- ^ the name @/rename@ (or @--name@) gave it, if
+                                --   any — never the one Claude Code DERIVES from
+                                --   its directory (@haskell-nix-d1@), which says
+                                --   nothing about the session: that is
+                                --   'clDerivedName'
+  , clDerivedName :: Maybe Text -- ^ the name Claude Code derived for it itself
+                                --   (@nameSource: derived@); only for matching
+                                --   it against what a terminal shows, not to
+                                --   label it
   , clStatus     :: Maybe Text  -- ^ semantic state the CLI writes alongside the
                                 --   pid: @busy@ (agent working) / @shell@ (a
                                 --   shell command running) / @waiting@ (blocked
@@ -282,6 +294,7 @@ claudeSessionFiles = (<>) <$> claudeOwnSessionFiles <*> (map fromCodex <$> codex
   where
     fromCodex r = ClaudeLive
       { clPid = cxPid r, clSession = cxSession r, clDir = cxDir r, clName = Nothing
+      , clDerivedName = Nothing
       , clStatus = Just (cxStatus r), clWaitingFor = cxWaitingFor r
       , clJob = Nothing, clKind = Nothing, clAgent = "codex" }
 
@@ -297,12 +310,16 @@ claudeOwnSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
         v <- decodeStrict' <$> BS.readFile f
         return $ case (v >>= objField "pid", v >>= objField "sessionId") of
           (Just p, Just i) ->
+            let name    = mfilter (not . T.null) (v >>= objField "name")
+                derived = (v >>= objField "nameSource") == Just ("derived" :: Text)
+            in
             [ ClaudeLive
                 { clPid        = p
                 , clSession    = i
                 , clDir        = maybe "" (dropTrailingPathSeparator . T.unpack)
                                        (v >>= objField "cwd")
-                , clName       = mfilter (not . T.null) (v >>= objField "name")
+                , clName       = if derived then Nothing else name
+                , clDerivedName = if derived then name else Nothing
                 , clStatus     = mfilter (not . T.null) (v >>= objField "status")
                 , clWaitingFor = mfilter (not . T.null) (v >>= objField "waitingFor")
                 , clJob        = mfilter (not . T.null) (v >>= objField "jobId")
@@ -594,7 +611,7 @@ claudePaneSessions = (`catch` \(_ :: SomeException) -> return []) $ do
                                , p <- clPid f : pidAncestors parents (clPid f) ]
         bgByName = M.fromListWith (\_ _ -> Nothing)
           [ (T.toLower n, Just l) | l <- M.elems live, clKind l == Just "bg"
-                                  , Just n <- [clName l] ]
+                                  , Just n <- [clName l <|> clDerivedName l] ]
         attached p ppid
           | ppid `S.member` hosts
           , Just t <- M.lookup p titles
@@ -1666,6 +1683,105 @@ claudeLatestActivity path = (`catch` \(_ :: SomeException) -> return Nothing) $ 
         return (describeToolUse name inp)
       "thinking" -> return "Thinking"
       _          -> return "Writing"
+
+-- | What a session's transcript says about it right now, for the Agents pane
+-- and every list of sessions: what it is about and what it last said.
+data TranscriptGist = TranscriptGist
+  { tgTitle    :: !(Maybe Text) -- ^ Claude Code's own title for the conversation
+                              --   (its latest @ai-title@ line — rewritten as the
+                              --   conversation moves on); Codex has none
+  , tgFirstTitle :: !(Maybe (Text, Maybe UTCTime))
+                              -- ^ the transcript's FIRST title, and roughly when
+                              --   it was written (the timestamp of the last line
+                              --   before it: its own line has none).  A fork's
+                              --   transcript starts with a copy of its parent's,
+                              --   titles included, and Claude Code goes on
+                              --   re-writing that title: a latest title equal to
+                              --   a first one that heads the file (no timestamp
+                              --   before it — copied in at the fork) or predates
+                              --   the fork's start is the parent's, not its own
+  , tgLastSaid :: !(Maybe Text) -- ^ the first line of the last thing the agent
+                              --   said (not a tool call, not thinking)
+  } deriving (Eq, Show)
+
+-- | The 'TranscriptGist' of a transcript (a Claude Code @.jsonl@, or a Codex
+-- rollout), from its last 256KB: both lines are appended every turn, so the
+-- latest are near the end.  Callers cache it by the file's modification time.
+-- Its fields are strict, and their texts forced here: a lazy one would keep
+-- the whole 256KB tail it was parsed from alive in that cache.
+transcriptGist :: FilePath -> IO TranscriptGist
+transcriptGist path
+  | isRollout path = (`catch` \(_ :: SomeException) -> return noGist) $
+      rolloutTurns path >>= \turns -> return $! forceGist
+        (TranscriptGist Nothing Nothing (firstLine <$> listToMaybe
+           (reverse [ t | (False, t) <- turns ])))
+  | otherwise = (`catch` \(_ :: SomeException) -> return noGist) $ do
+    tailLines <- withFile path ReadMode $ \h -> do
+      size <- hFileSize h
+      let back = min size (256 * 1024)
+      hSeek h SeekFromEnd (negate back)
+      BS.lines <$> BS.hGet h (fromIntegral back)
+    let latest :: (Value -> Parser Text) -> BS.ByteString -> Maybe Text
+        latest p mark = listToMaybe . mapMaybe (\l -> decodeStrict' l >>= parseMaybe p)
+                          . reverse $ filter (mark `BS.isInfixOf`) tailLines
+    -- The first title, from the head: Claude Code titles a conversation after
+    -- its first exchange, so it is near the top (give up after 4000 lines).
+    first <- withFile path ReadMode $ \h ->
+      let go :: Int -> Maybe UTCTime -> IO (Maybe (Text, Maybe UTCTime))
+          go 0 _ = return Nothing
+          go n ts = hIsEOF h >>= \case
+            True  -> return Nothing
+            False -> do
+              l <- BS.hGetLine h
+              case titleOf l of
+                Just t  -> return (Just (t, ts))
+                Nothing -> go (n - 1) (stampOf l <|> ts)
+      in go 4000 Nothing
+    return $! forceGist TranscriptGist
+      { tgTitle      = latest (withObject "l" (.: "aiTitle")) "\"ai-title\""
+                         >>= mfilter (not . T.null) . Just . T.strip
+      , tgFirstTitle = first
+      , tgLastSaid   = latest saidP "\"type\":\"assistant\"" }
+  where
+    noGist = TranscriptGist Nothing Nothing Nothing
+    forceGist g = T.length (fromMaybe "" (tgTitle g)) `seq`
+                  T.length (fromMaybe "" (tgLastSaid g)) `seq`
+                  maybe () (\(t, ts) -> T.length t `seq` ts `seq` ()) (tgFirstTitle g) `seq` g
+    titleOf l
+      | "\"ai-title\"" `BS.isInfixOf` l =
+          mfilter (not . T.null) . fmap T.strip $
+            decodeStrict' l >>= parseMaybe (withObject "l" (.: "aiTitle"))
+      | otherwise = Nothing
+    stampOf l = do
+      let (_, rest) = BS.breakSubstring "\"timestamp\":\"" l
+      if BS.null rest then Nothing else
+        iso8601ParseM (BS.unpack (BS.takeWhile (/= '"') (BS.drop 13 rest)))
+    -- An assistant line of the main conversation carrying prose (a subagent's
+    -- are sidechain lines; tool calls and thinking are not "said").
+    saidP = withObject "line" $ \o -> do
+      t  <- o .: "type"
+      sc <- o .:? "isSidechain"
+      if t /= ("assistant" :: Text) || sc == Just True then fail "not said" else do
+        m  <- o .: "message"
+        cs <- m .: "content"
+        case [ x | Object c <- reverse (cs :: [Value])
+                 , Just ("text" :: Text) <- [parseMaybe (.: "type") c]
+                 , Just x <- [parseMaybe (.: "text") c]
+                 , not (T.null (T.strip x)) ] of
+          (x : _) -> return (firstLine x)
+          []      -> fail "no prose"
+    -- Its first line, as plain text: the card shows it raw, so markdown's
+    -- code ticks, emphasis and heading/bullet marks would show as noise.
+    firstLine = T.take 200 . T.strip . plain . T.takeWhile (/= '\n') . T.strip
+    plain = T.replace "**" "" . T.filter (/= '`')
+          . T.dropWhile (`elem` ("#-*> " :: String))
+
+-- | Where a live session's transcript is: its Codex rollout, or the Claude
+-- Code transcript for its directory.
+liveTranscriptPath :: ClaudeLive -> IO (Maybe FilePath)
+liveTranscriptPath l
+  | clAgent l == "codex" = codexTranscriptOf (clSession l)
+  | otherwise            = Just <$> claudeTranscriptPath (clDir l) (clSession l)
 
 -- | A tool call in a few words — @Bash: cabal build@, @Edit Main.hs@,
 -- @Agent: review the diff@ — for the Agents pane's activity line (from a
