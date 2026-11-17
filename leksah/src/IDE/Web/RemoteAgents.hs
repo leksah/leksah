@@ -29,6 +29,10 @@ module IDE.Web.RemoteAgents
   , remoteActivity
   , remoteInfoBytes
   , remotePaneSessions
+  , remotePaneOf
+  , remoteHostOf
+  , remoteTranscriptTail
+  , remoteAgentName
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
@@ -41,20 +45,22 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import System.Directory (createDirectoryIfMissing, getHomeDirectory)
 import System.Exit (ExitCode(..))
+import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config (Config(..), RemoteC(..), currentConfig)
 import IDE.Utils.RemoteExec (runSsh)
-import IDE.Web.AgentNames (NameRec(..), nameSessions, setRemoteNames)
+import IDE.Web.AgentNames (NameRec(..), nameSessions, noteRemoteName, setRemoteNames)
 import IDE.Web.Claude
        (ClaudeLive(..), TranscriptGist(..), gistOfTail, latestActivityOf,
         parseSessionFile, pidAncestors)
@@ -66,6 +72,8 @@ data HostSnapshot = HostSnapshot
   { hsAt       :: UTCTime              -- ^ when it was last read successfully
   , hsLive     :: [ClaudeLive]         -- ^ its running sessions
   , hsPanes    :: Map Text Text        -- ^ tmux pane id → the session it shows
+  , hsPaneAt   :: Map Text (Text, Text) -- ^ tmux pane id → its tmux session and
+                                       --   window ids (raw, on the host)
   , hsNames    :: (Text, Map Text NameRec)   -- ^ its name store, and its cksum
   , hsInfos    :: (Text, LBS.ByteString)     -- ^ its agents.json, and its cksum
   , hsTails    :: Map Text (Text, TranscriptGist, Maybe Text)
@@ -74,7 +82,7 @@ data HostSnapshot = HostSnapshot
   }
 
 emptySnapshot :: UTCTime -> HostSnapshot
-emptySnapshot t = HostSnapshot t [] M.empty ("", M.empty) ("", "") M.empty
+emptySnapshot t = HostSnapshot t [] M.empty M.empty ("", M.empty) ("", "") M.empty
 
 {-# NOINLINE snapshotsRef #-}
 snapshotsRef :: IORef (Map Text HostSnapshot)
@@ -113,6 +121,45 @@ remoteInfoBytes = map (\(h, hs) -> (h, snd (hsInfos hs))) . M.toList <$> readIOR
 remotePaneSessions :: Text -> IO (Map Text Text)
 remotePaneSessions host = maybe M.empty hsPanes . M.lookup host <$> readIORef snapshotsRef
 
+-- | A remote session's pane, as server-qualified tmux ids
+-- (@ssh:\/\/HOST#$S@, @ssh:\/\/HOST#\@W@, @ssh:\/\/HOST#%P@): the shape every
+-- server-aware tmux helper ('IDE.Web.TmuxServer.tmuxOnIds') takes, so
+-- sending keys, capturing the screen or killing the pane reach the host.
+remotePaneOf :: Text -> IO (Maybe (Text, Text, Text))
+remotePaneOf sid = do
+  m <- readIORef snapshotsRef
+  return $ listToMaybe
+    [ (q h s, q h w, q h pane)
+    | (h, hs) <- M.toList m, (pane, sid') <- M.toList (hsPanes hs), sid' == sid
+    , Just (s, w) <- [M.lookup pane (hsPaneAt hs)] ]
+  where q h x = "ssh://" <> h <> "#" <> x
+
+-- | The host a remote session runs on.
+remoteHostOf :: Text -> IO (Maybe Text)
+remoteHostOf sid = do
+  m <- readIORef snapshotsRef
+  return $ listToMaybe [ h | (h, hs) <- M.toList m, any ((== sid) . clSession) (hsLive hs) ]
+
+-- | The last 512KB of a remote session's transcript, fetched now (one ssh
+-- round trip) into @~\/.leksah\/remote-tails\/SID.jsonl@ — a local file the
+-- transcript readers take as they take any other.  'Nothing' when the session
+-- is on no shared host, or its transcript cannot be read.
+remoteTranscriptTail :: Text -> IO (Maybe FilePath)
+remoteTranscriptTail sid = remoteHostOf sid >>= \case
+  Nothing   -> return Nothing
+  Just host -> (`catch` \(_ :: SomeException) -> return Nothing) $ do
+    (code, out, _) <- runSsh host
+      "for x in \"$HOME\"/.claude/projects/*/\"$0\".jsonl; do [ -f \"$x\" ] && exec tail -c 524288 \"$x\"; done; exit 3"
+      [sid] mempty
+    if code /= ExitSuccess then return Nothing else do
+      home <- getHomeDirectory
+      let dir = home </> ".leksah" </> "remote-tails"
+          f   = dir </> (T.unpack sid <> ".jsonl")
+      createDirectoryIfMissing True dir
+      -- (from the first whole line: tail cut the first one short)
+      BS.writeFile f (BS.drop 1 (BC.dropWhile (/= '\n') out))
+      return (Just f)
+
 -- | Snapshot every shared host every few seconds, forever.
 startRemoteAgentsPoll :: IO ThreadId
 startRemoteAgentsPoll = forkIO . forever $ do
@@ -146,6 +193,21 @@ pollHost host = remoteTmux host >>= \case
       setRemoteNames host (snd (hsNames hs))
       nameUnnamed host hs
 
+-- | Name session @sid@ in @host@'s own store (keeping the name it has, if it
+-- has one) — a launch on that host, which needs the name before the agent
+-- starts — and remember it here at once.
+remoteAgentName :: Text -> Text -> IO (Either Text Text)
+remoteAgentName host sid = do
+  now <- realToFrac <$> getPOSIXTime
+  r <- remoteModify host "agent-names.json" $ \old -> do
+    let m  = fromMaybe M.empty (decode' old)
+        m' = nameSessions now [sid] m
+    return (if m' == m then old else encode m', maybe "" nrName (M.lookup sid m'))
+  case r of
+    Right n | not (T.null n) -> noteRemoteName host sid n >> return (Right n)
+    Right _  -> return (Left "the host's name store gave no name")
+    Left err -> return (Left err)
+
 -- | Name, in the host's own store, its live sessions that have no name there.
 nameUnnamed :: Text -> HostSnapshot -> IO ()
 nameUnnamed host hs = do
@@ -164,6 +226,7 @@ parseSnapshot host now p fs = HostSnapshot
   { hsAt    = now
   , hsLive  = live
   , hsPanes = panes
+  , hsPaneAt = paneAt
   , hsNames = names
   , hsInfos = infos
   , hsTails = tails
@@ -180,11 +243,13 @@ parseSnapshot host now p fs = HostSnapshot
     -- own process.
     owners   = M.fromList [ (a, clSession l) | l <- live
                                             , a <- clPid l : pidAncestors parents (clPid l) ]
+    paneRows = [ ws | (t, _, b) <- fs, t == "T", ws <- map BC.words (BC.lines b) ]
     panes    = M.fromList [ (T.pack (BC.unpack pid), sid)
-                          | (t, _, b) <- fs, t == "T"
-                          , (pid : ppid : _) <- map BC.words (BC.lines b)
+                          | (pid : ppid : _) <- paneRows
                           , Just pp <- [readMaybe (BC.unpack ppid)]
                           , Just sid <- [M.lookup pp owners] ]
+    paneAt   = M.fromList [ (T.pack (BC.unpack pid), (T.pack (BC.unpack sess), T.pack (BC.unpack win)))
+                          | (pid : _ : sess : win : _) <- paneRows ]
     store tag decodeIt keep = case [ (meta, b) | (t, meta, b) <- fs, t == tag ] of
       ((meta, b) : _)
         | Just c <- BC.stripPrefix "=" meta -> (dec c, snd keep)   -- unchanged
@@ -242,7 +307,7 @@ snapshotScript = T.concat
   , "frame() { printf '@@%s %s %s\\n' \"$1\" \"$2\" \"$(wc -c < \"$3\" | tr -d ' ')\"; cat \"$3\"; }; "
   , "for f in \"$HOME\"/.claude/sessions/*.json; do [ -f \"$f\" ] && frame S - \"$f\"; done; "
   , "ps -Ao pid=,ppid= > \"$tmp\"; frame P - \"$tmp\"; "
-  , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid}' > \"$tmp\" 2>/dev/null; "
+  , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid} #{session_id} #{window_id}' > \"$tmp\" 2>/dev/null; "
   , "frame T - \"$tmp\"; "
   , "st() { f=\"$HOME/.leksah-0.17/$1\"; [ -f \"$f\" ] || return 0; "
   ,   "c=$(cksum < \"$f\" | cut -d' ' -f1,2 | tr ' ' :); "

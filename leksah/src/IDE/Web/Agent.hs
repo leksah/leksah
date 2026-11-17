@@ -104,11 +104,11 @@ import System.FilePath ((</>), dropTrailingPathSeparator, normalise)
 import System.IO
        (withFile, IOMode(ReadMode), hSeek, SeekMode(SeekFromEnd), hFileSize)
 
-import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
 import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
-        moveAgentRecord, recordAgentFork, setAgentManager, setAgentRole,
+        moveAgentRecord, recordAgentFork, recordRemoteFork, setAgentManager, setAgentRole,
         setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
@@ -141,9 +141,13 @@ import IDE.Web.Codex
         isRollout, rolloutTurns)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.ReplTmux
-       (freshSessionName, liveRunPanes, newAgentWindow, pasteTo,
+       (freshSessionName, liveRunPanes, newAgentWindow, newRemoteAgentWindow, pasteTo,
         sendKeysTo, splitPane, tmuxCmd, tmuxOut)
-import IDE.Web.TmuxServer (TmuxServer(LocalServer), tmuxStdoutOn)
+import IDE.Web.TmuxServer
+       (TmuxServer(..), rawTmuxId, selectWindowAsViewer, tmuxCmdOn, tmuxOnIds, tmuxStdoutOn)
+import IDE.Web.RemoteTermRequest (requestRemoteTerm)
+import IDE.Web.RemoteAgents
+       (remoteAgentName, remoteHostOf, remoteLiveSessions, remotePaneOf, remoteTranscriptTail)
 
 -- | Where the child's pane goes.
 data ForkPlace
@@ -248,8 +252,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                | otherwise  = parent
           dir  = dropTrailingPathSeparator . fromMaybe (frCwd fr) $
                    frDir fr `orElse` (if isNothing from then Nothing else parentDir)
-      if | isRemotePath dir -> return (Left ("cannot start an agent in a remote \
-                                             \directory: " <> T.pack dir))
+      if | Just (host, rdir) <- parseRemotePath dir -> goRemote host rdir from parent
          | Just f <- from, Just pd <- parentDir, dropTrailingPathSeparator pd /= dir ->
              return . Left $
                "a forked conversation has to stay in its own directory (session "
@@ -268,6 +271,44 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                                   , asCodex   = frCodex fr }
              (_, key, line) <- claudeCommandLine (ClaudeAgent spec)
              place live spec key line
+
+    -- On another machine (a project there): the agent runs THERE, in the
+    -- Agents session of its leksah tmux server, named and recorded in that
+    -- machine's own stores — so the leksah running there, if any, and every
+    -- other one showing the machine know it as the same agent.
+    goRemote host rdir from parent = do
+      sameHost <- maybe (return True) (fmap (== Just host) . remoteHostOf) from
+      if not sameHost
+        then return . Left $
+          "a conversation can only be forked on the machine it runs on: use \
+          \--fresh to start an agent on " <> host
+        else do
+          child <- newAgentSessionId
+          remoteAgentName host child >>= \case
+            Left err -> return (Left ("could not name the agent on " <> host <> ": " <> err))
+            Right name -> do
+              recordRemoteFork host parent child rdir (frPrompt fr)
+                               (roleName <$> mrole) (frManager fr)
+              let spec = AgentSpec { asDir     = renderRemotePath host rdir
+                                   , asSession = child
+                                   , asFrom    = from
+                                   , asPrompt  = frPrompt fr
+                                   , asParent  = parent
+                                   , asRoleNote = roleNote <$> mrole
+                                   , asResume  = False
+                                   , asManager = frManager fr
+                                   , asCodex   = False }
+              (_, _, line) <- claudeCommandLine (ClaudeAgent spec)
+              -- (the run key as a leksah on that machine spells it: host-local)
+              let key = T.pack rdir <> "#claude#" <> child
+              newRemoteAgentWindow host name rdir key line >>= \case
+                Nothing -> return (Left ("could not start a window on " <> host))
+                Just (s, _, pane) -> do
+                  requestRemoteTerm (host <> "#" <> rawTmuxId s)
+                  _ <- forkIO $ do
+                    threadDelay 1500000
+                    selectWindowAsViewer (SshServer host) (T.unpack (rawTmuxId pane))
+                  return (Right (child, name))
 
     -- Beside the parent when we can find its pane; its own tab otherwise.
     place live spec key line = do
@@ -336,7 +377,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
 -- the status surfaces: needs-you first, then working, then idle.
 agentList :: Bool -> Maybe Text -> IO Text
 agentList withStopped me = do
-  live  <- claudeLiveBySession
+  live  <- allLiveSessions
   panes <- panesBySession
   -- (--all) The agents that are not running but are still waiting to be
   -- brought back: interrupted by a restart, or suspended.  Same columns, the
@@ -350,7 +391,10 @@ agentList withStopped me = do
                , T.takeWhile (/= '\n') (anTitle n), "" ]
            | n <- flat forest, anState n `elem` ["interrupted", "suspended"] ]
   if M.null live && null stopped then return "No Claude Code sessions are running.\n" else do
-    names  <- touchAgentNames (M.keys live)
+    -- (names this machine's sessions; a remote one is named in its own
+    -- machine's store — "IDE.Web.RemoteAgents" — and 'agentNames' has it)
+    names  <- M.union <$> touchAgentNames [ k | (k, l) <- M.toList live, isNothing (clHost l) ]
+                      <*> agentNames
     titles <- agentTitles
     polled <- M.fromList . map (\r -> (csrSession r, csrTitle r)) . csRows <$> claudeStatusNow
     events <- sessionEvents
@@ -443,7 +487,7 @@ detailWith me l = case (liveState l, me) of
 -- (ready for input, i.e. finished), @gone@ (not running any more).  This is
 -- what @leksah-cmd agent wait@ polls.
 agentStatus :: Text -> IO Text
-agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
+agentStatus sid = allLiveSessions >>= \live -> case M.lookup sid live of
   Nothing -> startingPane sid >>= \case
     -- Its pane is there but the CLI hasn't registered the session.  Nearly
     -- always the first-run question a directory gets asked once ("is this a
@@ -459,7 +503,8 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
         return "suspended\tits process was ended on purpose; `agent resume` brings it back\n"
       _ -> return "gone\tthat session is not running\n"
   Just l  -> do
-    pane <- M.lookup sid <$> panesBySession
+    pane <- (<|>) <$> (M.lookup sid <$> panesBySession)
+                  <*> (fmap (\(_, _, p) -> p) <$> remotePaneOf sid)
     ev   <- M.lookup sid <$> sessionEvents
     -- (Its context use, cost and rate limits last, when its status line
     -- has reported: a field a poller reading the first few never sees.)
@@ -477,6 +522,19 @@ agentStatus sid = claudeLiveBySession >>= \live -> case M.lookup sid live of
 -- registered yet.  A fork parked on a first-run question ('agentStatus'\'s
 -- @starting@) has a pane but no session for 'showLiveSession' to find, and that
 -- pane is exactly where someone needs to look.
+-- | Every live session: this machine's, and those on the hosts whose leksah
+-- tmux server this leksah shares ("IDE.Web.RemoteAgents" — their 'clHost' set).
+allLiveSessions :: IO (Map Text ClaudeLive)
+allLiveSessions = do
+  local  <- claudeLiveBySession
+  remote <- remoteLiveSessions
+  return (local `M.union` M.fromList [ (clSession l, l) | l <- remote ])
+
+-- | Where a session's pane is: here ('paneForSession'), else on its host, as
+-- server-qualified ids the tmux helpers route there ('remotePaneOf').
+agentPane :: Text -> IO (Maybe (Text, Text, Text))
+agentPane sid = paneForSession sid >>= maybe (remotePaneOf sid) (return . Just)
+
 showAgentPane :: Text -> IO Bool
 showAgentPane = showAgentPaneWith False
 
@@ -492,7 +550,18 @@ showAgentPaneWith here sid = showLiveSessionWith' sid >>= \case
     panes <- liveRunPanes
     case [ (s, w, p) | (k, s, w, p) <- panes, ("#claude#" <> sid) `T.isSuffixOf` k ] of
       ((s, w, p) : _) -> showTmuxPaneWith here s w p >> return True
-      [] -> return False
+      -- On a shared host: bring up (or open) the tab on its session there, then
+      -- — once that tab's viewer session exists — make its window this
+      -- viewer's current one and its pane the window's active one.
+      [] -> remotePaneOf sid >>= \case
+        Just (s, _, p) | Just (host, _) <- T.breakOn "#" <$> T.stripPrefix "ssh://" s -> do
+          requestRemoteTerm (host <> "#" <> rawTmuxId s)
+          _ <- forkIO $ do
+            threadDelay 1500000
+            selectWindowAsViewer (SshServer host) (T.unpack (rawTmuxId p))
+            tmuxCmdOn (SshServer host) ["select-pane", "-t", T.unpack (rawTmuxId p)]
+          return True
+        _ -> return False
   where showLiveSessionWith' = if here then showLiveSessionHere else showLiveSession
 
 -- | Type @txt@ into a live session's composer, optionally pressing Enter to
@@ -503,7 +572,7 @@ showAgentPaneWith here sid = showLiveSessionWith' sid >>= \case
 -- newlines would each submit what had been typed so far (turning one report into
 -- several truncated turns).
 agentSend :: Text -> Bool -> Text -> IO Text
-agentSend sid submit txt = paneForSession sid >>= \case
+agentSend sid submit txt = agentPane sid >>= \case
   Nothing -> return $ "session " <> sid <> " is not in a pane leksah can reach \
                       \(not running, remote, or in a terminal outside leksah)\n"
   Just (_, _, pane) -> do
@@ -529,7 +598,8 @@ agentSend sid submit txt = paneForSession sid >>= \case
 agentRead :: Text -> Int -> IO Text
 agentRead sid n = do
   st    <- T.strip <$> agentStatus sid
-  mpath <- transcriptFor sid
+  -- (here, else fetched from the shared host it runs on)
+  mpath <- transcriptFor sid >>= maybe (remoteTranscriptTail sid) (return . Just)
   case mpath of
     Nothing   -> return . T.unlines $
         [ "state\t" <> st, "No transcript found for " <> sid ]
@@ -656,8 +726,11 @@ agentRoleList cwd = agentRoles cwd >>= \case
 -- turn it is in the middle of.
 agentSuspend :: Text -> Bool -> IO Text
 agentSuspend sid force = do
-  live <- claudeLiveBySession
-  name <- agentNameFor sid
+  live <- allLiveSessions
+  -- (a remote agent keeps the name its own machine's store gives it)
+  name <- if maybe False (isJust . clHost) (M.lookup sid live)
+            then M.findWithDefault (T.take 8 sid) sid <$> agentNames
+            else agentNameFor sid
   case M.lookup sid live of
     Nothing -> agentInfoOf sid >>= \case
       Just i | isJust (aiSuspended i) -> return (name <> " is already suspended.\n")
@@ -667,11 +740,12 @@ agentSuspend sid force = do
           return $ name <> " is " <> liveDetail l
                 <> "; suspending it now would lose what it is doing. Wait for it \
                    \to go idle, or pass --force.\n"
-      | otherwise -> paneForSession sid >>= \case
+      | otherwise -> agentPane sid >>= \case
           Nothing -> return $ name <> " is not in a pane leksah can reach, so it \
                                      \cannot be suspended from here.\n"
           Just (_, _, pane) -> do
-            setAgentSuspended sid True
+            -- (the record is its own machine's: a remote one is not marked here)
+            when (isNothing (clHost l)) $ setAgentSuspended sid True
             _ <- sendKeysTo pane ["C-u"]
             _ <- sendKeysTo pane ["-l", "/exit"]
             _ <- sendKeysTo pane ["Enter"]
@@ -681,8 +755,9 @@ agentSuspend sid force = do
               void (sendKeysTo pane ["Enter"])
             _ <- forkIO $ do
               threadDelay 6000000
-              still <- M.member sid <$> claudeLiveBySession
-              when still $ tmuxCmd ["kill-pane", "-t", T.unpack pane]
+              still <- M.member sid <$> allLiveSessions
+              when still . tmuxOnIds [pane] () $ \srv raw ->
+                tmuxCmdOn srv ["kill-pane", "-t", raw pane]
             return $ "Suspended " <> name <> ". Resume it with: leksah-cmd agent \
                      \resume " <> T.toLower name <> "\n"
 
@@ -1299,11 +1374,12 @@ approvalText name inp = case parseMaybe (.: "command") inp of
 --     so a second click, or a card one refresh behind, never approves the
 --     NEXT prompt, which nobody has seen yet.
 agentAnswerApproval :: Text -> Bool -> Maybe Text -> IO Text
-agentAnswerApproval sid yes mexpected = paneForSession sid >>= \case
+agentAnswerApproval sid yes mexpected = agentPane sid >>= \case
   Nothing -> return "Its pane can't be found, so there is nothing to answer.\n"
   Just (_, _, pane) -> do
     -- (The whole screen: 'tmuxOut' keeps only the first line.)
-    screen <- tmuxStdoutOn LocalServer ["capture-pane", "-p", "-t", T.unpack pane]
+    screen <- tmuxOnIds [pane] "" $ \srv raw ->
+                tmuxStdoutOn srv ["capture-pane", "-p", "-t", raw pane]
     recorded <- fmap fst . sePermission <$> eventsFor sid
     codex <- maybe False ((== "codex") . clAgent) . M.lookup sid <$> claudeLiveBySession
     let flat = T.unwords (T.words screen)

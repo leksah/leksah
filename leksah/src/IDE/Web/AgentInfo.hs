@@ -25,6 +25,7 @@ module IDE.Web.AgentInfo
   ( AgentInfo(..)
   , AgentNode(..)
   , recordAgentFork
+  , recordRemoteFork
   , describeAgent
   , dismissAgent
   , markAgentDone
@@ -86,7 +87,7 @@ import System.FilePath (dropTrailingPathSeparator, takeFileName)
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath, writeSidecar)
-import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore)
+import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore, remoteModify)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seCompactingAt, seSubagentsAt, seTaskSummary, seTool, sessionEvents)
@@ -375,6 +376,28 @@ recordAgentFork parent child dir mprompt mfrom = do
            , aiBorn   = Just (realToFrac (utcTimeToPOSIXSeconds now)) } m
        , () )
   where firstLine = T.take 70 . T.strip . T.takeWhile (/= '\n')
+
+-- | 'recordAgentFork' for an agent launched on another machine: the record
+-- goes into THAT machine's store (its @agents.json@, written by compare-and-
+-- swap — "IDE.Web.SharedStore"), where every leksah showing the machine reads
+-- it.  @rdir@ is host-local.  Best effort: the agent runs either way.
+recordRemoteFork :: Text -> Maybe Text -> Text -> FilePath -> Maybe Text -> Maybe Text
+                 -> Bool -> IO ()
+recordRemoteFork host parent child rdir mprompt mrole manager = do
+  now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
+  void . (`catch` \(_ :: SomeException) -> return (Left "")) $
+    remoteModify host "agents.json" $ \old -> do
+      let is = fromMaybe [] (decode' old) :: [AgentInfo]
+          m  = M.fromList [ (aiSession i, i) | i <- is ]
+          i' = (blank child rdir)
+                 { aiParent = parent
+                 , aiTitle  = T.take 70 . T.strip . T.takeWhile (/= '\n') <$> mprompt
+                 , aiTitleProvisional = Just (isJust mprompt)
+                 , aiRole   = mrole
+                 , aiManager = manager
+                 , aiBorn   = Just now }
+          m' = M.insertWith (\_ o -> o) child i' m
+      return (if m' == m then old else encode (M.elems m'), ())
 
 -- | What a fork of session @src@ takes over from it: its @\/rename@ (or derived)
 -- name, the titles leksah holds for it, and its conversation's title.

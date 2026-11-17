@@ -31,6 +31,7 @@ module IDE.Web.AgentNames
   , nameSessions
   , setRemoteNames
   , remoteNameOf
+  , noteRemoteName
   ) where
 
 import Data.IORef (IORef, newIORef, readIORef, atomicWriteIORef, atomicModifyIORef')
@@ -130,7 +131,10 @@ viewNames g = g <$> peekStore namesStore
 
 -- | The session's name, giving it one if it has none yet.
 agentNameFor :: Text -> IO Text
-agentNameFor sid = do
+agentNameFor sid = remoteNameOf sid >>= \case
+ -- (a session on another machine is named in that machine's store, never here)
+ Just n  -> return n
+ Nothing -> do
   held <- readIORef heldRef
   withNames $ \now m -> let m' = touch held now m sid
                         in (m', maybe "" nrName (M.lookup sid m'))
@@ -195,6 +199,14 @@ nameSessions now sids m = foldl' (touch S.empty now) m sids
 -- | Replace what is known of @host@'s store.
 setRemoteNames :: Text -> Map Text NameRec -> IO ()
 setRemoteNames host m = atomicModifyIORef' remoteNamesRef (\r -> (M.insert host m r, ()))
+
+-- | Remember at once what @host@'s store now calls @sid@ (the next snapshot
+-- would bring it, but a launch needs the name before then).
+noteRemoteName :: Text -> Text -> Text -> IO ()
+noteRemoteName host sid name = do
+  now <- realToFrac <$> getPOSIXTime
+  atomicModifyIORef' remoteNamesRef $ \r ->
+    (M.insertWith M.union host (M.singleton sid (NameRec name now Nothing)) r, ())
 
 -- | A remote session's name, from its machine's store.
 remoteNameOf :: Text -> IO (Maybe Text)

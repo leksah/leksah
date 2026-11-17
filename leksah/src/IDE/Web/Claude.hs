@@ -129,7 +129,8 @@ import System.IO
        (withFile, IOMode(ReadMode), hIsEOF, hSeek,
         SeekMode(SeekFromEnd), hFileSize)
 
-import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
+import IDE.Utils.RemoteExec (runSsh)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Exit (ExitCode(..))
 import System.Process
@@ -905,7 +906,11 @@ claudeCommandLine cmd = do
   -- (installed, and not turned off for this project): worked out once.
   plugin    <- if isRemotePath d then return False else leksahPluginEnabledFor (Just d)
   mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag plugin
-  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag plugin d
+  -- (on another machine: the hooks and MCP server a leksah THERE set up, when
+  -- one has — their files name that machine's leksah-cmd — else none)
+  hooksFlag <- case parseRemotePath d of
+    Just (host, _) -> remoteAgentFlags host
+    Nothing        -> claudeHooksFlag plugin d
   -- The agent's own name, when its session id is known at launch — so it can
   -- tell the user and other agents who it is.
   myName <- traverse agentNameFor ownSession
@@ -1258,6 +1263,24 @@ claudeHooksFlag installed dir = (`catch` \(_ :: SomeException) -> return "") $
         [ "hooks" .= leksahHooks exe script | not installed ]
         <> [ "statusLine" .= statusLine ]
       return (" --settings " <> T.pack path)
+
+-- | The @--settings@ and @--mcp-config@ flags for a session launched on
+-- @host@: the files a leksah running there wrote for its own sessions (its
+-- hooks call ITS leksah-cmd, which reaches it — or, when it is not running,
+-- the machine's event log), or nothing when no leksah has run there.  One ssh
+-- round trip; absolute paths, as the host spells them.
+remoteAgentFlags :: Text -> IO Text
+remoteAgentFlags host = (`catch` \(_ :: SomeException) -> return "") $ do
+  (_, out, _) <- runSsh host
+    (T.concat [ "for f in \"$HOME/.leksah/settings-statusline.json\" \"$HOME/.leksah/hooks.json\"; "
+              , "do [ -f \"$f\" ] && { echo \"S $f\"; break; }; done; "
+              , "[ -f \"$HOME/.leksah/mcp.json\" ] && echo \"M $HOME/.leksah/mcp.json\"; exit 0" ])
+    [] mempty
+  return . T.concat $
+    [ case T.stripPrefix "S " l of
+        Just f  -> " --settings " <> shq f
+        Nothing -> maybe "" ((" --mcp-config " <>) . shq) (T.stripPrefix "M " l)
+    | l <- T.lines (T.pack (BS.unpack out)) ]
 
 -- | The two programs the hooks run: @leksah-cmd@ (its path), and the worktree
 -- PostToolUse script, which @leksah-cmd hooks write-script@ (re)writes.
