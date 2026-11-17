@@ -194,7 +194,7 @@ usageSummary now u = T.intercalate " · " $ catMaybes
     live mw = mw >>= \w -> if rwResetsAt w > now then Just w else Nothing
     rate k w = Just (k <> " " <> pct (rwUsedPct w))
 
--- | Everything, one fact per line, for a tooltip, the expanded card and
+-- | Everything, one fact per line, for the card's usage tooltip and
 -- `agent events`.  Reset times are local clock times (a weekday too when
 -- more than a day away); a window that has already reset is left out, as
 -- Claude Code itself drops it, and a prompt cache past its expiry is cold.
