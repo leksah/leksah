@@ -169,6 +169,7 @@ import System.Exit (ExitCode(ExitSuccess))
 import IDE.Web.Claude
        (claudeSessionsFor, csId, csTitle, claudePaneSessions, ClaudeLive(..))
 import IDE.Web.AgentNames (agentContinuations, agentNames)
+import IDE.Web.RemoteAgents (remotePaneSessions)
 import IDE.Web.Events (TerminalEvents(..))
 import IDE.Web.ReplTmux
        (tmuxSocket, tmuxCmd, replSessionName, ffcabalTmuxEnv, findReplWindow,
@@ -1545,8 +1546,17 @@ sshTmux host args = tmuxRunOn (SshServer host) args "" >>= \r -> return $ case r
 -- | The session/window/pane tree of a remote host's (default-socket) tmux —
 -- same shape as 'listTerminalTree'.  'Nothing' = unreachable / no server.
 listRemoteTerminalTree :: Text -> IO (Maybe (Map Text (Text, [TmuxWindow])))
-listRemoteTerminalTree host =
-    fmap parsePaneTree <$> sshTmux host ["list-panes", "-a", "-f", viewerFilterArg, "-F", paneTreeFormat]
+listRemoteTerminalTree host = do
+    tree <- fmap parsePaneTree <$> sshTmux host ["list-panes", "-a", "-f", viewerFilterArg, "-F", paneTreeFormat]
+    -- Which agent each pane shows: the host's own snapshot says which session
+    -- it runs ("IDE.Web.RemoteAgents"), its machine's store what that one is
+    -- called; failing that, the tag a leksah on the host gave the pane.
+    owners <- remotePaneSessions host
+    names  <- agentNames
+    let nameOf p = (M.lookup (rawTmuxId (tpId p)) owners >>= (`M.lookup` names))
+                     <|> mfilter (not . T.null) (Just (tpAgentTag p))
+        enrich w = w { twPanes = map (\p -> p { tpAgentName = nameOf p }) (twPanes w) }
+    return (fmap (M.map (fmap (map enrich))) tree)
 
 -- | The @(host, target)@ behind an @ssh://host[#target]@ terminal tab key
 -- ('Nothing' for local keys).  An empty target means the default session

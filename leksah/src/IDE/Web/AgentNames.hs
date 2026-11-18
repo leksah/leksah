@@ -26,9 +26,14 @@ module IDE.Web.AgentNames
   , agentContinuations
   , agentLastSeen
   , holdAgentNames
+    -- * Names on other machines
+  , NameRec(..)
+  , nameSessions
+  , setRemoteNames
+  , remoteNameOf
   ) where
 
-import Data.IORef (IORef, newIORef, readIORef, atomicWriteIORef)
+import Data.IORef (IORef, newIORef, readIORef, atomicWriteIORef, atomicModifyIORef')
 import qualified Data.Set as S
 import Control.Exception (catch, SomeException)
 import Control.Monad (mfilter)
@@ -164,9 +169,40 @@ reserved :: S.Set Text -> Double -> Text -> NameRec -> Bool
 reserved held now sid r = isNothing (nrContinuedIn r)
   && (now - nrSeen r < reserveFor || sid `S.member` held)
 
--- | The session → name map, without changing anything.
+-- | The session → name map, without changing anything — this machine's
+-- sessions and, from their own machines' stores, the remote ones this leksah
+-- shows ('setRemoteNames').
 agentNames :: IO (Map Text Text)
-agentNames = viewNames (M.map nrName)
+agentNames = do
+  local  <- viewNames (M.map nrName)
+  remote <- M.unions . M.elems <$> readIORef remoteNamesRef
+  return (local `M.union` M.map nrName remote)
+
+--------------------------------------------------------------------------------
+-- Names on other machines
+--
+-- An agent's name lives in the store of the machine it runs on, so every
+-- leksah that shows it agrees.  "IDE.Web.RemoteAgents" reads those stores
+-- (and names a remote session no-one has named yet, there) and hands the
+-- result here, so lookups by name find remote agents too.
+
+-- | Name every one of @sids@ that has no name in @m@ (a machine's store) yet,
+-- and mark them seen: 'touchAgentNames' for a store that is not this
+-- machine's.
+nameSessions :: Double -> [Text] -> Map Text NameRec -> Map Text NameRec
+nameSessions now sids m = foldl' (touch S.empty now) m sids
+
+-- | Replace what is known of @host@'s store.
+setRemoteNames :: Text -> Map Text NameRec -> IO ()
+setRemoteNames host m = atomicModifyIORef' remoteNamesRef (\r -> (M.insert host m r, ()))
+
+-- | A remote session's name, from its machine's store.
+remoteNameOf :: Text -> IO (Maybe Text)
+remoteNameOf sid = fmap nrName . M.lookup sid . M.unions . M.elems <$> readIORef remoteNamesRef
+
+{-# NOINLINE remoteNamesRef #-}
+remoteNamesRef :: IORef (Map Text (Map Text NameRec))
+remoteNamesRef = unsafePerformIO (newIORef M.empty)
 
 -- | Mark one session seen, naming it first if it has no name.
 touch :: S.Set Text -> Double -> Map Text NameRec -> Text -> Map Text NameRec
@@ -229,7 +265,10 @@ renameAgent sid raw
 -- passed through unchanged, so the callers keep working on ids leksah has no
 -- name for (an exited session found only through its transcript).
 resolveAgentName :: [Text] -> Text -> IO (Either Text Text)
-resolveAgentName live arg0 = viewNames resolve
+resolveAgentName live arg0 = do
+  -- (remote agents answer to their names too; this machine's win a clash)
+  remote <- M.unions . M.elems <$> readIORef remoteNamesRef
+  viewNames (resolve . (`M.union` remote))
   where
     arg = T.strip arg0
     resolve m = followOn m <$> resolve0 m

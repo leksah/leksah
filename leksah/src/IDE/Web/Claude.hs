@@ -40,6 +40,10 @@ module IDE.Web.Claude
   , runClaudeCmd
   , claudeCommandLine
   , claudeLatestActivity
+  , latestActivityOf
+  , parseSessionFile
+  , gistOfTail
+  , pidAncestors
   , TranscriptGist(..)
   , noGist
   , cachedTranscriptGist
@@ -222,6 +226,10 @@ data ClaudeLive = ClaudeLive
                                 --   Code's daemon, shown in whichever terminal
                                 --   is attached to it — see
                                 --   'claudePaneSessions'); else interactive
+  , clHost       :: Maybe Text  -- ^ the machine it runs on, when that is not this
+                                --   one ("IDE.Web.RemoteAgents": a session on a
+                                --   host whose leksah tmux server this leksah
+                                --   shares); 'Nothing' here
   , clAgent      :: Text        -- ^ which CLI runs it: @claude@, or @codex@ (a
                                 --   record leksah's own hooks keep — see
                                 --   "IDE.Web.Codex")
@@ -297,7 +305,7 @@ claudeSessionFiles = (<>) <$> claudeOwnSessionFiles <*> (map fromCodex <$> codex
       { clPid = cxPid r, clSession = cxSession r, clDir = cxDir r, clName = Nothing
       , clDerivedName = Nothing
       , clStatus = Just (cxStatus r), clWaitingFor = cxWaitingFor r
-      , clJob = Nothing, clKind = Nothing, clAgent = "codex" }
+      , clJob = Nothing, clKind = Nothing, clHost = Nothing, clAgent = "codex" }
 
 claudeOwnSessionFiles :: IO [ClaudeLive]
 claudeOwnSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
@@ -307,26 +315,29 @@ claudeOwnSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
   if not ex then return [] else do
     names <- listDirectory sdir
     fmap concat . forM [ sdir </> n | n <- names, takeExtension n == ".json" ] $ \f ->
-      (`catch` \(_ :: SomeException) -> return []) $ do
-        v <- decodeStrict' <$> BS.readFile f
-        return $ case (v >>= objField "pid", v >>= objField "sessionId") of
-          (Just p, Just i) ->
-            let name    = mfilter (not . T.null) (v >>= objField "name")
-                derived = (v >>= objField "nameSource") == Just ("derived" :: Text)
-            in
-            [ ClaudeLive
-                { clPid        = p
-                , clSession    = i
-                , clDir        = maybe "" (dropTrailingPathSeparator . T.unpack)
-                                       (v >>= objField "cwd")
-                , clName       = if derived then Nothing else name
-                , clDerivedName = if derived then name else Nothing
-                , clStatus     = mfilter (not . T.null) (v >>= objField "status")
-                , clWaitingFor = mfilter (not . T.null) (v >>= objField "waitingFor")
-                , clJob        = mfilter (not . T.null) (v >>= objField "jobId")
-                , clKind       = mfilter (not . T.null) (v >>= objField "kind")
-                , clAgent      = "claude" } ]
-          _ -> []
+      (`catch` \(_ :: SomeException) -> return []) $
+        maybe [] pure . parseSessionFile Nothing <$> BS.readFile f
+
+-- | One @~\/.claude\/sessions\/*.json@, read on @host@ ('Nothing': here).
+parseSessionFile :: Maybe Text -> BS.ByteString -> Maybe ClaudeLive
+parseSessionFile host bytes = do
+  v <- decodeStrict' bytes
+  p <- objField "pid" v
+  i <- objField "sessionId" v
+  let name    = mfilter (not . T.null) (objField "name" v)
+      derived = objField "nameSource" v == Just ("derived" :: Text)
+  return ClaudeLive
+    { clPid        = p
+    , clSession    = i
+    , clDir        = maybe "" (dropTrailingPathSeparator . T.unpack) (objField "cwd" v)
+    , clName       = if derived then Nothing else name
+    , clDerivedName = if derived then name else Nothing
+    , clStatus     = mfilter (not . T.null) (objField "status" v)
+    , clWaitingFor = mfilter (not . T.null) (objField "waitingFor" v)
+    , clJob        = mfilter (not . T.null) (objField "jobId" v)
+    , clKind       = mfilter (not . T.null) (objField "kind" v)
+    , clHost       = host
+    , clAgent      = "claude" }
 
 -- | One background session (@claude --bg@, or one dispatched from @claude
 -- agents@), as the CLI's own @claude agents --json@ reports it — the one
@@ -1666,7 +1677,12 @@ claudeLatestActivity path = (`catch` \(_ :: SomeException) -> return Nothing) $ 
       let back = min size (64 * 1024)
       hSeek h SeekFromEnd (negate back)
       BS.lines <$> BS.hGet h (fromIntegral back)
-    return . listToMaybe . mapMaybe (\l -> decodeStrict' l >>= parseMaybe lineP)
+    return (latestActivityOf tailLines)
+
+-- | 'claudeLatestActivity' over a transcript tail's lines (from anywhere).
+latestActivityOf :: [BS.ByteString] -> Maybe Text
+latestActivityOf tailLines =
+    listToMaybe . mapMaybe (\l -> decodeStrict' l >>= parseMaybe lineP)
       . reverse $ filter ("\"type\":\"assistant\"" `BS.isInfixOf`) tailLines
   where
     lineP = withObject "line" $ \o -> do
@@ -1726,9 +1742,6 @@ transcriptGist prev path
       let back = min size (256 * 1024)
       hSeek h SeekFromEnd (negate back)
       BS.lines <$> BS.hGet h (fromIntegral back)
-    let latest :: (Value -> Parser Text) -> BS.ByteString -> Maybe Text
-        latest p mark = listToMaybe . mapMaybe (\l -> decodeStrict' l >>= parseMaybe p)
-                          . reverse $ filter (mark `BS.isInfixOf`) tailLines
     -- The first title, from the head: Claude Code titles a conversation after
     -- its first exchange (and a fork's copy opens with it), so it is near the
     -- top.  Searched in the first 1MB only, and once found never again.
@@ -1744,12 +1757,7 @@ transcriptGist prev path
             found = go Nothing (if size > fromIntegral headBound
                                   then initSafe headLines else headLines)
         return (found, isJust found || size > fromIntegral headBound)
-    return $! forceGist TranscriptGist
-      { tgTitle      = latest (withObject "l" (.: "aiTitle")) "\"ai-title\""
-                         >>= mfilter (not . T.null) . Just . T.strip
-      , tgFirstTitle = first
-      , tgHeadDone   = done
-      , tgLastSaid   = latest saidP "\"type\":\"assistant\"" }
+    return $! forceGist (gistOfTail tailLines) { tgFirstTitle = first, tgHeadDone = done }
   where
     headBound = 1024 * 1024
     -- (a line the bound cut in two parses as nothing anyway; drop it)
@@ -1763,6 +1771,19 @@ transcriptGist prev path
       let (_, rest) = BS.breakSubstring "\"timestamp\":\"" l
       if BS.null rest then Nothing else
         iso8601ParseM (BS.unpack (BS.takeWhile (/= '"') (BS.drop 13 rest)))
+
+-- | The title and the last thing said, from a transcript tail's lines (read
+-- here, or fetched from another machine): no first title, which needs the
+-- head ('transcriptGist').
+gistOfTail :: [BS.ByteString] -> TranscriptGist
+gistOfTail tailLines = forceGist noGist
+    { tgTitle    = latest (withObject "l" (.: "aiTitle")) "\"ai-title\""
+                     >>= mfilter (not . T.null) . Just . T.strip
+    , tgLastSaid = latest saidP "\"type\":\"assistant\"" }
+  where
+    latest :: (Value -> Parser Text) -> BS.ByteString -> Maybe Text
+    latest p mark = listToMaybe . mapMaybe (\l -> decodeStrict' l >>= parseMaybe p)
+                      . reverse $ filter (mark `BS.isInfixOf`) tailLines
     -- An assistant line of the main conversation carrying prose (a subagent's
     -- are sidechain lines; tool calls and thinking are not "said").
     saidP = withObject "line" $ \o -> do

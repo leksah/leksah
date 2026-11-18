@@ -100,6 +100,7 @@ import IDE.Web.Claude
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath,
         TranscriptGist(..), cachedTranscriptGist, liveTranscriptPath)
 import IDE.Web.Codex (codexTranscriptOf, isCodexSession)
+import IDE.Web.RemoteAgents (remoteActivity, remoteInfoBytes)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), TitleSource(..), chooseTitle, claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
@@ -304,7 +305,31 @@ stripTags = T.intercalate "\n" . filter (not . T.null) . map (T.unwords . T.word
 -- whether it is provisional (only the prompt leksah launched the agent with)
 -- and what a fork inherited.
 agentTitleSources :: IO (Map Text TitleSource)
-agentTitleSources = M.mapMaybe titleSourceOf <$> peekInfos
+agentTitleSources = do
+  local  <- peekInfos
+  remote <- remoteInfos
+  return (M.mapMaybe titleSourceOf (local `M.union` remote))
+
+-- | What the agent stores of the hosts whose leksah tmux server this leksah
+-- shares say about their agents ("IDE.Web.RemoteAgents"), decoded once per
+-- change of each.  Read-only here: a remote agent's record is its own
+-- machine's to change.
+remoteInfos :: IO (Map Text AgentInfo)
+remoteInfos = (`catch` \(_ :: SomeException) -> return M.empty) $ do
+  hosts <- remoteInfoBytes
+  ms <- forM hosts $ \(h, bytes) -> do
+    cached <- M.lookup h <$> readIORef remoteInfosRef
+    case cached of
+      Just (b, m) | b == bytes -> return m
+      _ -> do
+        let m = M.fromList [ (aiSession i, i) | i <- fromMaybe [] (decode' bytes) ]
+        atomicModifyIORef' remoteInfosRef (\c -> (M.insert h (bytes, m) c, ()))
+        return m
+  return (M.unions ms)
+
+{-# NOINLINE remoteInfosRef #-}
+remoteInfosRef :: IORef (Map Text (LBS.ByteString, Map Text AgentInfo))
+remoteInfosRef = unsafePerformIO (newIORef M.empty)
 
 titleSourceOf :: AgentInfo -> Maybe TitleSource
 titleSourceOf i = case T.strip <$> aiTitle i of
@@ -962,10 +987,12 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       return (Just (cbSession b, n { anBranch = br, anPr = pr }))
   let bgNodes = bgCands
       bgIds = map fst bgNodes
+  -- (an agent on another machine: what its own machine's store says of it)
+  rinfos <- remoteInfos
   liveNodes <- forM rows $ \r -> do
     (br, pr) <- agentGit posix (T.unpack (csrDir r))
     act <- agentActivity r
-    let i = M.lookup (csrSession r) infos
+    let i = M.lookup (csrSession r) (if isJust (csrHost r) then rinfos else infos)
         n0 = (node r i) { anBranch = br, anPr = pr, anActivity = act }
     -- Done ✓ while it rests after saying so; busy again a minute after
     -- `agent done` (the turn that said it is over by then) means it has been
@@ -1264,6 +1291,8 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
 agentActivity :: ClaudeStatusRow -> IO (Maybe Text)
 agentActivity r = case csrState r of
   "waiting" -> return (Just (csrDetail r))
+  -- (on another machine: what its transcript tail in the host's snapshot says)
+  "busy" | isJust (csrHost r) -> shellAware <$> remoteActivity (csrSession r)
   "busy"    -> fmap shellAware . (`catch` \(_ :: SomeException) -> return Nothing) $ do
     p <- claudeTranscriptPath (T.unpack (csrDir r)) (csrSession r)
     t <- getModificationTime p
