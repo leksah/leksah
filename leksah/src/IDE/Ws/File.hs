@@ -55,6 +55,7 @@ import System.FilePath
   , splitDirectories, takeDirectory )
 
 import IDE.Ws.Types
+import IDE.Utils.RemotePath (isRemotePath)
 
 -- | A command override stored in the workspace file: replaces the
 -- program and arguments a project type would use for a 'Verb'.
@@ -250,10 +251,13 @@ makeRel base p
   dropCommon xs ys = (xs, ys)
 
 -- | Resolve a stored (usually relative, POSIX) path against @base@.
+-- A remote @ssh://host/path@ is kept as it is: it is not relative to
+-- anything here, and 'collapse' would fold its @//@ into @/@.
 resolve :: FilePath -> FilePath -> FilePath
 resolve base p
-  | isAbsolute p = collapse p
-  | otherwise    = collapse (base </> p)
+  | isRemotePath p = p
+  | isAbsolute p   = collapse p
+  | otherwise      = collapse (base </> p)
 
 -- | Normalise a path, collapsing @.@ and @..@ segments textually.
 collapse :: FilePath -> FilePath
