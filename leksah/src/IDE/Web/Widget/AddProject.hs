@@ -62,7 +62,7 @@ import IDE.Web.Widget.PathField
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Workspace (projectOpenKey, setProjectCmdPrefix)
 import IDE.Ws.Registry (detectProject)
-import IDE.Ws.Types (defaultEffects)
+import IDE.Web.FS (fsEffects)
 
 serverFieldId, pathFieldId, prefixFieldId :: Text
 serverFieldId = "leksah-ap-server"
@@ -278,7 +278,9 @@ addProjectIO server path prefix fire =
                     | otherwise        = s <> ":" <> p
           resolveProjectInput cwd input >>= \case
             Left err -> fire (Left err)
-            Right fp -> detectProject defaultEffects fp >>= \case
+            -- (fsEffects: the FS seam, which reads an ssh:// path on its
+            -- host — defaultEffects would look for it on this machine)
+            Right fp -> detectProject fsEffects fp >>= \case
               -- In practice only an unreadable or non-existent path gets here:
               -- the plain-directory type claims any directory that exists.
               Nothing -> fire (Left ("No project type claims " <> T.pack fp))
