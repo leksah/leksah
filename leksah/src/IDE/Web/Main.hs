@@ -7463,7 +7463,8 @@ main showMenubar macTitlebar wid ctx = mdo
                   lws <- view leksahWindows <$> readCell (appUi app)
                   return [ i | (i, lw) <- M.toAscList lws, lwSession lw == Just canon ]
               case existing of
-                (i : _) -> requestLocalTerm i
+                -- (its tree may not have the window it shows now: refresh it)
+                (i : _) -> fireRemotePoke () >> requestLocalTerm i
                 [] -> do
                   mlwi <- mintLeksahWindowIn Nothing (Just canon)
                             (PaneContent (PaneTmux win) Nothing)
@@ -7476,6 +7477,10 @@ main showMenubar macTitlebar wid ctx = mdo
         liftIO . void . forkIO $ do
             mlwi <- mintLeksahWindowIn (WindowId <$> target) (Just sid)
                       (PaneContent (PaneTmux wid') Nothing)
+            -- (a window on another host — an agent launched there: its host's
+            -- tree must learn it, or its panes can't be told apart — the
+            -- flipper, and the Agents pane's "which agent is in front")
+            when ("ssh://" `T.isPrefixOf` sid) $ fireRemotePoke ()
             mapM_ requestLocalTerm mlwi
     -- ⌥⌘=/⌥⌘− on a tmux pane in a MULTI-pane window (see paneFontAdjust):
     -- isolate the pane first (per-pane fonts can't share a tmux window),
@@ -10786,13 +10791,24 @@ main showMenubar macTitlebar wid ctx = mdo
           -- first) — the Agents pane's top card, and its tie-break within a
           -- state group.
           AgentsKey      -> toDM AgentsTab <$> (agentsWidget ctx =<< holdUniqDyn
-            ((\mru tree -> nubOrd
-                [ a | FlipPane s w p <- mru
-                    , Just (_, wins) <- [M.lookup s tree]
-                    , win <- wins, twIndex win == w
-                    , pn <- twPanes win, tpIndex pn == p
-                    , Just a <- [tpAgentName pn] ])
-              <$> flipMruD <*> allTreeD))
+            ((\mru tree lws -> nubOrd
+                [ a | item <- mru, a <- case item of
+                    FlipPane s w p ->
+                      [ a' | Just (_, wins) <- [M.lookup s tree]
+                           , win <- wins, twIndex win == w
+                           , pn <- twPanes win, tpIndex pn == p
+                           , Just a' <- [tpAgentName pn] ]
+                    -- A leksah window's tab brought to the front (a launch,
+                    -- a flip): the agent in its focused window's active pane
+                    -- — known as soon as the tree has that window, which for
+                    -- one on another host can come a moment after the tab.
+                    FlipTab (LeksahWinKey lwi) ->
+                      [ a' | Just lw <- [M.lookup lwi lws]
+                           , Just win <- [lwFocusedWindow tree lw]
+                           , pn <- take 1 (filter tpActive (twPanes win) ++ twPanes win)
+                           , Just a' <- [tpAgentName pn] ]
+                    _ -> [] ])
+              <$> flipMruD <*> allTreeD <*> leksahWindowsD'))
           ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
           TeamKey        -> toDM TeamTab <$> teamWidget
