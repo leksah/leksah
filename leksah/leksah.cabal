@@ -354,7 +354,7 @@ library
             unix >=2.3.1.0 && <2.9
     else
         build-depends:
-            unix >=2.3.1.0 && <2.9,
+            unix >=2.8 && <2.9,
             posix-pty >=0.2.1 && <0.3
 
     if (flag(loc) && os(linux))
