@@ -208,7 +208,7 @@ attachGuarded scope onAbort rootElement jsSing w = do
       ctx <- contextId <$> askJSM
       liftIO $ registerContextThread ctx t
 #else
-      let _ = t
+      pure (const () t)
 #endif
 
 -- | reflex-dom applies EVERY DOM change (attribute updates, 'dyn' swaps, list

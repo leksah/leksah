@@ -23,18 +23,16 @@
 -- build; when it goes, a build still running is interrupted
 -- ('IDE.Web.WindowScope.ConnectionGone', which it reports as a failed build)
 -- and 'IDE.Web.WindowScope.connectionClosed' retires the window.
+-- (Nothing under the JS backend: there is no server there — and no wai or
+-- websockets — and "IDE.Web.Main" imports this only outside it.)
 module IDE.Web.WarpJSaddle
+#if defined(ghcjs_HOST_OS)
+  () where
+#else
   ( jsaddleOrWatched
   ) where
 
-#if defined(ghcjs_HOST_OS)
-import Network.Wai (Application)
-import Network.WebSockets (ConnectionOptions)
-import Language.Javascript.JSaddle.Types (JSM)
 
-jsaddleOrWatched :: ConnectionOptions -> JSM () -> Application -> IO Application
-jsaddleOrWatched _ _ app = return app
-#else
 import Control.Concurrent (forkIO, killThread, myThreadId, threadDelay, throwTo)
 import Control.Concurrent.MVar (newEmptyMVar, readMVar, tryPutMVar, tryReadMVar)
 import Control.Concurrent.STM (atomically, newEmptyTMVarIO, putTMVar, takeTMVar, tryTakeTMVar)
