@@ -148,6 +148,11 @@ data RemoteC = RemoteC
                            -- ^ per host, the @tmux -L@ socket name leksah's
                            --   terminals use there; a host with no entry uses
                            --   its default tmux server (no @-L@)
+    , rcViewerId :: Text   -- ^ who this leksah is to the tmux servers it shares
+                           --   with other leksahs: it attaches a remote session
+                           --   through its own grouped session named after
+                           --   this, so it keeps its own current window.
+                           --   Empty: @user\@host@ ('IDE.Web.TmuxServer.viewerId')
     } deriving (Eq, Show)
 
 -- | How to wake one ssh host: its network card's MAC address, and where to
@@ -242,7 +247,7 @@ defaultConfig = Config
         , tcTmuxSocket  = "leksah"
         }
     , cfgRemote = RemoteC { rcHosts = [], rcStartup = [], rcWake = []
-                          , rcTmuxSockets = mempty }
+                          , rcTmuxSockets = mempty, rcViewerId = "" }
     , cfgLsp = LspC
         { lcEnabled       = True
         , lcServerCommand = ""
@@ -321,7 +326,8 @@ instance ToJSON Config where
             [ chg "hosts"   rcHosts   d s
             , chg "startup" rcStartup d s
             , chg "wake"    rcWake    d s
-            , chg "tmuxSockets" rcTmuxSockets d s ]
+            , chg "tmuxSockets" rcTmuxSockets d s
+            , chg "viewerId" rcViewerId d s ]
         , sect "lsp" $ let d = cfgLsp defaultConfig; s = cfgLsp c in
             [ chg "enabled"       lcEnabled       d s
             , chg "serverCommand" lcServerCommand d s
@@ -398,7 +404,8 @@ instance FromJSON Config where
             <$> fld s "hosts"   (rcHosts   (cfgRemote dc))
             <*> fld s "startup" (rcStartup (cfgRemote dc))
             <*> fld s "wake"    (rcWake    (cfgRemote dc))
-            <*> fld s "tmuxSockets" (rcTmuxSockets (cfgRemote dc)))
+            <*> fld s "tmuxSockets" (rcTmuxSockets (cfgRemote dc))
+            <*> fld s "viewerId" (rcViewerId (cfgRemote dc)))
             (cfgRemote dc)
         cfgLsp' <- inSect o "lsp" (\s -> LspC
             <$> fld s "enabled"       (lcEnabled       (cfgLsp dc))

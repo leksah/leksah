@@ -179,7 +179,7 @@ import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.WakeOnLan (ensureAwake)
 import IDE.Web.TmuxServer
        (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn, tmuxStdoutOn,
-        tmuxOnIds, qualifyTmuxId, rawTmuxId)
+        tmuxOnIds, qualifyTmuxId, rawTmuxId, selectWindowAsViewer, viewerFilterArg)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
 import IDE.Web.Frame (MonadWidget, performEvent, performEvent_)
@@ -656,8 +656,13 @@ terminalWidget ctx termId selectedE = do
           -- the belling window's ids to the helper script (run in the background
           -- so it never blocks tmux).
           notifyPath <- writeNotifyScript
+          -- (Only for this leksah's own sessions: a window another leksah
+          -- shows too is also in that viewer's grouped session, and tmux runs
+          -- the hook once per session holding it — the bell would be told
+          -- twice, once under a session this leksah does not list.)
           tmuxCmd [ "set-hook", "-g", "alert-bell"
-                  , "run-shell -b \"sh " <> notifyPath <> " '#{session_id}' '#{window_index}'\"" ]
+                  , "if-shell -F '" <> viewerFilterArg <> "' { run-shell -b \"sh "
+                    <> notifyPath <> " '#{session_id}' '#{window_index}'\" }" ]
           -- Poke leksah whenever the current window/pane changes by *any* route
           -- (⌃B n/p, ⌃B w chooser, mouse, scripts), so the flipper/tab MRU and the
           -- highlight update at once instead of waiting for the 2 s poll.  The poke
@@ -667,7 +672,8 @@ terminalWidget ctx termId selectedE = do
           -- Redirect the poke's output: tmux's run-shell surfaces a command's
           -- stdout (as an "ok" view on every select otherwise).
           findExecutable "leksah-cmd" >>= mapM_ (\lc ->
-            mapM_ (\ev -> tmuxCmd ["set-hook", "-g", ev, "run-shell -b \"" <> lc <> " term-activity >/dev/null 2>&1\""])
+            mapM_ (\ev -> tmuxCmd ["set-hook", "-g", ev, "if-shell -F '" <> viewerFilterArg
+                                   <> "' { run-shell -b \"" <> lc <> " term-activity >/dev/null 2>&1\" }"])
                   ["after-select-window", "after-select-pane"])
       return pty
 #endif
@@ -1221,7 +1227,7 @@ listTerminalSessions = demoTerminals
 #else
 listTerminalSessions = (`catch` \(_ :: SomeException) -> return []) $ do
             out <- T.unpack <$> tmuxStdout
-                ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
+                ["list-sessions", "-f", viewerFilterArg, "-F", "#{session_id}\t#{session_name}"]
             return [ (sid, T.intercalate "\t" rest)
                    | line <- lines out
                    , (sid:rest) <- [T.splitOn "\t" (T.pack line)]
@@ -1337,7 +1343,7 @@ listTerminalTree = do
 #else
 listTerminalTree = (`catch` \(_ :: SomeException) -> return M.empty) $ do
             out <- T.unpack <$> tmuxStdout
-                ["list-panes", "-a", "-F", paneTreeFormat]
+                ["list-panes", "-a", "-f", viewerFilterArg, "-F", paneTreeFormat]
             enrichClaudeTitles (parsePaneTree out)
 
 -- | Serializes 'enrichClaudeTitles'' session renames across the per-window
@@ -1540,7 +1546,7 @@ sshTmux host args = tmuxRunOn (SshServer host) args "" >>= \r -> return $ case r
 -- same shape as 'listTerminalTree'.  'Nothing' = unreachable / no server.
 listRemoteTerminalTree :: Text -> IO (Maybe (Map Text (Text, [TmuxWindow])))
 listRemoteTerminalTree host =
-    fmap parsePaneTree <$> sshTmux host ["list-panes", "-a", "-F", paneTreeFormat]
+    fmap parsePaneTree <$> sshTmux host ["list-panes", "-a", "-f", viewerFilterArg, "-F", paneTreeFormat]
 
 -- | The @(host, target)@ behind an @ssh://host[#target]@ terminal tab key
 -- ('Nothing' for local keys).  An empty target means the default session
@@ -1596,9 +1602,12 @@ createRemoteSession host =
     (>>= (listToMaybe . filter (not . T.null) . map T.strip . T.lines . T.pack))
         <$> sshTmux host ["new-session", "-d", "-P", "-F", "#{session_id}"]
 
+-- | Make window @w@ of remote session @s@ the current window of THIS leksah's
+-- view of it (its viewer session — 'selectWindowAsViewer'), not of the shared
+-- session another leksah may be showing.
 selectRemoteTmuxWindow :: Text -> Text -> Int -> IO ()
 selectRemoteTmuxWindow host s w =
-    void $ sshTmux host ["select-window", "-t", T.unpack s <> ":" <> show w]
+    selectWindowAsViewer (SshServer host) (T.unpack s <> ":" <> show w)
 
 selectRemoteTmuxPane :: Text -> Text -> Int -> Int -> IO ()
 selectRemoteTmuxPane host s w p = do
@@ -1838,13 +1847,14 @@ moveTmuxWindow w dstS = tmuxOnIds [w, dstS] () $ \srv raw ->
 -- moved pane rather than snapping back to the destination's current window.
 selectTmuxWindowId :: Text -> IO ()
 selectTmuxWindowId w = tmuxOnIds [w] () $ \srv raw ->
-    tmuxCmdOn srv ["select-window", "-t", raw w]
+    selectWindowAsViewer srv (raw w)
 
 -- | Make pane @p@ (@%N@ — server-global) the active pane of its window AND
 -- that window its session's current window (a pane id resolves both).
 selectTmuxPaneId :: Text -> IO ()
 selectTmuxPaneId p = tmuxOnIds [p] () $ \srv raw -> do
-    tmuxCmdOn srv ["select-window", "-t", raw p]
+    selectWindowAsViewer srv (raw p)
+    -- (a window's active pane is the window's own: shared by every viewer)
     tmuxCmdOn srv ["select-pane", "-t", raw p]
 
 -- | The pane ids of window @w@ (@\@N@ — server-global), in tmux order.
@@ -1925,7 +1935,7 @@ windowAgents w = tmuxOnIds [w] [] $ \srv raw -> do
 sessionNamed :: Text -> Text -> IO (Maybe Text)
 sessionNamed w name = tmuxOnIds [w] Nothing $ \srv _ -> do
     ls <- T.lines <$> tmuxStdoutOn srv
-            ["list-sessions", "-F", "#{session_id}\t#{session_name}"]
+            ["list-sessions", "-f", viewerFilterArg, "-F", "#{session_id}\t#{session_name}"]
     return $ listToMaybe
       [ qualifyTmuxId srv sid | l <- ls, (sid : nm) <- [T.splitOn "\t" l]
                               , T.intercalate "\t" nm == name ]
@@ -2005,7 +2015,7 @@ paneGeometry n pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 sessionOfPane :: Text -> IO (Maybe Text)
 sessionOfPane pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
             out <- tmuxStdout
-                ["list-panes", "-a", "-F", "#{session_id} #{pane_id}"]
+                ["list-panes", "-a", "-f", viewerFilterArg, "-F", "#{session_id} #{pane_id}"]
             return $ listToMaybe
                 [ sid
                 | line <- T.lines out

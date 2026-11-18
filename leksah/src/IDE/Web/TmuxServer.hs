@@ -33,6 +33,11 @@ module IDE.Web.TmuxServer
   , tmuxOutOn
   , tmuxStdoutOn
   , tmuxLinesOn
+  , viewerId
+  , notViewerFilter
+  , viewerFilterArg
+  , remoteViewerAttach
+  , selectWindowAsViewer
   ) where
 
 import Control.Exception (SomeException, catch)
@@ -46,13 +51,15 @@ import System.IO.Unsafe (unsafePerformIO)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Char (isAlphaNum)
 import System.Directory (findExecutable)
+import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.Process (readProcessWithExitCode)
 
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config (Config(..), RemoteC(..), currentConfig)
-import IDE.Web.Instance (tmuxServerSocket)
+import IDE.Web.Instance (leksahPort, tmuxServerSocket)
 
 -- | A tmux server leksah can run commands on.
 data TmuxServer
@@ -147,6 +154,121 @@ remoteSocketArgs host = getGlobalApp >>= \case
       Just name | not (T.null name) -> ["-L", T.unpack name]
       _                             -> []
 
+
+--------------------------------------------------------------------------------
+-- Sharing a server with other leksahs
+--
+-- Two leksahs can show the same tmux server: the one running on a host, and
+-- another reaching that host over ssh (its @remote.tmuxSockets@ entry names the
+-- host leksah's socket).  They share the WINDOWS — that is the point — but a
+-- session's current window belongs to the session, so two viewers attached to
+-- one session would move each other.  A remote viewer therefore attaches
+-- through its own GROUPED session (@NAME~VIEWER@: the same windows, its own
+-- current window), marked @\@leksah_viewer@ and destroyed by tmux once it has
+-- no clients.  Every leksah leaves such sessions out of what it lists
+-- ('notViewerFilter').  (A window's active PANE and its size stay shared: tmux
+-- keeps them on the window.)
+
+-- | Who this leksah is to the servers it shares ('RemoteC.rcViewerId', else
+-- @user-host@, plus the port when it is not the default one): letters, digits,
+-- @-@ and @_@ only, as it is part of a tmux session name.
+viewerId :: IO Text
+viewerId = readIORef viewerIdRef >>= \case
+  Just v  -> return v
+  Nothing -> do
+    configured <- getGlobalApp >>= \case
+      Nothing  -> return ""
+      Just app -> T.strip . rcViewerId . cfgRemote <$> currentConfig (appConfig app)
+    v <- if not (T.null configured) then return configured else do
+      user <- maybe "" T.pack <$> lookupEnv "USER"
+      host <- (`catch` \(_ :: SomeException) -> return "") $
+        (\(_, o, _) -> T.takeWhile (/= '.') (T.strip (T.pack o)))
+          <$> readProcessWithExitCode "uname" ["-n"] ""
+      return $ T.intercalate "-" (filter (not . T.null) [user, host])
+                 <> (if leksahPort == 3367 then "" else "-" <> T.pack (show leksahPort))
+    let clean = T.map (\c -> if isAlphaNum c || c == '-' || c == '_' then c else '-') v
+        v' = if T.null clean then "leksah" else clean
+    atomicModifyIORef' viewerIdRef (const (Just v', ()))
+    return v'
+
+{-# NOINLINE viewerIdRef #-}
+viewerIdRef :: IORef (Maybe Text)
+viewerIdRef = unsafePerformIO (newIORef Nothing)
+
+-- | A @-f@ filter for @list-sessions@ \/ @list-windows@ \/ @list-panes@ that
+-- leaves out other leksahs' viewer sessions (and this one's): in a session
+-- group every window is listed once PER SESSION, so without it a viewer
+-- session reads as a second session holding the same windows.
+notViewerFilter :: [String]
+notViewerFilter = ["-f", viewerFilterArg]
+
+-- | The format 'notViewerFilter' filters on.
+viewerFilterArg :: String
+viewerFilterArg = "#{==:#{@leksah_viewer},}"
+
+-- | The remote command (one string, quoted for the remote shell) that attaches
+-- a control-mode client to session @target@ on @host@ — or, with no target,
+-- to its @leksah@ session, created if need be — THROUGH this viewer's grouped
+-- session for it ('viewerId'), creating that first.  'Left' when there is no
+-- tmux on the host.
+remoteViewerAttach :: Text -> Maybe Text -> IO (Either Text String)
+remoteViewerAttach host target = remoteTmux host >>= \case
+  Left err -> return (Left err)
+  Right (bin, _) -> do
+    sock   <- remoteSocketArgs host
+    viewer <- viewerId
+    let sockName = case sock of ["-L", n] -> n; _ -> ""
+    return . Right . unwords . map shellQuote $
+      [ "sh", "-c", viewerAttachScript, "sh", bin, sockName
+      , maybe "" T.unpack target, T.unpack viewer ]
+
+-- | @$1@ tmux, @$2@ socket name (or empty), @$3@ target session (empty: the
+-- @leksah@ session), @$4@ the viewer.  The group is named after its leader,
+-- so attaching through someone else's viewer session still lands in the
+-- shared one's group.  (tmux 3.x: a pane-target command — set-option,
+-- display-message — needs @=NAME:@, with the colon, for an exact name.)
+viewerAttachScript :: String
+viewerAttachScript = concat
+  [ "T=\"$1\"; S=\"$2\"; G=\"$3\"; V=\"$4\"; "
+  , "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
+  , "if [ -z \"$G\" ]; then tx has-session -t =leksah 2>/dev/null || tx new-session -d -s leksah || exit 1; G==leksah:; fi; "
+  , "n=$(tx display-message -p -t \"$G\" '#{session_group}' 2>/dev/null); "
+  , "[ -n \"$n\" ] || n=$(tx display-message -p -t \"$G\" '#{session_name}' 2>/dev/null); "
+  , "[ -n \"$n\" ] || { echo \"no tmux session $G\" >&2; exit 1; }; "
+  , "v=\"$n~$V\"; "
+  , "if ! tx has-session -t \"=$v\" 2>/dev/null; then "
+  ,   "tx new-session -d -t \"=$n\" -s \"$v\" || exit 1; "
+  ,   "tx set-option -t \"=$v:\" @leksah_viewer \"$V\"; "
+  -- Gone with its last client — but set only once attached: tmux destroys
+  -- a never-attached session the moment the option is set.  (@keep-group@:
+  -- never the group's last session, whose windows would go with it.)
+  ,   "tx set-hook -t \"=$v:\" client-attached 'set-option destroy-unattached keep-group'; "
+  , "fi; "
+  , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
+  , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
+
+-- | Make the window @target@ names (a window or pane id, or @session:index@)
+-- the current window of THIS viewer's session(s) on @srv@ — not the shared
+-- session's, which is another leksah's view.  Locally, plain @select-window@.
+selectWindowAsViewer :: TmuxServer -> String -> IO ()
+selectWindowAsViewer LocalServer t =
+  () <$ tmuxRunOn LocalServer ["select-window", "-t", t] ""
+selectWindowAsViewer (SshServer host) t = remoteTmux host >>= \case
+  Left _ -> return ()
+  Right (bin, _) -> (`catch` \(_ :: SomeException) -> return ()) $ do
+    sock   <- remoteSocketArgs host
+    viewer <- viewerId
+    let sockName = case sock of ["-L", n] -> n; _ -> ""
+        script = concat
+          [ "T=\"$1\"; S=\"$2\"; V=\"$3\"; t=\"$4\"; "
+          , "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
+          , "w=$(tx display-message -p -t \"$t\" '#{window_id}') || exit 1; "
+          , "for v in $(tx list-sessions -F '#{session_name}' -f \"#{==:#{@leksah_viewer},$V}\"); do "
+          , "tx select-window -t \"=$v:$w\" 2>/dev/null; done; exit 0" ]
+    () <$ readProcessWithExitCode "ssh"
+      [ "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", T.unpack host
+      , unwords (map shellQuote ["sh", "-c", script, "sh", bin, sockName
+                                , T.unpack viewer, t]) ] ""
 
 -- | Single-quote one word for a remote (ssh) shell.
 shellQuote :: String -> String
