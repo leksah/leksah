@@ -266,11 +266,16 @@ viewerAttachScript = concat
   , "for o in $(tx list-sessions -f \"$c\" -F '#{session_id}' 2>/dev/null); do "
   ,   "tx if-shell -F -t \"$o\" \"$c\" \"kill-session -t '$o'\" 2>/dev/null; done; "
   -- Claim ours (keeping every other tab's clean-up off it until it is
-  -- attached), creating it if it is not there.
-  , "tx set-option -t \"=$v:\" @leksah_claim \"$now\" 2>/dev/null || { "
-  ,   "tx new-session -d -t \"=$n\" -s \"$v\" || exit 1; "
-  ,   "tx set-option -t \"=$v:\" @leksah_viewer \"$V\"; "
-  ,   "tx set-option -t \"=$v:\" @leksah_claim \"$now\"; }; "
+  -- attached), creating it if it is not there — claimed in the same tmux
+  -- command that creates and marks it, so no clean-up ever sees it marked
+  -- but unclaimed.  And clear what an older leksah set on it: the hook that
+  -- turned destroy-unattached on (see above — it crashes the server).
+  , "if tx set-option -t \"=$v:\" @leksah_claim \"$now\" 2>/dev/null; then "
+  ,   "tx set-hook -u -t \"=$v:\" client-attached \\; set-option -u -t \"=$v:\" destroy-unattached 2>/dev/null; "
+  , "else "
+  ,   "tx new-session -d -t \"=$n\" -s \"$v\" \\; set-option -t \"=$v:\" @leksah_claim \"$now\" "
+  ,     "\\; set-option -t \"=$v:\" @leksah_viewer \"$V\" || exit 1; "
+  , "fi; "
   , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
   , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
 

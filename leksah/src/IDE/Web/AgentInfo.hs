@@ -47,6 +47,7 @@ module IDE.Web.AgentInfo
   , moveAgentRecord
   , agentParentOf
   , agentForest
+  , agentForestShared
   , agentTitles
   , agentTitleSources
   , stripTags
@@ -91,7 +92,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath, writeSidecar)
 import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore, remoteModifyJSON)
-import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, renderRemotePath)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seCompactingAt, seSubagentsAt, seTaskSummary, seTool, sessionEvents)
 import IDE.Web.AgentUsage (SessionUsage, sessionUsage)
@@ -343,6 +344,45 @@ remoteAgentRecord sid = do
   _ <- remoteInfos   -- (decode any store that changed)
   m <- readIORef remoteInfosRef
   return $ listToMaybe [ (h, i) | (h, (_, im)) <- M.toList m, Just i <- [M.lookup sid im] ]
+
+-- | The agents on the shared hosts that are not running now but can be
+-- brought back — suspended, or interrupted by their host going down — as
+-- Agents-pane rows (and the Workspace tree's server nodes'), from each
+-- host's own store; their directory is the @ssh://@ one.  (Not the ones that
+-- simply ended: their transcripts are on the host, so how long ago is not
+-- known here.)
+remoteRestingNodes :: Double -> Map Text a -> S.Set Text -> IO [(Text, AgentNode)]
+remoteRestingNodes posix live hidden = do
+  _ <- remoteInfos   -- (decode any store that changed)
+  m <- readIORef remoteInfosRef
+  return
+    [ (aiSession i, n)
+    | (h, (_, im)) <- M.toList m, i <- M.elems im
+    , not (aiSession i `M.member` live), not (aiSession i `S.member` hidden)
+    , let suspended = isJust (aiSuspended i)
+    , suspended || isInterrupted posix i
+    , let n = AgentNode
+            { anSession = aiSession i
+            , anName    = ""
+            , anTitle   = case maybe "" T.strip (aiTitle i) of
+                            "" -> T.take 8 (aiSession i)
+                            t  -> t
+            , anState   = if suspended then "suspended" else "interrupted"
+            , anDetail  = (if suspended then "Suspended" else "Interrupted: " <> h <> " went down under it")
+                          <> " — resuming brings it back on " <> h
+            , anActivity = Nothing
+            , anDone    = aiDone i
+            , anRole    = aiRole i
+            , anDir     = renderRemotePath h (aiDir i)
+            , anDesc    = aiDesc i
+            , anAge     = ""
+            , anLive    = False
+            , anBranch  = Nothing, anPr = Nothing, anWorktrees = []
+            , anBio = Nothing, anManager = False, anBorn = Nothing
+            , anParentName = Nothing, anChildNames = []
+            , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing
+            , anBackground = Nothing, anApproval = Nothing, anLastSaid = Nothing
+            , anAgent = "claude", anChildren = [] } ]
 
 -- | Mark an agent on @host@ suspended, or not, in THAT machine's store.
 setRemoteSuspended :: Text -> Text -> Bool -> IO ()
@@ -963,6 +1003,27 @@ agentGit now dir
 -- share a checkout, so a fork costs nothing extra), one
 -- 'getModificationTime' per exited candidate, and a 'claudeSessionLabel' for any
 -- that never titled itself.
+-- | 'agentForest', or the one it last computed if that is under 3s old —
+-- for the panes that only show the forest (the Workspace tree's server nodes,
+-- in every window), so they ride on the Agents pane's poll instead of each
+-- computing it again (it writes to the stores and runs git).  The Agents pane
+-- itself calls 'agentForest': it re-reads right after an action, and must
+-- see what the action did.
+agentForestShared :: IO [AgentNode]
+#if defined(ghcjs_HOST_OS)
+agentForestShared = agentForest
+#else
+agentForestShared = do
+  now <- getCurrentTime
+  readIORef lastForestRef >>= \case
+    Just (at, ns) | diffUTCTime now at < 3 -> return ns
+    _ -> agentForest
+
+{-# NOINLINE lastForestRef #-}
+lastForestRef :: IORef (Maybe (UTCTime, [AgentNode]))
+lastForestRef = unsafePerformIO (newIORef Nothing)
+#endif
+
 agentForest :: IO [AgentNode]
 #if defined(ghcjs_HOST_OS)
 -- Browser demo: no Claude CLI and no sidecar, so the hosting page seeds a
@@ -1034,7 +1095,14 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anChildren = map demoNode kids
   }
 #else
-agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
+agentForest = do
+  ns <- computeAgentForest
+  now <- getCurrentTime
+  atomicModifyIORef' lastForestRef (const (Just (now, ns), ()))
+  return ns
+
+computeAgentForest :: IO [AgentNode]
+computeAgentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   migrateContinued
   st    <- claudeStatusNow
   infos <- readInfos
@@ -1107,7 +1175,10 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   names  <- agentNames
   events <- sessionEvents
   usage  <- sessionUsage
-  decorated <- forM (liveNodes <> filter ((`notElem` bgIds) . fst) exited <> bgNodes)
+  -- (and the agents on shared hosts that are not running but can come back:
+  -- suspended or interrupted, by their own machine's store)
+  resting <- remoteRestingNodes posix liveRows hidden
+  decorated <- forM (liveNodes <> filter ((`notElem` bgIds) . fst) exited <> bgNodes <> resting)
                  $ \(s, n) -> do
     wls <- worktreeClaimLines now s
     let i = M.lookup s infos

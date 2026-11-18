@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -38,7 +39,7 @@ import Language.Javascript.JSaddle (liftJSM)
 import Reflex
        (constDyn, switchHold, leftmost, tag, ffor,
         holdUniqDyn, Dynamic, Event, never, ffilter, updated, getPostBuild,
-        holdDyn, current)
+        holdDyn, current, foldDyn)
 import Reflex.Dom.Core
        (inputElementConfig_setChecked, EventResult, Element, elClass', DomBuilderSpace, dyn, (=:), elDynAttr, divClass, el,
         inputElement, inputElementConfig_elementConfig,
@@ -196,7 +197,7 @@ treeItemTracked'
   => Dynamic t Bool -> Text -> Bool -> m (Event t event) -> m (Event t event)
   -> m (Event t event, Event t Bool)
 treeItemTracked' revealD itemClass =
-  treeItemCore never revealD (constDyn ("class" =: itemClass))
+  treeItemCoreWith True never revealD (constDyn ("class" =: itemClass))
 
 treeItemCore
   :: MonadWidget t m
@@ -207,7 +208,23 @@ treeItemCore
   -> m (Event t event)
   -> m (Event t event)
   -> m (Event t event, Event t Bool)
-treeItemCore setExpandedE revealD itemClass startExpanded item children = mdo
+treeItemCore = treeItemCoreWith False
+
+-- | The tree item.  @keep@: its children are built the first time it opens
+-- and only hidden while it is closed (so what was expanded inside them stays
+-- expanded) — for a node holding whole subtrees; otherwise they are built
+-- while it is open and torn down when it closes.
+treeItemCoreWith
+  :: MonadWidget t m
+  => Bool
+  -> Event t Bool
+  -> Dynamic t Bool
+  -> Dynamic t (Map Text Text)
+  -> Bool
+  -> m (Event t event)
+  -> m (Event t event)
+  -> m (Event t event, Event t Bool)
+treeItemCoreWith keep setExpandedE revealD itemClass startExpanded item children = mdo
   pb <- getPostBuild
   let setOpenE = ffilter id $ leftmost [updated revealD, tag (current revealD) pb]
   expanded <- holdUniqDyn =<< holdDyn startExpanded (leftmost
@@ -222,7 +239,15 @@ treeItemCore setExpandedE revealD itemClass startExpanded item children = mdo
     (expander, _) <- elClass' "div" "tree-expand" $
       simpleSvgPath (bool triangleRight triangleDown <$> expanded)
     itemE <- item
-    childE <- switchHold never =<< dyn (bool (return never) (divClass "tree-children" children) <$> expanded)
+    childE <- if keep
+      then do
+        everD <- holdUniqDyn =<< foldDyn (||) startExpanded (updated expanded)
+        switchHold never =<< dyn (ffor everD $ \case
+          False -> return never
+          True  -> elDynAttr "div" (ffor expanded $ \ex ->
+                     "class" =: "tree-children" <> (if ex then mempty else "style" =: "display:none"))
+                     children)
+      else switchHold never =<< dyn (bool (return never) (divClass "tree-children" children) <$> expanded)
     return (domEvent Click expander, leftmost [itemE, childE])
   return (events, updated expanded)
 

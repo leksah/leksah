@@ -8553,7 +8553,9 @@ main showMenubar macTitlebar wid ctx = mdo
         -- connection (its default "leksah" session) — keyed "ssh://host".
         selRemoteHostE = fmapMaybe (^? _SelectRemoteHost) terminalsListE
         remoteKey h sid = "ssh://" <> h <> "#" <> sid
-    performEvent_ $ ffor closeTermE $ liftIO . killTerminalSession
+    -- (off the frame thread: it is several tmux calls now — the session's
+    -- remote viewers' sessions go with it)
+    performEvent_ $ ffor closeTermE $ liftIO . void . forkIO . killTerminalSession
     performEvent_ $ ffor selectWinE  $ \(s, w)    -> do
         wlog wid ("ENTER selectWinE selectTmuxWindow " <> show (s, w))
         liftIO (selectTmuxWindow s w)

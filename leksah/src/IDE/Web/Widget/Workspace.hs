@@ -22,7 +22,7 @@ import qualified System.IO as IO (hPutStrLn, stderr)
 import Data.Bool (bool)
 import Data.List (stripPrefix, isPrefixOf, isSuffixOf, dropWhileEnd, find, nub, sortBy, sortOn)
 import Data.Ord (comparing)
-import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef, writeIORef)
+import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
 import qualified Data.Map as M
        (Map, elems, empty, filterWithKey, findWithDefault, fromList,
         fromListWith, insert, keys, lookup, singleton, toList, null, union, unions, unionWith, size, member)
@@ -80,7 +80,7 @@ import Reflex
        (leftmost, listViewWithKey, switchHold, constDyn, ffor,
         current, getPostBuild, holdUniqDyn, holdDyn, newTriggerEvent, Dynamic, updated, delay, tag,
         Event, never, fmapMaybe, tagPromptlyDyn, sample,
-        tickLossyFromPostBuildTime, zipDynWith, mergeWith)
+        tickLossyFromPostBuildTime, zipDynWith, mergeWith, gate, ffilter)
 import Reflex.Dom.Core
        (elDynClass, elAttr, dyn, (=:), elDynAttr,
         divClass, text, el, elClass, dynText, domEvent, elDynHtmlAttr', EventName(..), blank)
@@ -122,7 +122,7 @@ import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.Claude
        (claudeAvailable, runClaudeCmd, ClaudeCmd(..), ClaudeSession(..),
         claudeSessionsFor, claudeTranscriptPath, showLiveSession)
-import IDE.Web.AgentInfo (AgentNode(..), agentDirOf, agentForest, agentTitles)
+import IDE.Web.AgentInfo (AgentNode(..), agentDirOf, agentForestShared, agentTitles)
 import IDE.Web.Agent (agentResume, agentSuspend, showAgentPane)
 import IDE.Web.AddProjectRequest (requestAddProjectOn)
 import IDE.Web.ServerState (ServerState(..), serverMenuItems)
@@ -140,7 +140,7 @@ import IDE.Web.WorktreeRegistry
         registerWorktree, roleText, owningSession, worktreeInfo,
         worktreeMainRoot)
 import IDE.Web.Widget.Tree
-       (treeItemDynAttr', treeItemDynAttrSet', treeSelect, treeSelect', treeItem,
+       (treeItemDynAttr, treeItemDynAttr', treeItemDynAttrSet', treeSelect, treeSelect', treeItem,
         treeItem', treeItemTracked', clickMods, dblclickMods)
 import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.GitInfo
@@ -2268,10 +2268,8 @@ workspaceWidget ctx0 serversD activeFileD0 revealFileD0 = do
                          (M.empty <$ servers))
                       <$> topsD <*> serversD
         -- (the agent tree is read only while there is a host to show it under)
-        hostsRef <- liftIO (newIORef False)
-        performEvent_ $ ffor (updated byHostD) $ \m -> liftIO (writeIORef hostsRef (not (M.null m)))
-        liftIO . writeIORef hostsRef . not . M.null =<< sample (current byHostD)
-        forestD <- pollD [] (readIORef hostsRef >>= \any' -> if any' then agentForest else return [])
+        hasHostsD <- holdUniqDyn (not . M.null <$> byHostD)
+        forestD <- pollWhileD hasHostsD [] agentForestShared
         builtE <- dyn $ ffor rebuildD $ \_ -> do
             localE <- listViewWithKey localD (projectNodeW env False)
             hostE  <- listViewWithKey byHostD (serverNode env serversD forestD)
@@ -2366,9 +2364,12 @@ serverNode env serversD forestD host projsD = do
 hostAgentsNode :: forall t m . MonadWidget t m
                => Text -> Dynamic t (M.Map (Bool, Text, Text) AgentNode) -> m ()
 hostAgentsNode host agentsD = do
+  -- (built once and hidden while empty, not rebuilt each time the count
+  -- passes through zero)
   emptyD <- holdUniqDyn (M.null <$> agentsD)
-  void . dyn $ ffor emptyD $ \empty -> unless empty . void $
-    treeItem "server-agents" True
+  void $
+    treeItemDynAttr (ffor emptyD $ \empty -> "class" =: "server-agents"
+                                            <> (if empty then "style" =: "display:none" else mempty)) True
       (treeSelect "workspace" (return never) $ do
           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-claude.svg") blank
           elAttr "span" ("title" =: ("The agents running in " <> host <> "'s leksah tmux server")) $
@@ -2398,11 +2399,17 @@ hostAgentRow sid nD = do
                note (who n <> ": its pane could not be found")
         else agentResume sid >>= either (\e -> note (who n <> " could not be resumed: " <> e))
                                         (const (return ()))
-      suspend = void . forkIO $ agentSuspend sid False >>= note . T.strip
+      -- (said only when it did not suspend: success shows on the row)
+      suspend = void . forkIO $ agentSuspend sid False >>= \r ->
+        unless ("Suspended " `T.isPrefixOf` r) (note (T.strip r))
   elDynAttr "li" (ffor liveD $ \l -> "class" =: ("agent-session server-agent" <> if l then "" else " server-agent-gone")) $ do
     (rowEl, mE) <- treeSelect' "workspace"
         (menuSplit [ ffor nD $ \n -> (if anLive n then "Show Agent" else "Resume Agent", (Nothing, bringUp n))
-                   , ffor liveD $ \l -> (if l then "Suspend Agent" else "", (Nothing, suspend)) ]) $ do
+                     -- (not while it works: that would lose its turn, and
+                     -- is refused)
+                   , ffor nD $ \n -> ( if anLive n && anState n `notElem` ["busy", "shell"]
+                                         then "Suspend Agent" else ""
+                                     , (Nothing, suspend) ) ]) $ do
         agentFace nameD
         elDynAttr "span" (ffor nD $ \n -> "title" =: anDetail n) $ dynText labelD
         statusBadge badgeD
@@ -2427,6 +2434,16 @@ claudeStatusRowsD = do
   (stE, fireSt) <- newTriggerEvent
   performEvent_ $ liftIO (claudeStatusNow >>= fireSt) <$ leftmost [() <$ pb, () <$ tick]
   holdUniqDyn =<< holdDyn [] (csRows <$> stE)
+
+-- | 'pollD', polling only while @onD@ holds (and at once when it starts to).
+pollWhileD :: forall t m a . (MonadWidget t m, Eq a) => Dynamic t Bool -> a -> IO a -> m (Dynamic t a)
+pollWhileD onD a0 act = do
+  pb <- getPostBuild
+  tick <- tickLossyFromPostBuildTime agentWorktreesPeriod
+  (e, fire) <- newTriggerEvent
+  performEvent_ $ (liftIO . void . forkIO $ act >>= fire)
+    <$ gate (current onD) (leftmost [() <$ pb, () <$ tick, () <$ ffilter id (updated onD)])
+  holdUniqDyn =<< holdDyn a0 e
 
 -- | Poll an IO action off the frame thread.
 pollD :: forall t m a . (MonadWidget t m, Eq a) => a -> IO a -> m (Dynamic t a)

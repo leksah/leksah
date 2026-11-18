@@ -179,7 +179,7 @@ import IDE.Web.ReplTmux
 import IDE.Web.TerminalInput (registerTerminalPty, unregisterTerminalPty)
 import IDE.Web.WakeOnLan (ensureAwake)
 import IDE.Web.TmuxServer
-       (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn, tmuxStdoutOn,
+       (TmuxServer(..), tmuxRunOn, tmuxOkOn, tmuxCmdOn, tmuxOutOn, tmuxStdoutOn, tmuxLinesOn,
         tmuxOnIds, qualifyTmuxId, rawTmuxId, selectWindowAsViewer, viewerFilterArg)
 import IDE.Web.TerminalRefresh (monitorSessionName)
 import IDE.Web.SnapRequest (requestSnapPane)
@@ -1241,20 +1241,25 @@ killTerminalSession n = (`catch` \(_ :: SomeException) -> return ()) $ do
     unregisterTerminalPty n
     -- (its remote viewers' grouped sessions first: they hold the same
     -- windows, which would otherwise outlive it, unseen)
-    vs <- groupViewerSessions (tmuxOutOn LocalServer) n
+    vs <- groupViewerSessions (tmuxLinesOn LocalServer) n
     mapM_ (\v -> tmuxCmd ["kill-session", "-t", T.unpack v]) vs
     tmuxCmd ["kill-session", "-t", T.unpack n]
 
 -- | The viewer sessions ('IDE.Web.TmuxServer.viewerAttachScript') grouped
 -- with session @n@, as session ids — what killing @n@ must kill too, or the
 -- windows it shares with them would live on in sessions no leksah lists.
-groupViewerSessions :: ([String] -> IO (Maybe Text)) -> Text -> IO [Text]
+groupViewerSessions :: ([String] -> IO (Maybe [Text])) -> Text -> IO [Text]
 groupViewerSessions run n = do
-    mg <- fmap T.strip <$> run ["display-message", "-p", "-t", T.unpack n, "#{session_group}"]
+    -- (display-message takes a PANE target: a bare name could be read as a
+    -- window — "1" — of another session.  An id is exact; a name needs
+    -- @=NAME:@.)
+    let target | "$" `T.isPrefixOf` n = T.unpack n
+               | otherwise            = "=" <> T.unpack n <> ":"
+    mg <- fmap (T.strip . T.intercalate "") <$> run ["display-message", "-p", "-t", target, "#{session_group}"]
     case mg of
       Just g | not (T.null g) -> do
-        out <- run ["list-sessions", "-F", "#{session_group}\t#{@leksah_viewer}\t#{session_id}"]
-        return [ sid | l <- maybe [] T.lines out
+        ls <- run ["list-sessions", "-F", "#{session_group}\t#{@leksah_viewer}\t#{session_id}"]
+        return [ sid | l <- fromMaybe [] ls
                      , [g', v, sid] <- [T.splitOn "\t" l]
                      , g' == g, not (T.null v) ]
       _ -> return []
@@ -1651,7 +1656,7 @@ selectRemoteTmuxPane host s w p = do
 -- | Kill remote session @s@ (so it no longer persists on @host@).
 killRemoteTmuxSession :: Text -> Text -> IO ()
 killRemoteTmuxSession host s = do
-    vs <- groupViewerSessions (fmap (fmap T.pack) . sshTmux host) s
+    vs <- groupViewerSessions (fmap (fmap (T.lines . T.pack)) . sshTmux host) s
     mapM_ (\v -> sshTmux host ["kill-session", "-t", T.unpack v]) vs
     void $ sshTmux host ["kill-session", "-t", T.unpack s]
 
