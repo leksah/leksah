@@ -145,6 +145,8 @@ import qualified Language.Javascript.JSaddle.Warp as JSW (run)
 import Language.Javascript.JSaddle.Warp
        (jsaddleJs, jsaddleOr, debugWrapper)
 import Language.Javascript.JSaddle.Terminal.Bootstrap (bootstrapHtml)
+import IDE.Web.WarpJSaddle (jsaddleOrWatched)
+import Language.Javascript.JSaddle.Types (JSContextRef(contextId))
 import IDE.Web.JsaddleTunnel (tunnelSyncRequest)
 import GHCJS.DOM.Debug (addDebugMenu)
 #endif
@@ -163,12 +165,12 @@ import Reflex.Dom.Core
 
 import IDE.Web.Attach (mainWidgetWithCssGuarded)
 import IDE.Web.WindowScope
-       (newWindowScope, registerWindowScope, onCurrentScopeClose,
+       (newWindowScope, registerWindowScope, registerContextWindow, onCurrentScopeClose,
         forkInCurrentScope)
 
 import IDE.App
        (App(..), AppAction, RunState(..), appNote, getGlobalApp, newApp,
-        registerJsContext, unregisterJsContext, setGlobalApp, withApp)
+        registerJsContext, setGlobalApp, withApp)
 import IDE.Builder (buildActiveTarget)
 import IDE.Config
        (AiC(..), BuildC(..), Config(..), Editor(..), EditorC(..), FontC(..),
@@ -265,7 +267,8 @@ import IDE.Web.SaveRequest (requestSaveActiveFileWait)
 import IDE.Web.Claude
        (runClaudeCmd, claudeCommandLine, ClaudeCmd(..), ClaudeLive(..),
         claudeLiveBySession, paneCurrentPath, paneForSession, sendToSession,
-        showLiveSession, showLiveSessionHere, raiseTabOfPane)
+        showLiveSession, showLiveSessionHere, raiseTabOfPane, prepareAgentLaunchFiles,
+        setRemoteClaudeLauncher)
 import IDE.Web.AISession
        (AIChoice(..), AIRow(..), activeAIPaneRef, aiPickerChoices, choiceKey)
 #if !defined(ghcjs_HOST_OS)
@@ -273,7 +276,8 @@ import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
-import IDE.Web.RemoteAgents (startRemoteAgentsPoll)
+import IDE.Web.RemoteAgents (setRemoteEventHandler, startLocalEventsPoll, startRemoteAgentsPoll)
+import IDE.Web.Agent (remoteAgentEvent, runRemoteClaudeCmd)
 #endif
 import IDE.Web.NewLwRequest
        (beginConversion, endConversion, conversionActive, consolidateLock,
@@ -288,7 +292,8 @@ import IDE.Web.TerminalInput
         getActiveTerminal, stopCCFor)
 import IDE.Web.SnapRequest (SnapReq(..))
 import IDE.Web.TmuxServer
-       (TmuxServer(..), serverOfTabKey, rawTmuxId, qualifyTmuxId, tmuxOutOn, tmuxCmdOn)
+       (TmuxServer(..), serverOfTabKey, rawTmuxId, qualifyTmuxId, tmuxOutOn, tmuxCmdOn,
+        tmuxRunOn, installFitScript)
 import IDE.Web.Session
        (WebSession(..), WebWindowSession(..), readWebSession, writeWebSession)
 import IDE.Web.NewWindowRequest
@@ -1076,7 +1081,11 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         -- The agents on the hosts whose leksah tmux server this leksah shares
         -- (remote.tmuxSockets): one ssh snapshot per host every few seconds,
         -- which the status poll and the Agents pane read.
+        setRemoteEventHandler remoteAgentEvent
+        setRemoteClaudeLauncher runRemoteClaudeCmd
         rtid <- startRemoteAgentsPoll
+        ltid <- startLocalEventsPoll
+        when ghciMode $ registerGhciCleanupNamed "local-events-poll" (killThread ltid)
         when ghciMode $ registerGhciCleanupNamed "remote-agents-poll" (killThread rtid)
         -- Which agents are running, and — after a restart, or leksah's tmux
         -- server dying — which were interrupted (the Agents pane's ↻ cards
@@ -1089,6 +1098,16 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       -- terminal attaches: they wedge on leksah exit, stay counted as attached,
       -- and their stale 80x24 sizes clamp every window they're attached to.
       liftIO reapControlClients
+      -- Shared windows get the smallest size any leksah showing one wants
+      -- ('IDE.Web.TmuxServer.fitWindowScript'), refitted when a viewer
+      -- leaves: on every launch, as the server may outlive many of them.
+      liftIO $ do
+        installFitScript
+        void $ tmuxRunOn LocalServer
+          [ "set-hook", "-g", "client-detached", "run-shell -b 'sh ~/.leksah/fit-window.sh'" ] ""
+        -- What a leksah on another machine needs to launch an agent here
+        -- with this one's hooks and leksah-cmd ('remoteAgentFlags').
+        void $ forkIO prepareAgentLaunchFiles
 #endif
 #if !defined(ghcjs_HOST_OS)
       -- GC monitor (needs +RTS -T, set via -with-rtsopts): log every major
@@ -2003,6 +2022,12 @@ jsMain showMenubar macTitlebar mbWid app = do
   -- shared state and ends its frame loop.
   scope <- liftIO newWindowScope
   liftIO $ registerWindowScope (case wid of WindowId n -> n) scope
+  -- (and which browser connection it is, for the warp front end: a reload
+  -- retires the window — 'IDE.Web.WindowScope.connectionClosed')
+#if !defined(ghcjs_HOST_OS)
+  connCtx <- askJSM
+  liftIO $ registerContextWindow (contextId connCtx) scope
+#endif
   -- GUARDED attach ("IDE.Web.Attach"): reflex-dom's own frame loop has no
   -- exception handler, so anything escaping a performEvent/dyn body would
   -- end async event processing for this window — a frozen UI that still
@@ -2032,10 +2057,10 @@ jsMain showMenubar macTitlebar mbWid app = do
           wlog wid "EXIT appAction"
       -- Register this context so process-wide JS (leksah-cmd js eval,
       -- appJSM fan-outs) reaches this window too.
-      liftIO $ registerJsContext app wid jsCtx
+      unregister <- liftIO $ registerJsContext app wid jsCtx
       -- …until it closes: process-wide JS must not keep evaluating into a
       -- page that is gone.
-      liftIO $ onCurrentScopeClose (unregisterJsContext app wid)
+      liftIO $ onCurrentScopeClose unregister
       wlog wid "network attached"
       pb <- getPostBuild
       -- Leave the start-up state (commands gate on it).
@@ -2303,7 +2328,9 @@ debugJSaddle p f = do
   dataDir <- getDataDir
   debugWrapper $ \withRefresh registerContext ->
     runSettings (setPort p (setTimeout 3600 defaultSettings)) =<<
-      jsaddleOr defaultConnectionOptions
+      -- (leksah's jsaddleOr: a browser that reloads or closes retires its
+      -- window instead of wedging every other — "IDE.Web.WarpJSaddle")
+      jsaddleOrWatched defaultConnectionOptions
                 (registerContext >> addDebugMenu >> f >> syncPoint)
                 (withRefresh $ \req sendResponse ->
           case (W.requestMethod req, W.pathInfo req) of

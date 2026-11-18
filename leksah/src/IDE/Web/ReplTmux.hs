@@ -29,6 +29,7 @@ module IDE.Web.ReplTmux
   , newWindowInSession
   , agentsSessionName
   , newAgentWindow
+  , newRemoteAgentWindow
   , withAgentsSession
   , activePaneIdOfWindow
   , ensureRemoteWindow
@@ -54,7 +55,8 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (bracket_, catch, SomeException)
-import Control.Monad (void, mfilter, forM_)
+import Control.Monad (void, mfilter, forM_, when)
+import qualified Data.ByteString.Char8 as BC
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.List (find, isPrefixOf, sortOn)
 import Data.Map (Map)
@@ -83,7 +85,8 @@ import IDE.Utils.RemotePath (parseRemotePath)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.TmuxServer
        (TmuxServer(..), tmuxCmdOn, tmuxOkOn, tmuxOutOn, tmuxStdoutOn,
-        tmuxOnIds, qualifyTmuxId, remoteTmux, remoteSocketArgs, viewerFilterArg)
+        tmuxOnIds, qualifyTmuxId, remoteTmux, remoteSocketArgs, viewerFilterArg,
+        selectWindowAsViewerSoon)
 import IDE.Workspace (WorkspaceService(..), prDir, wsCmdPrefix, wsProjects)
 import IDE.Ws.Types (Project(..))
 import IDE.Web.RemoteTermRequest (requestRemoteTerm, requestLocalTerm)
@@ -126,8 +129,9 @@ tmuxStdout = tmuxStdoutOn LocalServer
 -- unsubmitted in the program's prompt), @[\"Enter\"]@ or @[\"2\"]@ for a key.
 -- 'False' when tmux is missing or the send failed.
 sendKeysTo :: Text -> [String] -> IO Bool
-sendKeysTo target args =
-    tmuxOkOn LocalServer (["send-keys", "-t", T.unpack target] <> args) ""
+sendKeysTo target args = tmuxOnIds [target] False $ \srv raw ->
+    -- (a server-qualified pane — @ssh:\/\/HOST#%5@ — is typed into on its host)
+    tmuxOkOn srv (["send-keys", "-t", raw target] <> args) ""
 
 -- | Deliver @txt@ to a pane as a PASTE (bracketed, so the program reads it as
 -- one block) rather than as typing: @load-buffer@ then @paste-buffer -p@.
@@ -138,12 +142,11 @@ sendKeysTo target args =
 -- turns.  No Enter is sent either way: the caller adds it.  'False' when tmux is
 -- missing or either step failed.
 pasteTo :: Text -> Text -> IO Bool
-pasteTo target txt = do
+pasteTo target txt = tmuxOnIds [target] False $ \srv raw -> do
     let buf = "leksah-paste"
-    loaded <- tmuxOkOn LocalServer ["load-buffer", "-b", buf, "-"] (T.unpack txt)
+    loaded <- tmuxOkOn srv ["load-buffer", "-b", buf, "-"] (T.unpack txt)
     if not loaded then return False else
-      tmuxOkOn LocalServer
-        ["paste-buffer", "-d", "-p", "-b", buf, "-t", T.unpack target] ""
+      tmuxOkOn srv ["paste-buffer", "-d", "-p", "-b", buf, "-t", raw target] ""
 
 -- | The active pane of @sess@'s current window (the one shown in that session's
 -- terminal tab), or 'Nothing'.  'display-message -t \<session\>' proved
@@ -458,8 +461,14 @@ ensureRemoteWindow host rdir name mbCmd = remoteTmux host >>= \case
     -- attaches to, so the window is one those tabs can show.
     sock <- remoteSocketArgs host
     let sockName = case sock of ["-L", n] -> T.pack n; _ -> ""
-    (code, _, _) <- runSsh host script
+    (code, out, _) <- runSsh host script
         [T.pack rdir, name, fromMaybe "" mbCmd, T.pack bin, sockName] mempty
+    -- (It names the window; it is made current in THIS leksah's view of the
+    -- session — its viewer session, once the tab the caller opens has
+    -- attached — not in the shared one another leksah may be showing.)
+    let win = T.strip (T.pack (BC.unpack out))
+    when (code == ExitSuccess && "@" `T.isPrefixOf` win) . void . forkIO $
+      selectWindowAsViewerSoon (SshServer host) (T.unpack win)
     return (code == ExitSuccess)
   where
     -- Like the local 'ensureCommandWindow', the identity lives on the *pane*
@@ -474,15 +483,17 @@ ensureRemoteWindow host rdir name mbCmd = remoteTmux host >>= \case
       <> "if tx has-session -t =leksah 2>/dev/null; then "
       <> "p=$(tx list-panes -s -t =leksah -F '#{pane_id}\t#{@leksah_run}' 2>/dev/null"
       <> " | awk -F '\t' -v k=\"$n\" '$2==k{print $1; exit}'); "
-      <> "if [ -n \"$p\" ]; then tx select-window -t \"$p\"; tx select-pane -t \"$p\"; exit $?; fi; "
+      <> "if [ -n \"$p\" ]; then tx select-pane -t \"$p\"; "
+      <> "tx display-message -p -t \"$p\" '#{window_id}'; exit $?; fi; "
       <> "if tx list-windows -t =leksah -F '#{window_name}' 2>/dev/null | grep -Fqx \"$n\"; then "
-      <> "tx select-window -t \"=leksah:$n\"; exit $?; fi; "
+      <> "tx display-message -p -t \"=leksah:$n\" '#{window_id}'; exit $?; fi; "
       <> "p=$(tx new-window -t =leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
       <> "else "
       <> "p=$(tx new-session -d -s leksah -c \"$d\" -n \"$n\" -P -F '#{pane_id}' \"$@\"); "
       <> "fi; "
       <> "[ -n \"$p\" ] || exit 1; "
-      <> "tx set-option -p -t \"$p\" @leksah_run \"$n\" 2>/dev/null; exit 0"
+      <> "tx set-option -p -t \"$p\" @leksah_run \"$n\" 2>/dev/null; "
+      <> "tx display-message -p -t \"$p\" '#{window_id}'; exit 0"
 
 -- | Open (or focus) a terminal whose working directory is @dir@ — local or
 -- @ssh:\/\/HOST\/…@.  Shared by "Open Terminal Here" (projectOpenTerminal) and
@@ -725,6 +736,33 @@ newNamedWindowIn mname sid dir mkey cmd keepShell =
                         , "@leksah_run", T.unpack key]
                 return (Just (wid, pid))
               _ -> return Nothing
+
+-- | 'newAgentWindow' on another machine: a window named @name@ in the
+-- @Agents@ session of @host@'s leksah tmux server (created if missing), its
+-- cwd @rdir@ (host-local), running @cmd@ and dropping to a shell if it fails.
+-- The pane carries the same tags a leksah running ON that host would give one
+-- of its own agents — the run key (@\@leksah_run@, host-local) and the agent's
+-- name (@\@leksah_agent@) — so that leksah, and every other one showing the
+-- host, sees it as the agent it is.  Answers the server-qualified ids.
+newRemoteAgentWindow :: Text -> Text -> FilePath -> Text -> Text
+                     -> IO (Maybe (Text, Text, Text))
+newRemoteAgentWindow host name rdir key cmd =
+  (`catch` \(_ :: SomeException) -> return Nothing) $ do
+    let srv = SshServer host
+        run = cmd <> " || exec \"${SHELL:-sh}\" -l"
+        fmt = "#{session_id}\t#{window_id}\t#{pane_id}"
+    exists <- tmuxOkOn srv ["has-session", "-t", "=Agents"] ""
+    out <- tmuxStdoutOn srv $
+      (if exists then ["new-window", "-d", "-t", "=Agents:"]
+                 else ["new-session", "-d", "-s", "Agents"])
+      <> [ "-n", T.unpack name, "-c", rdir, "-P", "-F", fmt, T.unpack run ]
+    case T.splitOn "\t" (T.strip out) of
+      [s, w, p] | not (T.null p) -> do
+        tmuxCmdOn srv ["set-option", "-p", "-t", T.unpack p, "@leksah_run", T.unpack key]
+        tmuxCmdOn srv ["set-option", "-p", "-t", T.unpack p, "@leksah_agent", T.unpack name]
+        let q x = "ssh://" <> host <> "#" <> x
+        return (Just (q s, q w, q p))
+      _ -> return Nothing
 
 -- | The tmux session every agent leksah starts lives in, one window each,
 -- named after its agent.  One session for all of them means a pane dragged

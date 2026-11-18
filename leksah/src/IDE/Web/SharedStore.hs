@@ -30,13 +30,16 @@ module IDE.Web.SharedStore
     -- * A store on another machine
   , remoteRead
   , remoteModify
+  , remoteModifyJSON
+  , StoreUnreadable(..)
   ) where
 
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
-import Control.Exception (SomeException, bracket, catch, evaluate)
+import Control.Exception (Exception, SomeException, bracket, catch, evaluate, throwIO)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as LBS
+import Data.Aeson (FromJSON, ToJSON, decode', encode)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime)
@@ -85,15 +88,25 @@ stampOf p = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 -- | Read the file (an unreadable or undecodable one reads as empty), with the
 -- stamp taken BEFORE reading: a write racing the read leaves a newer stamp
 -- than the one recorded, so the next look reads it again.
-readFresh :: SharedStore a -> FilePath -> IO (Maybe Stamp, a)
+--
+-- A file that is there but does not decode (another build's format, or one
+-- caught mid-write by a writer that is not atomic) is 'Nothing': NOT empty.
+-- Read as empty, the next change would write back a store holding only that
+-- change — every other agent's record or name on the machine gone.
+readFresh :: SharedStore a -> FilePath -> IO (Maybe Stamp, Maybe a)
 readFresh st p = do
   stamp <- stampOf p
   v <- case stamp of
-    Nothing -> return (ssEmpty st)
-    Just _  -> (`catch` \(_ :: SomeException) -> return (ssEmpty st)) $ do
+    Nothing -> return (Just (ssEmpty st))
+    Just _  -> (`catch` \(_ :: SomeException) -> return Nothing) $ do
       bytes <- LBS.fromStrict <$> BS.readFile p
-      maybe (return (ssEmpty st)) evaluate (ssDecode st bytes)
+      if LBS.null bytes then return (Just (ssEmpty st))
+        else maybe (return Nothing) (fmap Just . evaluate) (ssDecode st bytes)
   return (stamp, v)
+
+-- | A store file this leksah cannot read: it is left as it is, not replaced.
+newtype StoreUnreadable = StoreUnreadable FilePath deriving Show
+instance Exception StoreUnreadable
 
 -- | The current value: the cached one while the file is unchanged.
 peekStore :: SharedStore a -> IO a
@@ -102,9 +115,10 @@ peekStore st = do
   now <- stampOf p
   modifyMVar (ssVar st) $ \cached -> case cached of
     Just (s, v) | s == now -> return (cached, v)
-    _ -> do
-      fresh@(_, v) <- readFresh st p
-      return (Just fresh, v)
+    _ -> readFresh st p >>= \case
+      (s, Just v) -> return (Just (s, v), v)
+      -- (unreadable: what was last read, else nothing — never cached)
+      (_, Nothing) -> return (cached, maybe (ssEmpty st) snd cached)
 
 -- | Change the store: under the file's lock, from what is in the file NOW,
 -- writing it back only when the change changed it.  The function may do IO
@@ -116,7 +130,9 @@ modifyStore st f = do
     now <- stampOf p
     (s0, v) <- case cached of
       Just c@(s, _) | s == now, s /= Nothing -> return c
-      _                                      -> readFresh st p
+      _ -> readFresh st p >>= \case
+        (s, Just v) -> return (s, v)
+        (_, Nothing) -> throwIO (StoreUnreadable p)
     (v', b) <- f v
     if v' == v then return (Just (s0, v), b) else do
       atomicWriteFile p (ssEncode st v')
@@ -176,6 +192,25 @@ remoteRead host name = (`catch` \(e :: SomeException) -> return (Left (T.pack (s
       , "if [ -f \"$f\" ]; then { cksum < \"$f\" | cut -d' ' -f1,2; cat \"$f\"; }; "
       , "else echo; fi" ]
 
+-- | 'remoteModify' for a JSON store: @f@ changes the decoded value (an absent
+-- or empty file is @empty@).  A file that does not decode is left as it is
+-- and answered with 'Left' — never replaced by a store holding only this
+-- change (see 'readFresh').
+remoteModifyJSON :: (FromJSON a, ToJSON a, Eq a) => Text -> FilePath -> a
+                 -> (a -> IO (a, b)) -> IO (Either Text b)
+remoteModifyJSON host name empty f = do
+  r <- remoteModify host name $ \old ->
+    if LBS.null old then go empty old else
+      case decode' old of
+        Nothing -> return (old, Left ("cannot read " <> T.pack name <> " on " <> host
+                                      <> "; left as it is"))
+        Just v  -> go v old
+  return (r >>= id)
+  where
+    go v old = do
+      (v', b) <- f v
+      return (if v' == v then old else encode v', Right b)
+
 -- | Change sidecar @name@ on @host@: read it, apply @f@ to its contents, and
 -- write the result back under the file's lock — only if the file is still
 -- what was read (its checksum); otherwise read again and re-apply, up to
@@ -203,5 +238,15 @@ remoteModify host name f = go (3 :: Int)
       ,       "if [ \"$now\" != \"$1\" ]; then rm -f \"$t\"; exit 3; fi; "
       ,       "mv \"$t\" \"$f\"; }; "
       , "if command -v flock >/dev/null 2>&1; then "
-      ,   "exec 9>>\"$f.lock\"; flock 9 || exit 1; fi; "
+      ,   "exec 9>>\"$f.lock\"; flock 9 || exit 1; "
+      -- (no flock(1) — stock macOS: Perl's flock is the same flock(2) lock,
+      -- held while it checks and renames)
+      , "elif command -v perl >/dev/null 2>&1; then "
+      ,   "exec perl -MFcntl=:flock -e '"
+      ,     "my ($lock, $f, $t, $want) = @ARGV; "
+      ,     "open(my $l, \">>\", $lock) or exit 1; flock($l, LOCK_EX) or exit 1; "
+      ,     "my $now = -f $f ? `cksum < \"$f\" | cut -d\" \" -f1,2` : \"\"; chomp $now; "
+      ,     "if ($now ne $want) { unlink $t; exit 3 } "
+      ,     "rename($t, $f) or exit 1; exit 0' \"$f.lock\" \"$f\" \"$t\" \"$1\"; "
+      , "fi; "
       , "w \"$1\"" ]

@@ -25,6 +25,10 @@ module IDE.Web.AgentInfo
   ( AgentInfo(..)
   , AgentNode(..)
   , recordAgentFork
+  , recordRemoteFork
+  , remoteAgentRecord
+  , applyLoggedCommand
+  , setRemoteSuspended
   , describeAgent
   , dismissAgent
   , markAgentDone
@@ -55,7 +59,7 @@ import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar, modifyMVar_)
 import Control.Exception (catch, SomeException)
 import Control.Applicative ((<|>))
-import Control.Monad (forM, mfilter, unless, void, when)
+import Control.Monad (forM, forM_, mfilter, unless, void, when)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
@@ -86,7 +90,7 @@ import System.FilePath (dropTrailingPathSeparator, takeFileName)
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath, writeSidecar)
-import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore)
+import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore, remoteModifyJSON)
 import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seCompactingAt, seSubagentsAt, seTaskSummary, seTool, sessionEvents)
@@ -123,6 +127,10 @@ data AgentInfo = AgentInfo
                                --   @Just False@: it chose it; 'Nothing': a record
                                --   from before this was kept (see
                                --   'IDE.Web.ClaudeStatus.chooseTitle')
+  , aiCommandAt :: Maybe Double -- ^ when it last described itself or said it
+                               --   was done (POSIX seconds), by whichever route:
+                               --   a logged command older than this is already
+                               --   applied, or superseded ('applyLoggedCommand')
   , aiInherited :: [Text]      -- ^ what a fork took over from the session it
                                --   copied — its name and titles at that moment
                                --   — so none of them is shown as the fork's own
@@ -182,12 +190,13 @@ instance ToJSON AgentInfo where
     , "suspended" .= aiSuspended i, "manager" .= aiManager i
     , "ranOn" .= aiRanOn i, "interrupted" .= aiInterrupted i
     , "titleSent" .= aiTitleSent i, "titleProvisional" .= aiTitleProvisional i
-    , "inherited" .= aiInherited i ]
+    , "inherited" .= aiInherited i, "commandAt" .= aiCommandAt i ]
 
 instance FromJSON AgentInfo where
   parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
     <$> o .: "session" <*> o .:? "parent" <*> (fromMaybe "" <$> o .:? "dir")
-    <*> o .:? "title" <*> o .:? "titleProvisional" <*> (fromMaybe [] <$> o .:? "inherited")
+    <*> o .:? "title" <*> o .:? "titleProvisional" <*> o .:? "commandAt"
+    <*> (fromMaybe [] <$> o .:? "inherited")
     <*> o .:? "desc" <*> o .:? "when" <*> o .:? "born"
     <*> o .:? "done" <*> o .:? "doneAt" <*> o .:? "role"
     <*> o .:? "bio" <*> o .:? "bioAt" <*> o .:? "suspended"
@@ -327,6 +336,24 @@ remoteInfos = (`catch` \(_ :: SomeException) -> return M.empty) $ do
         return m
   return (M.unions ms)
 
+-- | Which shared host's store holds a record of @sid@, and the record — an
+-- agent on that machine that is not running now (suspended, or ended).
+remoteAgentRecord :: Text -> IO (Maybe (Text, AgentInfo))
+remoteAgentRecord sid = do
+  _ <- remoteInfos   -- (decode any store that changed)
+  m <- readIORef remoteInfosRef
+  return $ listToMaybe [ (h, i) | (h, (_, im)) <- M.toList m, Just i <- [M.lookup sid im] ]
+
+-- | Mark an agent on @host@ suspended, or not, in THAT machine's store.
+setRemoteSuspended :: Text -> Text -> Bool -> IO ()
+setRemoteSuspended host sid on = do
+  now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
+  void . (`catch` \(_ :: SomeException) -> return (Left "")) $
+    remoteModifyJSON host "agents.json" ([] :: [AgentInfo]) $ \is -> do
+      let m  = M.fromList [ (aiSession i, i) | i <- is ]
+          m' = M.adjust (\i -> i { aiSuspended = if on then Just now else Nothing }) sid m
+      return (if m' == m then is else M.elems m', ())
+
 {-# NOINLINE remoteInfosRef #-}
 remoteInfosRef :: IORef (Map Text (LBS.ByteString, Map Text AgentInfo))
 remoteInfosRef = unsafePerformIO (newIORef M.empty)
@@ -376,6 +403,27 @@ recordAgentFork parent child dir mprompt mfrom = do
        , () )
   where firstLine = T.take 70 . T.strip . T.takeWhile (/= '\n')
 
+-- | 'recordAgentFork' for an agent launched on another machine: the record
+-- goes into THAT machine's store (its @agents.json@, written by compare-and-
+-- swap — "IDE.Web.SharedStore"), where every leksah showing the machine reads
+-- it.  @rdir@ is host-local.  Best effort: the agent runs either way.
+recordRemoteFork :: Text -> Maybe Text -> Text -> FilePath -> Maybe Text -> Maybe Text
+                 -> Bool -> IO ()
+recordRemoteFork host parent child rdir mprompt mrole manager = do
+  now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
+  void . (`catch` \(_ :: SomeException) -> return (Left "")) $
+    remoteModifyJSON host "agents.json" ([] :: [AgentInfo]) $ \is -> do
+      let m  = M.fromList [ (aiSession i, i) | i <- is ]
+          i' = (blank child rdir)
+                 { aiParent = parent
+                 , aiTitle  = T.take 70 . T.strip . T.takeWhile (/= '\n') <$> mprompt
+                 , aiTitleProvisional = Just (isJust mprompt)
+                 , aiRole   = mrole
+                 , aiManager = manager
+                 , aiBorn   = Just now }
+          m' = M.insertWith (\_ o -> o) child i' m
+      return (if m' == m then is else M.elems m', ())
+
 -- | What a fork of session @src@ takes over from it: its @\/rename@ (or derived)
 -- name, the titles leksah holds for it, and its conversation's title.
 inheritedFrom :: Text -> IO [Text]
@@ -407,19 +455,56 @@ describeAgent sid mtitle mhtml mbio = do
       posix = realToFrac (utcTimeToPOSIXSeconds now) :: Double
   withInfos $ \m ->
     let cur  = fromMaybe (blank sid dir) (M.lookup sid m)
-        cur' = cur { aiTitle = maybe (aiTitle cur) (Just . T.strip) mtitle
-                   , aiTitleProvisional = maybe (aiTitleProvisional cur) (const (Just False)) mtitle
-                   , aiDesc  = maybe (aiDesc cur) (Just . sanitizeAgentHtml) mhtml
-                   , aiBio   = maybe (aiBio cur) (Just . sanitizeAgentHtml) mbio
-                   , aiBioAt = maybe (aiBioAt cur) (const (Just posix)) mbio
-                   , aiWhen  = Just stamp
-                   , aiDir   = if null (aiDir cur) then dir else aiDir cur }
+        cur' = describedAs stamp posix mtitle mhtml mbio cur
+                 { aiDir = if null (aiDir cur) then dir else aiDir cur }
     in ( M.insert sid cur' m
        , T.unlines $
            [ "Recorded. The Agents pane now shows " <> sid <> " as:" ]
            <> [ "  title: " <> t | Just t <- [aiTitle cur'] ]
            <> [ "  description: " <> T.take 200 d | Just d <- [aiDesc cur'] ]
            <> [ "  bio: " <> T.take 200 b | Just b <- [aiBio cur'] ] )
+
+-- | What @agent describe@ makes of a record (at @stamp@ \/ @posix@): its title,
+-- description and bio, each one only when given.
+describedAs :: Text -> Double -> Maybe Text -> Maybe Text -> Maybe Text -> AgentInfo -> AgentInfo
+describedAs stamp posix mtitle mhtml mbio cur = cur
+  { aiTitle = maybe (aiTitle cur) (Just . T.strip) mtitle
+  , aiTitleProvisional = maybe (aiTitleProvisional cur) (const (Just False)) mtitle
+  , aiDesc  = maybe (aiDesc cur) (Just . sanitizeAgentHtml) mhtml
+  , aiBio   = maybe (aiBio cur) (Just . sanitizeAgentHtml) mbio
+  , aiBioAt = maybe (aiBioAt cur) (const (Just posix)) mbio
+  , aiWhen  = Just stamp
+  , aiCommandAt = Just posix }
+
+-- | An agent's @agent describe@ \/ @agent done@ that reached no leksah on its
+-- own machine (@leksah-cmd@ put it on that machine's event log), applied to
+-- that machine's store ('Nothing': this one's) by the leksah that read the log
+-- ("IDE.Web.RemoteAgents").  @t@ is when the agent ran it; @sid@ the session it
+-- is about (already resolved); @args@ its flags.  Idempotent: a log is read
+-- again after a restart, and every leksah showing the machine reads it.
+applyLoggedCommand :: Maybe Text -> Double -> Text -> Text -> [Text] -> IO ()
+applyLoggedCommand mhost t verb sid args = do
+  let posix = t
+      stamp = T.pack (formatTime defaultTimeLocale "%Y-%m-%d %H:%M"
+                       (posixSecondsToUTCTime (realToFrac t)))
+      flag f = listToMaybe [ v | (k, v) <- zip args (drop 1 args), k == f ]
+      change = case verb of
+        "describe" -> Just (describedAs stamp posix (flag "--title") (flag "--html") (flag "--bio"))
+        "done"     -> Just (\i -> i { aiDone = flag "--summary" <|> Just ""
+                                    , aiDoneAt = Just posix, aiCommandAt = Just posix })
+        _          -> Nothing
+      -- Applied once: not when the record has heard from the agent since
+      -- (a command already applied, or a newer describe / done).
+      apply upd m = case M.lookup sid m of
+        Just i | maybe False (>= t) (aiCommandAt i) -> m
+        cur -> M.insert sid (upd (fromMaybe (blank sid "") cur)) m
+  forM_ change $ \upd -> void . (`catch` \(_ :: SomeException) -> return (Left "")) $
+    case mhost of
+      Nothing   -> Right <$> withInfos (\m -> (apply upd m, ()))
+      Just host -> remoteModifyJSON host "agents.json" ([] :: [AgentInfo]) $ \is -> do
+        let m  = M.fromList [ (aiSession i, i) | i <- is ]
+            m' = apply upd m
+        return (if m' == m then is else M.elems m', ())
 
 -- | A session that carried on under a new id ('agentContinuations' — Claude
 -- Code backgrounding it, say) is the same agent: what leksah knows about the
@@ -492,7 +577,7 @@ markAgentDone sid summary = do
   let dir = maybe "" clDir (M.lookup sid live)
   withInfos $ \m ->
     let cur = fromMaybe (blank sid dir) (M.lookup sid m)
-    in (M.insert sid cur { aiDone = Just summary, aiDoneAt = Just now } m, ())
+    in (M.insert sid cur { aiDone = Just summary, aiDoneAt = Just now, aiCommandAt = Just now } m, ())
 
 clearAgentDone :: Text -> IO ()
 clearAgentDone sid = withInfos $ \m ->
@@ -567,10 +652,16 @@ titleForClaude sid current = do
 -- | The sessions leksah holds as suspended or interrupted — what its Agents
 -- pane shows them as, whatever else may say they are doing (see
 -- 'IDE.Web.ClaudeStatus.startClaudeStatusPoll').
+--
+-- Not one this leksah's user dismissed ('dismissAgent'): put out of sight, it
+-- no longer keeps a name from being handed on.
 agentsHeld :: IO [Text]
-agentsHeld = (\m -> [ aiSession i | i <- M.elems m
-                                  , isJust (aiSuspended i) || isJust (aiInterrupted i) ])
-             <$> peekInfos
+agentsHeld = do
+  hidden <- peekStore hiddenStore `catch` \(_ :: SomeException) -> return S.empty
+  (\m -> [ aiSession i | i <- M.elems m
+                       , isJust (aiSuspended i) || isJust (aiInterrupted i)
+                       , aiSession i `S.notMember` hidden ])
+    <$> peekInfos
 
 -- | The agent that started @sid@, if leksah saw it happen.
 agentParentOf :: Text -> IO (Maybe Text)
@@ -598,7 +689,7 @@ blank :: Text -> FilePath -> AgentInfo
 blank sid dir = AgentInfo
   { aiSession = sid, aiParent = Nothing
   , aiDir = dropTrailingPathSeparator dir
-  , aiTitle = Nothing, aiTitleProvisional = Nothing, aiInherited = []
+  , aiTitle = Nothing, aiTitleProvisional = Nothing, aiCommandAt = Nothing, aiInherited = []
   , aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
   , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing
   , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False

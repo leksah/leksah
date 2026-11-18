@@ -29,8 +29,10 @@ module IDE.Web.AgentNames
     -- * Names on other machines
   , NameRec(..)
   , nameSessions
+  , namesHeldElsewhere
   , setRemoteNames
   , remoteNameOf
+  , noteRemoteName
   ) where
 
 import Data.IORef (IORef, newIORef, readIORef, atomicWriteIORef, atomicModifyIORef')
@@ -130,9 +132,13 @@ viewNames g = g <$> peekStore namesStore
 
 -- | The session's name, giving it one if it has none yet.
 agentNameFor :: Text -> IO Text
-agentNameFor sid = do
+agentNameFor sid = remoteNameOf sid >>= \case
+ -- (a session on another machine is named in that machine's store, never here)
+ Just n  -> return n
+ Nothing -> do
   held <- readIORef heldRef
-  withNames $ \now m -> let m' = touch held now m sid
+  elsewhere <- namesHeldElsewhere Nothing
+  withNames $ \now m -> let m' = touch held elsewhere now m sid
                         in (m', maybe "" nrName (M.lookup sid m'))
 
 -- | Name every one of these sessions that has no name yet, mark them all as
@@ -142,8 +148,9 @@ agentNameFor sid = do
 touchAgentNames :: [Text] -> IO (Map Text Text)
 touchAgentNames sids = do
   held <- readIORef heldRef
+  elsewhere <- namesHeldElsewhere Nothing
   withNames $ \now m ->
-    let m' = foldl' (touch held now) m sids in (m', M.map nrName m')
+    let m' = foldl' (touch held elsewhere now) m sids in (m', M.map nrName m')
 
 -- | When each session was last seen running (POSIX seconds; accurate to
 -- 'seenSlack'), without changing anything.  Sessions that carried on under
@@ -189,12 +196,47 @@ agentNames = do
 -- | Name every one of @sids@ that has no name in @m@ (a machine's store) yet,
 -- and mark them seen: 'touchAgentNames' for a store that is not this
 -- machine's.
-nameSessions :: Double -> [Text] -> Map Text NameRec -> Map Text NameRec
-nameSessions now sids m = foldl' (touch S.empty now) m sids
+--
+-- @held@: sessions whose names stay reserved whatever their clock says (the
+-- machine's suspended agents — 'holdAgentNames' for this machine's store).
+nameSessions :: Double -> S.Set Text -> S.Set Text -> [Text] -> Map Text NameRec
+             -> Map Text NameRec
+nameSessions now held elsewhere sids m = foldl' (touch held elsewhere now) m sids
+
+-- | The names held — by a session seen within the reservation — in the stores
+-- of every machine this leksah knows of EXCEPT @forHost@'s ('Nothing': this
+-- machine's): what a new name for a session there must avoid.  (A leksah on
+-- another machine can only avoid the names IT can see, so this narrows clashes
+-- rather than ruling them out.)
+namesHeldElsewhere :: Maybe Text -> IO (S.Set Text)
+namesHeldElsewhere forHost = do
+  now <- realToFrac <$> getPOSIXTime
+  let held m = S.fromList [ nrName r | (s, r) <- M.toList m, reserved S.empty now s r ]
+  local  <- case forHost of
+    Nothing -> return S.empty
+    Just _  -> viewNames held
+  remote <- readIORef remoteNamesRef
+  return (local <> S.unions [ held m | (h, m) <- M.toList remote, Just h /= forHost ])
 
 -- | Replace what is known of @host@'s store.
+--
+-- A name this leksah has just given a session there ('noteRemoteName') and a
+-- snapshot taken before that write landed has not got yet is kept, as long as
+-- the session is still recent: one snapshot later the store has it.
 setRemoteNames :: Text -> Map Text NameRec -> IO ()
-setRemoteNames host m = atomicModifyIORef' remoteNamesRef (\r -> (M.insert host m r, ()))
+setRemoteNames host m = do
+  now <- realToFrac <$> getPOSIXTime
+  atomicModifyIORef' remoteNamesRef $ \r ->
+    let noted = M.filter (\x -> now - nrSeen x < 60) (M.findWithDefault M.empty host r)
+    in (M.insert host (m `M.union` noted) r, ())
+
+-- | Remember at once what @host@'s store now calls @sid@ (the next snapshot
+-- would bring it, but a launch needs the name before then).
+noteRemoteName :: Text -> Text -> Text -> IO ()
+noteRemoteName host sid name = do
+  now <- realToFrac <$> getPOSIXTime
+  atomicModifyIORef' remoteNamesRef $ \r ->
+    (M.insertWith M.union host (M.singleton sid (NameRec name now Nothing)) r, ())
 
 -- | A remote session's name, from its machine's store.
 remoteNameOf :: Text -> IO (Maybe Text)
@@ -205,25 +247,28 @@ remoteNamesRef :: IORef (Map Text (Map Text NameRec))
 remoteNamesRef = unsafePerformIO (newIORef M.empty)
 
 -- | Mark one session seen, naming it first if it has no name.
-touch :: S.Set Text -> Double -> Map Text NameRec -> Text -> Map Text NameRec
-touch held now m sid = case M.lookup sid m of
+touch :: S.Set Text -> S.Set Text -> Double -> Map Text NameRec -> Text -> Map Text NameRec
+touch held elsewhere now m sid = case M.lookup sid m of
   Just r | now - nrSeen r < seenSlack -> m
          | otherwise                  -> M.insert sid r { nrSeen = now } m
-  Nothing -> M.insert sid (NameRec (pick held now m sid) now Nothing) m
+  Nothing -> M.insert sid (NameRec (pick held elsewhere now m sid) now Nothing) m
 
 -- | A name for a new session: an animal no other session holds (seen within
 -- 'reserveFor'), the one whose last use is oldest — so a name that has just
 -- been freed isn't immediately handed to someone else, which would be
 -- confusing.  Ties (never-used animals) go by a hash of the session id, so the
 -- choice doesn't always walk the alphabet.  With every animal held, one gets a
--- number (@Wren-2@).
-pick :: S.Set Text -> Double -> Map Text NameRec -> Text -> Text
-pick heldSids now m sid = case sortOn order free of
+-- number (@Wren-2@).  @elsewhere@: names other machines' stores hold
+-- ('namesHeldElsewhere'), avoided too — two agents in one Agents pane must
+-- not answer to the same name.
+pick :: S.Set Text -> S.Set Text -> Double -> Map Text NameRec -> Text -> Text
+pick heldSids elsewhere now m sid = case sortOn order free of
     (n : _) -> n
     []      -> numbered (2 :: Int)
   where
     -- (A session that continued elsewhere has handed its name on.)
     held    = [ nrName r | (s, r) <- M.toList m, reserved heldSids now s r ]
+              <> S.toList elsewhere
     free    = [ a | a <- rotated, a `notElem` held ]
     lastUse = M.fromListWith max [ (nrName r, nrSeen r) | r <- M.elems m ]
     rotated = let (a, b) = splitAt (hashOf sid `mod` length agentAnimals) agentAnimals

@@ -17,6 +17,9 @@
 -- "IDE.Web.Widget.FileTree".
 module IDE.Web.Claude
   ( claudeAvailable
+  , setRemoteClaudeLauncher
+  , claudeCmdDir
+  , prepareAgentLaunchFiles
   , ClaudeSession(..)
   , csTitle
   , claudeSessionsFor
@@ -129,7 +132,8 @@ import System.IO
        (withFile, IOMode(ReadMode), hIsEOF, hSeek,
         SeekMode(SeekFromEnd), hFileSize)
 
-import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
+import IDE.Utils.RemoteExec (runSsh)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Exit (ExitCode(..))
 import System.Process
@@ -842,7 +846,40 @@ newAgentSessionId = do
 -- on screen but a normal quit tidies up (which also clears the tree's
 -- "running" dot and frees the per-directory key, see 'claudeRunning').
 runClaudeCmd :: ClaudeCmd -> IO ()
-runClaudeCmd cmd = void . forkIO $ do
+runClaudeCmd cmd = void . forkIO $ case parseRemotePath (claudeCmdDir cmd) of
+  -- (a project on another machine: the agent runs THERE, named in that
+  -- machine's stores — "IDE.Web.Agent", which this module can't import)
+  Just (host, rdir) -> readIORef remoteLauncherRef >>= \case
+    Just launch -> launch host rdir cmd
+    Nothing     -> return ()
+  Nothing -> runLocalClaudeCmd cmd
+
+-- | The directory a 'ClaudeCmd' runs in.
+claudeCmdDir :: ClaudeCmd -> FilePath
+claudeCmdDir = \case
+  ClaudeNew d            -> d
+  ClaudeContinue d       -> d
+  ClaudeResumePicker d   -> d
+  ClaudeResume d _       -> d
+  ClaudeResumeFork d _   -> d
+  ClaudeAsk d            -> d
+  ClaudePrompt d _       -> d
+  ClaudeAgent s          -> asDir s
+  CodexNew d             -> d
+  CodexResume d _        -> d
+
+-- | How 'runClaudeCmd' starts a command whose directory is on another
+-- machine (host, host-local dir): set at start-up by "IDE.Web.Agent"
+-- ('setRemoteClaudeLauncher'), which has the remote name store.
+{-# NOINLINE remoteLauncherRef #-}
+remoteLauncherRef :: IORef (Maybe (Text -> FilePath -> ClaudeCmd -> IO ()))
+remoteLauncherRef = unsafePerformIO (newIORef Nothing)
+
+setRemoteClaudeLauncher :: (Text -> FilePath -> ClaudeCmd -> IO ()) -> IO ()
+setRemoteClaudeLauncher = writeIORef remoteLauncherRef . Just
+
+runLocalClaudeCmd :: ClaudeCmd -> IO ()
+runLocalClaudeCmd cmd = do
   (d, key, line') <- claudeCommandLine cmd
   findRunPane key >>= \case
     -- (its own tab: the session's first would be another agent's, every
@@ -905,14 +942,18 @@ claudeCommandLine cmd = do
   -- (installed, and not turned off for this project): worked out once.
   plugin    <- if isRemotePath d then return False else leksahPluginEnabledFor (Just d)
   mcpFlag   <- if isRemotePath d then return "" else claudeMcpFlag plugin
-  hooksFlag <- if isRemotePath d then return "" else claudeHooksFlag plugin d
+  -- (on another machine: the hooks and MCP server a leksah THERE set up, when
+  -- one has — their files name that machine's leksah-cmd — else none)
+  (envPrefix, hooksFlag) <- case parseRemotePath d of
+    Just (host, _) -> remoteAgentFlags host
+    Nothing        -> (\f -> ("", f)) <$> claudeHooksFlag plugin d
   -- The agent's own name, when its session id is known at launch — so it can
   -- tell the user and other agents who it is.
   myName <- traverse agentNameFor ownSession
   let flags = mcpFlag <> hooksFlag <> allowFlag
            <> appendSystemPrompt (planHtmlNote : worktreeNote
                                    : maybe [] ((: []) . nameNote) myName <> notes)
-      line' = maybe line (\p -> p <> " " <> line) mbPrefix <> flags
+      line' = envPrefix <> maybe line (\p -> p <> " " <> line) mbPrefix <> flags
   return (d, key, line')
   where
     ownSession = case cmd of
@@ -1258,6 +1299,47 @@ claudeHooksFlag installed dir = (`catch` \(_ :: SomeException) -> return "") $
         [ "hooks" .= leksahHooks exe script | not installed ]
         <> [ "statusLine" .= statusLine ]
       return (" --settings " <> T.pack path)
+
+-- | The @--settings@ and @--mcp-config@ flags for a session launched on
+-- @host@: the files a leksah running there wrote for its own sessions (its
+-- hooks call ITS leksah-cmd, which reaches it — or, when it is not running,
+-- the machine's event log), or nothing when no leksah has run there.  One ssh
+-- round trip; absolute paths, as the host spells them.
+remoteAgentFlags :: Text -> IO (Text, Text)
+remoteAgentFlags host = (`catch` \(_ :: SomeException) -> return ("", "")) $ do
+  (_, out, _) <- runSsh host
+    (T.concat [ "for f in \"$HOME/.leksah/settings-statusline.json\" \"$HOME/.leksah/hooks.json\"; "
+              , "do [ -f \"$f\" ] && { echo \"S $f\"; break; }; done; "
+              , "[ -f \"$HOME/.leksah/mcp.json\" ] && echo \"M $HOME/.leksah/mcp.json\"; "
+              , "[ -f \"$HOME/.leksah/bin-dir\" ] && echo \"P $(head -n1 \"$HOME/.leksah/bin-dir\")\"; exit 0" ])
+    [] mempty
+  let ls = T.lines (T.pack (BS.unpack out))
+  return
+    -- (the host leksah's leksah-cmd on the agent's PATH: its system prompt
+    -- tells it to run @leksah-cmd agent …@, and the host's tmux server need
+    -- not have been started from a shell that has it)
+    ( T.concat [ "PATH=" <> shq dir <> ":\"$PATH\" "
+               | l <- ls, Just dir <- [T.stripPrefix "P " l], not (T.null dir) ]
+    , T.concat
+        [ case T.stripPrefix "S " l of
+            Just f  -> " --settings " <> shq f
+            Nothing -> maybe "" ((" --mcp-config " <>) . shq) (T.stripPrefix "M " l)
+        | l <- ls ] )
+
+-- | Write the files 'remoteAgentFlags' looks for — this leksah's hooks and
+-- status-line settings, its MCP config, and @~\/.leksah\/bin-dir@ (where its
+-- @leksah-cmd@ is) — at start-up rather than at its first launch of an agent,
+-- so a leksah on ANOTHER machine launching an agent here finds them even
+-- when no agent has been launched here yet.
+prepareAgentLaunchFiles :: IO ()
+prepareAgentLaunchFiles = (`catch` \(_ :: SomeException) -> return ()) $
+  findExecutable "leksah-cmd" >>= mapM_ (\exe -> do
+    home <- getHomeDirectory
+    plugin <- leksahPluginEnabledFor Nothing
+    _ <- claudeMcpFlag plugin
+    _ <- claudeHooksFlag plugin home
+    writeIfChanged (home </> ".leksah" </> "bin-dir")
+      (BS.fromStrict (encodeUtf8 (T.pack (takeDirectory exe <> "\n")))))
 
 -- | The two programs the hooks run: @leksah-cmd@ (its path), and the worktree
 -- PostToolUse script, which @leksah-cmd hooks write-script@ (re)writes.

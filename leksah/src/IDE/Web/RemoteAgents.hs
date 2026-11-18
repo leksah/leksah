@@ -29,36 +29,50 @@ module IDE.Web.RemoteAgents
   , remoteActivity
   , remoteInfoBytes
   , remotePaneSessions
+  , remotePaneOf
+  , remoteHostOf
+  , remoteTranscriptTail
+  , remoteAgentName
+  , remoteStartingPane
+  , setRemoteEventHandler
+  , startLocalEventsPoll
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
-import Control.Exception (SomeException, catch)
-import Control.Monad (forM_, forever, unless, void)
-import Data.Aeson (decode', encode)
+import Control.Exception (SomeException, catch, finally)
+import Control.Monad (forM, forM_, forever, unless, void, when)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Data.Aeson (Value(..), decode')
+import qualified Data.Aeson.KeyMap as KM (lookup)
+import Data.Foldable (toList)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as LBS
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import System.IO (IOMode(ReadMode), SeekMode(AbsoluteSeek), hSeek, withFile)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import System.Directory (createDirectoryIfMissing, getFileSize, getHomeDirectory)
 import System.Exit (ExitCode(..))
+import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config (Config(..), RemoteC(..), currentConfig)
 import IDE.Utils.RemoteExec (runSsh)
-import IDE.Web.AgentNames (NameRec(..), nameSessions, setRemoteNames)
+import IDE.Web.AgentNames
+       (NameRec(..), nameSessions, namesHeldElsewhere, noteRemoteName, setRemoteNames)
 import IDE.Web.Claude
        (ClaudeLive(..), TranscriptGist(..), gistOfTail, latestActivityOf,
         parseSessionFile, pidAncestors)
-import IDE.Web.SharedStore (remoteModify)
+import IDE.Web.SharedStore (remoteModifyJSON)
 import IDE.Web.TmuxServer (remoteSocketArgs, remoteTmux)
 
 -- | One host, as last seen.
@@ -66,15 +80,21 @@ data HostSnapshot = HostSnapshot
   { hsAt       :: UTCTime              -- ^ when it was last read successfully
   , hsLive     :: [ClaudeLive]         -- ^ its running sessions
   , hsPanes    :: Map Text Text        -- ^ tmux pane id → the session it shows
+  , hsPaneAt   :: Map Text (Text, Text) -- ^ tmux pane id → its tmux session and
+                                       --   window ids (raw, on the host)
+  , hsRunKeys  :: Map Text Text        -- ^ tmux pane id → its @\@leksah_run@ key
   , hsNames    :: (Text, Map Text NameRec)   -- ^ its name store, and its cksum
   , hsInfos    :: (Text, LBS.ByteString)     -- ^ its agents.json, and its cksum
+  , hsEventsAt :: Integer              -- ^ how far into the host's event log
+                                       --   (@~\/.leksah\/agent-events.jsonl@)
+                                       --   this leksah has read; -1 = not yet
   , hsTails    :: Map Text (Text, TranscriptGist, Maybe Text)
                                        -- ^ session → (transcript stamp, gist,
                                        --   what it is doing)
   }
 
 emptySnapshot :: UTCTime -> HostSnapshot
-emptySnapshot t = HostSnapshot t [] M.empty ("", M.empty) ("", "") M.empty
+emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty
 
 {-# NOINLINE snapshotsRef #-}
 snapshotsRef :: IORef (Map Text HostSnapshot)
@@ -113,11 +133,66 @@ remoteInfoBytes = map (\(h, hs) -> (h, snd (hsInfos hs))) . M.toList <$> readIOR
 remotePaneSessions :: Text -> IO (Map Text Text)
 remotePaneSessions host = maybe M.empty hsPanes . M.lookup host <$> readIORef snapshotsRef
 
+-- | A remote session's pane, as server-qualified tmux ids
+-- (@ssh:\/\/HOST#$S@, @ssh:\/\/HOST#\@W@, @ssh:\/\/HOST#%P@): the shape every
+-- server-aware tmux helper ('IDE.Web.TmuxServer.tmuxOnIds') takes, so
+-- sending keys, capturing the screen or killing the pane reach the host.
+remotePaneOf :: Text -> IO (Maybe (Text, Text, Text))
+remotePaneOf sid = do
+  m <- readIORef snapshotsRef
+  return $ listToMaybe
+    [ (q h s, q h w, q h pane)
+    | (h, hs) <- M.toList m, (pane, sid') <- M.toList (hsPanes hs), sid' == sid
+    , Just (s, w) <- [M.lookup pane (hsPaneAt hs)] ]
+  where q h x = "ssh://" <> h <> "#" <> x
+
+-- | A pane on a shared host that was started for session @sid@ (its run key
+-- names it) but whose session has not registered yet — nearly always a
+-- first-run question there (the folder-trust one).  The qualified pane id.
+remoteStartingPane :: Text -> IO (Maybe Text)
+remoteStartingPane sid = do
+  m <- readIORef snapshotsRef
+  return $ listToMaybe
+    [ "ssh://" <> h <> "#" <> pane
+    | (h, hs) <- M.toList m, not (any ((== sid) . clSession) (hsLive hs))
+    , (pane, key) <- M.toList (hsRunKeys hs), ("#claude#" <> sid) `T.isSuffixOf` key ]
+
+-- | The host a remote session runs on.
+remoteHostOf :: Text -> IO (Maybe Text)
+remoteHostOf sid = do
+  m <- readIORef snapshotsRef
+  return $ listToMaybe [ h | (h, hs) <- M.toList m, any ((== sid) . clSession) (hsLive hs) ]
+
+-- | The last 512KB of a remote session's transcript, fetched now (one ssh
+-- round trip) into @~\/.leksah\/remote-tails\/SID.jsonl@ — a local file the
+-- transcript readers take as they take any other.  'Nothing' when the session
+-- is on no shared host, or its transcript cannot be read.
+remoteTranscriptTail :: Text -> IO (Maybe FilePath)
+remoteTranscriptTail sid = remoteHostOf sid >>= \case
+  Nothing   -> return Nothing
+  Just host -> (`catch` \(_ :: SomeException) -> return Nothing) $ do
+    (code, out, _) <- runSsh host
+      "for x in \"$HOME\"/.claude/projects/*/\"$0\".jsonl; do [ -f \"$x\" ] && exec tail -c 524288 \"$x\"; done; exit 3"
+      [sid] mempty
+    if code /= ExitSuccess then return Nothing else do
+      home <- getHomeDirectory
+      let dir = home </> ".leksah" </> "remote-tails"
+          f   = dir </> (T.unpack sid <> ".jsonl")
+      createDirectoryIfMissing True dir
+      -- (from the first whole line: tail cut the first one short)
+      BS.writeFile f (BS.drop 1 (BC.dropWhile (/= '\n') out))
+      return (Just f)
+
 -- | Snapshot every shared host every few seconds, forever.
 startRemoteAgentsPoll :: IO ThreadId
 startRemoteAgentsPoll = forkIO . forever $ do
   hosts <- sharedHosts
-  forM_ hosts $ \h -> pollHost h `catch` \(_ :: SomeException) -> return ()
+  -- (all at once: one slow or unreachable host must not hold up the others)
+  dones <- forM hosts $ \h -> do
+    done <- newEmptyMVar
+    _ <- forkIO $ (pollHost h `catch` \(_ :: SomeException) -> return ()) `finally` putMVar done ()
+    return done
+  mapM_ takeMVar dones
   -- (a host that went from the setting is forgotten)
   atomicModifyIORef' snapshotsRef (\m -> (M.restrictKeys m (S.fromList hosts), ()))
   threadDelay 3000000
@@ -139,23 +214,117 @@ pollHost host = remoteTmux host >>= \case
         sockName = case sock of ["-L", n] -> T.pack n; _ -> ""
         known = [ sid <> "=" <> st | (sid, (st, _, _)) <- M.toList (hsTails p) ]
     (code, out, _) <- runSsh host snapshotScript
-      ([T.pack bin, sockName, fst (hsNames p), fst (hsInfos p)] <> known) mempty
+      ([ T.pack bin, sockName, fst (hsNames p), fst (hsInfos p)
+       , T.pack (show (hsEventsAt p)) ] <> known) mempty
     unless (code /= ExitSuccess) $ do
-      let hs = parseSnapshot host now p (frames out)
+      let fs = frames out
+          (eventsAt, eventLines) = newEvents (hsEventsAt p) fs
+          hs = (parseSnapshot host now p fs) { hsEventsAt = eventsAt }
       atomicModifyIORef' snapshotsRef (\m -> (M.insert host hs m, ()))
+      -- What the agents there did since the last look: into the same records
+      -- their own leksah would keep ('setRemoteEventHandler').
+      -- (On first contact the lines are history, already recorded, if at all,
+      -- by whoever was watching then: only the logged commands are applied,
+      -- each once — 'IDE.Web.AgentInfo.applyLoggedCommand'.)
+      unless (null eventLines) $ do
+        handler <- readIORef eventHandlerRef
+        let history = hsEventsAt p < 0
+        forM_ eventLines $ \l -> handler host history l `catch` \(_ :: SomeException) -> return ()
       setRemoteNames host (snd (hsNames hs))
       nameUnnamed host hs
 
+-- | Name session @sid@ in @host@'s own store (keeping the name it has, if it
+-- has one) — a launch on that host, which needs the name before the agent
+-- starts — and remember it here at once.
+remoteAgentName :: Text -> Text -> IO (Either Text Text)
+remoteAgentName host sid = do
+  now <- realToFrac <$> getPOSIXTime
+  elsewhere <- namesHeldElsewhere (Just host)
+  held <- maybe S.empty hostHeld . M.lookup host <$> readIORef snapshotsRef
+  r <- remoteModifyJSON host "agent-names.json" M.empty $ \m -> do
+    let m' = nameSessions now held elsewhere [sid] m
+    return (m', maybe "" nrName (M.lookup sid m'))
+  case r of
+    Right n | not (T.null n) -> noteRemoteName host sid n >> return (Right n)
+    Right _  -> return (Left "the host's name store gave no name")
+    Left err -> return (Left err)
+
+-- | The new whole lines of a host's event log in this snapshot (frame @E@,
+-- META the offset it starts at), and the offset to ask from next time.  A
+-- line the snapshot cut short is left for the next one.
+newEvents :: Integer -> [(BS.ByteString, BS.ByteString, BS.ByteString)] -> (Integer, [BS.ByteString])
+newEvents was fs = case [ (meta, b) | (t, meta, b) <- fs, t == "E" ] of
+  ((meta, b) : _) | Just off <- readMaybe (BC.unpack meta) ->
+    let complete = BS.take (maybe 0 (+ 1) (BC.elemIndexEnd '\n' b)) b
+    in (off + fromIntegral (BS.length complete), filter (not . BS.null) (BC.lines complete))
+  _ -> (was, [])
+
+-- | Who folds a machine's events into leksah's records: set once at startup
+-- by "IDE.Web.Agent", which knows how ('IDE.Web.Agent.remoteAgentEvent').  The
+-- machine (@""@: this one — 'startLocalEventsPoll'), whether the line is
+-- history (read on first contact: only commands count), and the line.
+setRemoteEventHandler :: (Text -> Bool -> BS.ByteString -> IO ()) -> IO ()
+setRemoteEventHandler h = atomicModifyIORef' eventHandlerRef (const (h, ()))
+
+{-# NOINLINE eventHandlerRef #-}
+eventHandlerRef :: IORef (Text -> Bool -> BS.ByteString -> IO ())
+eventHandlerRef = unsafePerformIO (newIORef (\_ _ _ -> return ()))
+
+-- | Follow THIS machine's own event log for the commands an agent logged
+-- while no leksah answered here — this leksah restarting, say
+-- (@leksah-cmd agent describe@ \/ @done@ — see @agentOffline@ in leksah-cmd).
+-- Hook events need no replay here: a running leksah got them through its
+-- socket, and the session files say the rest.  From the last 64KB at start,
+-- then every few seconds.
+startLocalEventsPoll :: IO ThreadId
+startLocalEventsPoll = forkIO $ do
+  home <- getHomeDirectory
+  let f = home </> ".leksah" </> "agent-events.jsonl"
+  offRef <- newIORef (-1 :: Integer)
+  forever $ do
+    (`catch` \(_ :: SomeException) -> return ()) $ do
+      size <- (`catch` \(_ :: SomeException) -> return 0) (getFileSize f)
+      off0 <- readIORef offRef
+      let off | off0 < 0    = max 0 (size - 65536)
+              | off0 > size = 0          -- rotated
+              | otherwise   = off0
+      when (size > off) $ do
+        bytes <- withFile f ReadMode $ \h -> hSeek h AbsoluteSeek off >> BS.hGet h (fromIntegral (size - off))
+        let complete = BS.take (maybe 0 (+ 1) (BC.elemIndexEnd '\n' bytes)) bytes
+        handler <- readIORef eventHandlerRef
+        forM_ (filter (not . BS.null) (BC.lines complete)) $ \l ->
+          handler "" True l `catch` \(_ :: SomeException) -> return ()
+        writeIORef offRef (off + fromIntegral (BS.length complete))
+      when (size <= off) $ writeIORef offRef off
+    threadDelay 3000000
+
 -- | Name, in the host's own store, its live sessions that have no name there.
+--
+-- Every live session is touched, named or not: with no leksah running on the
+-- host, nothing else keeps a named agent's last-seen time fresh, and its name
+-- would fall out of reservation and be handed to a newcomer.  (Written only
+-- when something changed: a new name, or a last-seen older than the slack.)
 nameUnnamed :: Text -> HostSnapshot -> IO ()
 nameUnnamed host hs = do
-  let unnamed = [ clSession l | l <- hsLive hs, not (clSession l `M.member` snd (hsNames hs)) ]
-  unless (null unnamed) $ do
-    now <- realToFrac <$> getPOSIXTime
-    void . remoteModify host "agent-names.json" $ \old -> do
-      let m  = fromMaybe M.empty (decode' old)
-          m' = nameSessions now unnamed m
-      return (if m' == m then old else encode m', ())
+  let sids = map clSession (hsLive hs)
+      known = snd (hsNames hs)
+  now <- realToFrac <$> getPOSIXTime
+  let stale = [ s | s <- sids, maybe True (\r -> now - nrSeen r >= 600) (M.lookup s known) ]
+  unless (null stale) $ do
+    elsewhere <- namesHeldElsewhere (Just host)
+    void . remoteModifyJSON host "agent-names.json" M.empty $ \m ->
+      return (nameSessions now (hostHeld hs) elsewhere sids m, ())
+
+-- | The sessions @host@'s agent store marks suspended or interrupted: their
+-- names stay reserved there ('nameSessions').  (Read from the raw store, as
+-- the record type belongs to "IDE.Web.AgentInfo".)
+hostHeld :: HostSnapshot -> S.Set Text
+hostHeld hs = case decode' (snd (hsInfos hs)) of
+  Just (Array xs) -> S.fromList
+    [ s | Object o <- toList xs
+        , Just (String s) <- [KM.lookup "session" o]
+        , any (\k -> maybe False (/= Null) (KM.lookup k o)) ["suspended", "interrupted"] ]
+  _ -> S.empty
 
 -- | One snapshot from the frames of the script's output.
 parseSnapshot :: Text -> UTCTime -> HostSnapshot -> [(BS.ByteString, BS.ByteString, BS.ByteString)]
@@ -164,9 +333,13 @@ parseSnapshot host now p fs = HostSnapshot
   { hsAt    = now
   , hsLive  = live
   , hsPanes = panes
+  , hsPaneAt = paneAt
+  , hsRunKeys = M.fromList [ (T.pack (BC.unpack pid), T.pack (BC.unpack (BC.unwords key)))
+                           | (pid : _ : _ : _ : key) <- paneRows, not (null key) ]
   , hsNames = names
   , hsInfos = infos
   , hsTails = tails
+  , hsEventsAt = hsEventsAt p   -- (the caller moves it on)
   }
   where
     sessions = mapMaybe (\(t, _, b) -> if t == "S" then parseSessionFile (Just host) b else Nothing) fs
@@ -180,11 +353,13 @@ parseSnapshot host now p fs = HostSnapshot
     -- own process.
     owners   = M.fromList [ (a, clSession l) | l <- live
                                             , a <- clPid l : pidAncestors parents (clPid l) ]
+    paneRows = [ ws | (t, _, b) <- fs, t == "T", ws <- map BC.words (BC.lines b) ]
     panes    = M.fromList [ (T.pack (BC.unpack pid), sid)
-                          | (t, _, b) <- fs, t == "T"
-                          , (pid : ppid : _) <- map BC.words (BC.lines b)
+                          | (pid : ppid : _) <- paneRows
                           , Just pp <- [readMaybe (BC.unpack ppid)]
                           , Just sid <- [M.lookup pp owners] ]
+    paneAt   = M.fromList [ (T.pack (BC.unpack pid), (T.pack (BC.unpack sess), T.pack (BC.unpack win)))
+                          | (pid : _ : sess : win : _) <- paneRows ]
     store tag decodeIt keep = case [ (meta, b) | (t, meta, b) <- fs, t == tag ] of
       ((meta, b) : _)
         | Just c <- BC.stripPrefix "=" meta -> (dec c, snd keep)   -- unchanged
@@ -236,19 +411,27 @@ frames bs
 -- @SID=STAMP=same@ and no body when unchanged).
 snapshotScript :: Text
 snapshotScript = T.concat
-  [ "T=\"$0\"; S=\"$1\"; NK=\"$2\"; IK=\"$3\"; shift 3; "
+  [ "T=\"$0\"; S=\"$1\"; NK=\"$2\"; IK=\"$3\"; EO=\"$4\"; shift 4; "
   , "tx() { if [ -n \"$S\" ]; then \"$T\" -L \"$S\" \"$@\"; else \"$T\" \"$@\"; fi; }; "
   , "tmp=$(mktemp) || exit 1; trap 'rm -f \"$tmp\"' EXIT; "
   , "frame() { printf '@@%s %s %s\\n' \"$1\" \"$2\" \"$(wc -c < \"$3\" | tr -d ' ')\"; cat \"$3\"; }; "
   , "for f in \"$HOME\"/.claude/sessions/*.json; do [ -f \"$f\" ] && frame S - \"$f\"; done; "
   , "ps -Ao pid=,ppid= > \"$tmp\"; frame P - \"$tmp\"; "
-  , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid}' > \"$tmp\" 2>/dev/null; "
+  , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid} #{session_id} #{window_id} #{@leksah_run}' > \"$tmp\" 2>/dev/null; "
   , "frame T - \"$tmp\"; "
   , "st() { f=\"$HOME/.leksah-0.17/$1\"; [ -f \"$f\" ] || return 0; "
   ,   "c=$(cksum < \"$f\" | cut -d' ' -f1,2 | tr ' ' :); "
   ,   "if [ \"$c\" = \"$2\" ]; then : > \"$tmp\"; frame \"$3\" \"=$c\" \"$tmp\"; "
   ,   "else frame \"$3\" \"$c\" \"$f\"; fi; }; "
   , "st agent-names.json \"$NK\" N; st agents.json \"$IK\" I; "
+  -- The event log from where this leksah left off (a log that shrank was
+  -- rotated: from its start); on first contact, only its last 64KB.  At
+  -- most 256KB a time.
+  , "ev=\"$HOME/.leksah/agent-events.jsonl\"; if [ -f \"$ev\" ]; then "
+  ,   "sz=$(wc -c < \"$ev\" | tr -d ' '); off=$EO; "
+  ,   "if [ \"$off\" -lt 0 ]; then off=$((sz > 65536 ? sz - 65536 : 0)); fi; "
+  ,   "if [ \"$off\" -gt \"$sz\" ]; then off=0; fi; "
+  ,   "tail -c +$((off + 1)) \"$ev\" | head -c 262144 > \"$tmp\"; frame E \"$off\" \"$tmp\"; fi; "
   , "for f in \"$HOME\"/.claude/sessions/*.json; do [ -f \"$f\" ] || continue; "
   ,   "sid=$(sed -n 's/.*\"sessionId\" *: *\"\\([^\"]*\\)\".*/\\1/p' \"$f\" | head -1); "
   ,   "[ -n \"$sid\" ] || continue; "

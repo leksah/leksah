@@ -29,7 +29,7 @@ import Control.Exception (IOException, SomeException, catch, finally, try)
 import Control.Monad (forM_, unless, when, void)
 
 import Data.Aeson
-       (Value(..), Result(..), object, (.=), encode, eitherDecodeStrict,
+       (Value(..), Result(..), object, (.=), encode, decodeStrict, eitherDecodeStrict,
         fromJSON, toJSON)
 import qualified Data.Aeson.Key as Key (fromText)
 import qualified Data.Aeson.KeyMap as KM (KeyMap, insert, lookup)
@@ -51,7 +51,7 @@ import Data.Text.Encoding.Error (lenientDecode)
 import System.Directory
        (getCurrentDirectory, getHomeDirectory, doesFileExist,
         createDirectoryIfMissing, getPermissions, setPermissions,
-        setOwnerExecutable)
+        setOwnerExecutable, getFileSize, renameFile)
 import System.Environment (getArgs, getEnvironment, getExecutablePath, lookupEnv)
 import System.Exit (ExitCode(ExitFailure), exitFailure)
 import System.FilePath
@@ -68,9 +68,10 @@ import System.Posix.Signals
         signalProcessGroup)
 import System.Process
        (CreateProcess(std_in, std_out, std_err, env, create_group), StdStream(..),
-        createProcess, getPid, proc, readProcess,
+        createProcess, getPid, proc, readProcess, readProcessWithExitCode,
         waitForProcess)
 import System.Timeout (timeout)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Text.Read (readMaybe)
 
 import Network.Socket
@@ -224,6 +225,9 @@ main = getArgs >>= \case
   -- IDE.Web.Codex.  The extra words ride along after the payload.)
   ("agent":"hook":ev:rest) -> (`catch` \(_ :: SomeException) -> return ()) $ do
     input <- BS.getContents
+    -- First onto this machine's event log, which any leksah showing the
+    -- machine reads — one running elsewhere, or this one after a restart.
+    appendEventLog "hook" (T.pack ev) input
     -- 1.5s at most: with the leksah plugin installed, EVERY Claude session on
     -- the machine runs this hook, and the synchronous ones (SessionStart,
     -- UserPromptSubmit, Stop…) wait for it.  leksah answers in a few ms; a
@@ -313,6 +317,11 @@ main = getArgs >>= \case
   -- launches get IDE tools (diagnostics, open_file, build, hover, …).  See
   -- `mcpServe` below; registered via ~/.leksah/mcp.json (written by leksah).
   ("mcp":_) -> mcpServe
+  -- An agent describing itself, or saying it is done, when no leksah answers
+  -- on this machine: kept on the machine's event log, where any leksah
+  -- showing the machine — one elsewhere, or this one when it is back —
+  -- applies it ("IDE.Web.RemoteAgents").
+  ("agent":verb:rest) | verb `elem` ["describe", "done"] -> agentOffline verb rest
 
   args          -> send args
 
@@ -346,6 +355,7 @@ statusLine _ = (`catch` \(_ :: SomeException) -> return ()) $ do
   -- overwrites with the command's stdin pipe before copying it to fd 2.
   devNull <- openFile "/dev/null" WriteMode
   input <- BS.getContents
+  appendEventLog "statusline" "" input
   sent <- newEmptyMVar
   _ <- forkIO $ (`finally` putMVar sent ()) $ void . try' . timeout 1500000 $
          tryReply ["statusline", T.unpack (decodeUtf8With lenientDecode input)]
@@ -563,6 +573,75 @@ runClient path payload = do
 
 -- | Try one command and collect its reply; 'Nothing' if we couldn't connect
 -- (socket missing or no listener) — used for readiness polling.
+-- | @agent describe@ \/ @agent done@: to leksah as usual; with no leksah
+-- answering here, onto this machine's event log as a command for whichever
+-- leksah reads it, under the session this was run from (found by walking up
+-- this process's parents to a running Claude session).
+agentOffline :: String -> [String] -> IO ()
+agentOffline verb rest = tryReply ("agent" : verb : rest) >>= \case
+  Just t  -> T.putStr t
+  Nothing -> ownClaudeSession >>= \case
+    Nothing -> cmdSocketPath >>= noSocket
+    Just sid -> do
+      appendEventLog "command" (T.pack verb) . BL.toStrict . encode $
+        object [ "session_id" .= sid, "args" .= map T.pack rest ]
+      putStrLn "No leksah is running on this machine; recorded for the leksah \
+               \that shows it to pick up."
+
+-- | The running Claude session this process was started from: the nearest
+-- ancestor with a @~\/.claude\/sessions\/PID.json@.
+ownClaudeSession :: IO (Maybe Text)
+ownClaudeSession = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  home <- getHomeDirectory
+  me <- getProcessID
+  let go :: Int -> Int -> IO (Maybe Text)
+      go 0 _ = return Nothing
+      go n p | p <= 1 = return Nothing
+             | otherwise = do
+        let f = home </> ".claude" </> "sessions" </> (show p <> ".json")
+        ex <- doesFileExist f
+        found <- if not ex then return Nothing else do
+          bytes <- BS.readFile f
+          return $ case decodeStrict bytes of
+            Just (Object o) | Just (String sid) <- KM.lookup "sessionId" o -> Just sid
+            _ -> Nothing
+        case found of
+          Just sid -> return (Just sid)
+          Nothing -> do
+            (_, out, _) <- readProcessWithExitCode "ps" ["-o", "ppid=", "-p", show p] ""
+            maybe (return Nothing) (go (n - 1)) (readMaybe (dropWhile isSpace out))
+  go 20 (fromIntegral me)
+
+-- | Append one event to this machine's @~\/.leksah\/agent-events.jsonl@: what
+-- an agent's hooks (and status line) told leksah, kept where a leksah on
+-- ANOTHER machine that shows this one can read it ("IDE.Web.RemoteAgents") —
+-- and so that nothing is lost while no leksah runs here.  One line each, the
+-- payload shrunk to what the recorders read (long strings cut short), so
+-- every line is one small @write@ and concurrent hooks cannot interleave.
+-- Rotated (to @.1@) past 4MB.  Never fails.
+appendEventLog :: Text -> Text -> BS.ByteString -> IO ()
+appendEventLog kind ev payload = (`catch` \(_ :: SomeException) -> return ()) $ do
+  home <- getHomeDirectory
+  let dir = home </> ".leksah"
+      f   = dir </> "agent-events.jsonl"
+  createDirectoryIfMissing True dir
+  big <- (`catch` \(_ :: SomeException) -> return False) $ (> 4000000) <$> getFileSize f
+  when big $ renameFile f (f <> ".1") `catch` \(_ :: SomeException) -> return ()
+  t <- getPOSIXTime
+  -- (A command is kept whole: its --html or --bio IS the content.)
+  let v = maybe (String (decodeUtf8With lenientDecode payload))
+                (if kind == "command" then id else shrink)
+            (decodeStrict payload :: Maybe Value)
+      line = BL.toStrict (encode (object
+               [ "t" .= (realToFrac t :: Double), "kind" .= kind, "event" .= ev
+               , "payload" .= v ])) <> "\n"
+  BS.appendFile f line
+  where
+    shrink (String x) | T.length x > 300 = String (T.take 300 x)
+    shrink (Object o) = Object (fmap shrink o)
+    shrink (Array a)  = Array (fmap shrink (if length a > 50 then mempty else a))
+    shrink x          = x
+
 tryReply :: [String] -> IO (Maybe Text)
 tryReply args = do
   path <- cmdSocketPath

@@ -149,14 +149,14 @@ import IDE.Web.Agent
         agentEvents, agentHook, agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
         agentResume, agentRoleList, agentSend, agentStatus, agentSuspend,
         emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent,
-        agentAnswerApproval)
+        agentAnswerApproval, showAgentPane)
 import IDE.Web.AgentInfo (describeAgent)
 import IDE.Web.AgentUsage (recordStatusLine)
 import IDE.Web.WorktreeRegistry
        (ClaimRole, parseRole, recordBranchMove, registerWorktree)
 import IDE.Web.Claude
        (leksahPluginInstall, leksahPluginStatus, leksahPluginUninstall, leksahPluginWrite,
-        sessionOwningPid, showLiveSession)
+        sessionOwningPid)
 import IDE.Web.Codex (codexInstall, codexStatus, codexUninstall)
 
 import IDE.Web.Instance (cmdSocketFileName)
@@ -913,8 +913,9 @@ handleConn app conn = do
                 agentSend sid submit (T.intercalate " " ps) >>= reply
         ("read" : who : rest) | not (T.null who) -> withAgent who $ \sid ->
             agentRead sid (fromMaybe 1 (intFlag ["--last", "-n"] rest)) >>= reply
+        -- (here, by its run key, or on the shared host it runs on)
         ("show" : who : _) | not (T.null who) -> withAgent who $ \sid ->
-          showLiveSession sid >>= \ok ->
+          showAgentPane sid >>= \ok ->
             reply $ if ok then "Showing " <> who <> ".\n"
                           else "Could not find a pane for " <> who <> ".\n"
         -- Which agent should take this?  Ranked by what they say they are

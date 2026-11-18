@@ -155,6 +155,7 @@ library
         IDE.Web.WorktreeRegistry
         IDE.Web.SharedStore
         IDE.Web.RemoteAgents
+        IDE.Web.WarpJSaddle
         IDE.Web.AgentWorktrees
         IDE.Web.ClaudeQueue
         IDE.Web.NewWindowRequest
@@ -321,7 +322,9 @@ library
             wai-app-static >=3.1.6.2 && <3.2,
             wai-extra >=3.0.24.3 && <3.2,
             warp >=3.2.25 && <3.5,
-            websockets >=0.12.5.2 && <0.14
+            websockets >=0.12.5.2 && <0.14,
+            -- wai-websockets: IDE.Web.WarpJSaddle (leksah's jsaddle-warp handler).
+            wai-websockets >=3.0 && <3.1
 
     if os(windows)
         -- Windows terminals use the Win32 Pseudoconsole (ConPTY) instead of
@@ -560,4 +563,6 @@ executable leksah-cmd
         -- markers unique (so a poll never matches a previous run's stale window
         -- still sitting in the pane scrollback).
         unix >=2.7 && <2.9,
+        -- time: the event log's timestamps (`agent hook`).
+        time >=0.1 && <1.13,
         text >=0.11.1.5 && <2.2

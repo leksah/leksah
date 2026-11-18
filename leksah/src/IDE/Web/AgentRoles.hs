@@ -22,6 +22,7 @@ module IDE.Web.AgentRoles
   ( AgentRole(..)
   , agentRoles
   , findAgentRole
+  , findRemoteAgentRole
   , roleNote
   ) where
 
@@ -35,6 +36,10 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 
+import qualified Data.Text.Encoding as TE (decodeUtf8With)
+import Data.Text.Encoding.Error (lenientDecode)
+import IDE.Utils.RemoteExec (runSsh)
+import qualified Data.ByteString.Char8 as BC
 import System.Directory
        (doesDirectoryExist, getHomeDirectory, listDirectory, makeAbsolute)
 import System.FilePath ((</>), takeDirectory, takeExtension, dropTrailingPathSeparator)
@@ -91,6 +96,33 @@ parseRole file txt = case T.lines txt of
     unquote t = case T.uncons t of
       Just (q, r) | q `elem` ['"', '\''], T.takeEnd 1 r == T.singleton q -> T.dropEnd 1 r
       _ -> T.dropWhileEnd isSpace t
+
+-- | 'findAgentRole' for a directory on another machine (@rdir@, host-local):
+-- the role files there — @.claude\/agents@ in @rdir@ and its ancestors, then
+-- the host user's — read in one ssh round trip.
+findRemoteAgentRole :: Text -> FilePath -> Text -> IO (Either Text AgentRole)
+findRemoteAgentRole host rdir name = (`catch` \(e :: SomeException) -> return (Left (T.pack (show e)))) $ do
+  let ancestors d = d : let p = takeDirectory d in if p == d then [] else ancestors p
+      dirs = map (T.pack . (</> ".claude" </> "agents")) (ancestors (dropTrailingPathSeparator rdir))
+  (_, out, _) <- runSsh host
+    (T.concat [ "for d in \"$@\" \"$HOME/.claude/agents\"; do for f in \"$d\"/*.md; do "
+              , "[ -f \"$f\" ] && printf '@@%s %s\\n' \"$(wc -c < \"$f\" | tr -d ' ')\" \"$f\" && cat \"$f\"; "
+              , "done; done; exit 0" ])
+    ("sh" : dirs) mempty
+  let rs = [ (f, TE.decodeUtf8With lenientDecode b) | (f, b) <- frames out ]
+      found = nubBy (\a b -> roleName a == roleName b) (catMaybes [ parseRole f b | (f, b) <- rs ])
+  return $ case [ r | r <- found, T.toLower (roleName r) == T.toLower (T.strip name) ] of
+    (r : _) -> Right r
+    []      -> Left ("no role called " <> name <> " on " <> host)
+  where
+    -- @\@\@LENGTH PATH@ then exactly LENGTH bytes
+    frames bs = case BC.stripPrefix "@@" bs of
+      Just rest | (hdr, body) <- BC.break (== '\n') rest
+                , (lenB, pathB) <- BC.break (== ' ') hdr
+                , [(n, "")] <- reads (BC.unpack lenB) ->
+          let b = BC.drop 1 body
+          in (BC.unpack (BC.drop 1 pathB), BC.take n b) : frames (BC.drop n b)
+      _ -> []
 
 -- | The role called @name@ (case-insensitive), as seen from @dir@.
 findAgentRole :: FilePath -> Text -> IO (Either Text AgentRole)
