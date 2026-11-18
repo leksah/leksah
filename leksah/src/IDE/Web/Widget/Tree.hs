@@ -13,6 +13,7 @@ module IDE.Web.Widget.Tree
   , treeItemDynAttr'
   , treeItemDynAttrSet'
   , treeItemTracked
+  , treeItemTracked'
   , treeItem
   , treeItem'
   , scrollIntoViewNearest
@@ -188,6 +189,14 @@ treeItemTracked
   -> m (Event t event, Event t Bool)
 treeItemTracked itemClass =
   treeItemCore never (constDyn False) (constDyn ("class" =: itemClass))
+
+-- | 'treeItemTracked' with a reveal 'Dynamic' (see 'treeItemDynAttr'').
+treeItemTracked'
+  :: MonadWidget t m
+  => Dynamic t Bool -> Text -> Bool -> m (Event t event) -> m (Event t event)
+  -> m (Event t event, Event t Bool)
+treeItemTracked' revealD itemClass =
+  treeItemCore never revealD (constDyn ("class" =: itemClass))
 
 treeItemCore
   :: MonadWidget t m

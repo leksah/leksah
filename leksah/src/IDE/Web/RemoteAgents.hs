@@ -42,7 +42,7 @@ module IDE.Web.RemoteAgents
   ) where
 
 import Control.Concurrent (ThreadId, forkIO, threadDelay)
-import Control.Exception (SomeException, catch, finally)
+import Control.Exception (IOException, SomeException, catch, finally)
 import Control.Monad (forM, forM_, forever, unless, void, when)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Data.Aeson (Value(..), decode')
@@ -148,9 +148,10 @@ startAliveWriter :: IO ThreadId
 startAliveWriter = forkIO $ do
   home <- getHomeDirectory
   let f = home </> ".leksah" </> "alive"
-  createDirectoryIfMissing True (home </> ".leksah") `catch` \(_ :: SomeException) -> return ()
+  -- (IO errors only: a kill — ghci's :reload cleanup — must end the loop)
+  createDirectoryIfMissing True (home </> ".leksah") `catch` \(_ :: IOException) -> return ()
   forever $ do
-    (`catch` \(_ :: SomeException) -> return ()) $ do
+    (`catch` \(_ :: IOException) -> return ()) $ do
       t <- round <$> getPOSIXTime :: IO Integer
       writeFile (f <> ".tmp") (show t <> "\n")
       renameFile (f <> ".tmp") f
@@ -383,6 +384,7 @@ parseSnapshot host now p fs = HostSnapshot
   , hsNames = names
   , hsInfos = infos
   , hsTails = tails
+  , hsEventsAt = hsEventsAt p   -- (the caller moves it on)
   , hsHome = case [ T.strip (decodeUtf8With lenientDecode b) | (t, _, b) <- fs, t == "H" ] of
       (h : _) | not (T.null h) -> Just h
       _ -> Nothing

@@ -171,9 +171,10 @@ remoteSocketArgs host = getGlobalApp >>= \case
 -- session's current window belongs to the session, so two viewers attached to
 -- one session would move each other.  A remote viewer therefore attaches
 -- through its own GROUPED session (@NAME~VIEWER@: the same windows, its own
--- current window), marked @\@leksah_viewer@ and destroyed by tmux once it has
--- no clients.  Every leksah leaves such sessions out of what it lists
--- ('notViewerFilter').  (A window's active PANE and its size stay shared: tmux
+-- current window), marked @\@leksah_viewer@.  One no client is on is removed
+-- by a later attach (see 'viewerAttachScript'), and killing a session kills
+-- its viewer sessions with it ('IDE.Web.Widget.Terminal.groupViewerSessions').  Every leksah leaves such
+-- sessions out of what it lists ('notViewerFilter').  (A window's active PANE and its size stay shared: tmux
 -- keeps them on the window.)
 
 -- | Who this leksah is to the servers it shares ('RemoteC.rcViewerId', else
@@ -250,19 +251,26 @@ viewerAttachScript = concat
   , "[ -n \"$n\" ] || n=$(tx display-message -p -t \"$G\" '#{session_name}' 2>/dev/null); "
   , "[ -n \"$n\" ] || { echo \"no tmux session $G\" >&2; exit 1; }; "
   , "v=\"$n~$V\"; "
-  -- This viewer's sessions that no client is on, left by a leksah that went
-  -- away (a minute old at least: never one another of its tabs is just about
-  -- to attach).  Not tmux's destroy-unattached: tmux 3.7b destroys the
-  -- session while the leaving client still points at it, and its
-  -- client-detached notification then crashes the whole server (every
-  -- session, every agent in it) when a viewer's connection drops.
-  , "old=$(( $(date +%s) - 60 )); "
-  , "for o in $(tx list-sessions -f \"#{&&:#{==:#{@leksah_viewer},$V},#{&&:#{==:#{session_attached},0},#{e|<:#{session_created},$old}}}\" "
-  ,   "-F '#{session_id}' 2>/dev/null); do tx kill-session -t \"$o\" 2>/dev/null; done; "
-  , "if ! tx has-session -t \"=$v\" 2>/dev/null; then "
+  -- Viewer sessions no client is on, left by leksahs that went away: this
+  -- viewer's once a minute has passed since one of its tabs last claimed
+  -- them (below), any viewer's after a day.  Never a group's last session
+  -- (its windows would go with it), and each kill re-checks, inside tmux at
+  -- that moment, that nobody has attached or claimed it meanwhile.  (Not
+  -- tmux's destroy-unattached: tmux 3.7b destroys the session while the
+  -- leaving client still points at it, and its client-detached notification
+  -- then crashes the whole server — every session, every agent in it — when
+  -- a viewer's connection drops.)
+  , "now=$(date +%s); own=$((now - 60)); any=$((now - 86400)); "
+  , "c=\"#{&&:#{!=:#{@leksah_viewer},},#{&&:#{==:#{session_attached},0},#{&&:#{e|>:#{session_group_size},1},"
+  ,   "#{||:#{&&:#{==:#{@leksah_viewer},$V},#{e|<:#{@leksah_claim},$own}},#{e|<:#{@leksah_claim},$any}}}}}\"; "
+  , "for o in $(tx list-sessions -f \"$c\" -F '#{session_id}' 2>/dev/null); do "
+  ,   "tx if-shell -F -t \"$o\" \"$c\" \"kill-session -t '$o'\" 2>/dev/null; done; "
+  -- Claim ours (keeping every other tab's clean-up off it until it is
+  -- attached), creating it if it is not there.
+  , "tx set-option -t \"=$v:\" @leksah_claim \"$now\" 2>/dev/null || { "
   ,   "tx new-session -d -t \"=$n\" -s \"$v\" || exit 1; "
   ,   "tx set-option -t \"=$v:\" @leksah_viewer \"$V\"; "
-  , "fi; "
+  ,   "tx set-option -t \"=$v:\" @leksah_claim \"$now\"; }; "
   , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
   , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
 

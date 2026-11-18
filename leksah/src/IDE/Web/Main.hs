@@ -277,11 +277,12 @@ import IDE.Web.ClaudeStatus
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
 import IDE.Web.RemoteAgents
-       (HostStatus(..), remoteHostStatus, setRemoteEventHandler, startAliveWriter,
-        startLocalEventsPoll, startRemoteAgentsPoll)
-import IDE.Web.ServerState (ServerState(..))
+       (setRemoteEventHandler, startAliveWriter, startLocalEventsPoll, startRemoteAgentsPoll)
 import IDE.Web.Agent (remoteAgentEvent, runRemoteClaudeCmd)
 #endif
+-- (every front end: the Workspace tree's server nodes)
+import IDE.Web.RemoteAgents (HostStatus(..), remoteHostStatus)
+import IDE.Web.ServerState (ServerState(..))
 import IDE.Web.NewLwRequest
        (beginConversion, endConversion, conversionActive, consolidateLock,
         setWindowGoneHandler)

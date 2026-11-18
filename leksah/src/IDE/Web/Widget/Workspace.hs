@@ -22,7 +22,7 @@ import qualified System.IO as IO (hPutStrLn, stderr)
 import Data.Bool (bool)
 import Data.List (stripPrefix, isPrefixOf, isSuffixOf, dropWhileEnd, find, nub, sortBy, sortOn)
 import Data.Ord (comparing)
-import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef)
+import Data.IORef (IORef, newIORef, atomicModifyIORef', readIORef, writeIORef)
 import qualified Data.Map as M
        (Map, elems, empty, filterWithKey, findWithDefault, fromList,
         fromListWith, insert, keys, lookup, singleton, toList, null, union, unions, unionWith, size, member)
@@ -126,6 +126,7 @@ import IDE.Web.AgentInfo (AgentNode(..), agentDirOf, agentForest, agentTitles)
 import IDE.Web.Agent (agentResume, agentSuspend, showAgentPane)
 import IDE.Web.AddProjectRequest (requestAddProjectOn)
 import IDE.Web.ServerState (ServerState(..), serverMenuItems)
+import IDE.Web.Widget.AgentCard (colourOf, glyphOf)
 import IDE.Web.AgentNames (agentNames)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentWorktrees
@@ -140,7 +141,7 @@ import IDE.Web.WorktreeRegistry
         worktreeMainRoot)
 import IDE.Web.Widget.Tree
        (treeItemDynAttr', treeItemDynAttrSet', treeSelect, treeSelect', treeItem,
-        treeItem', treeItemTracked, clickMods, dblclickMods)
+        treeItem', treeItemTracked', clickMods, dblclickMods)
 import IDE.Web.Coalesce (newCoalescer)
 import IDE.Web.GitInfo
        (ActiveGitInfo(..), prForBranch, scanActiveGitInfo)
@@ -2261,12 +2262,16 @@ workspaceWidget ctx0 serversD activeFileD0 revealFileD0 = do
             localD  = M.filterWithKey (\(_, k) _ -> not (isRemotePath (pkRoot k))) <$> topsD
             byHostD = (\tops servers -> M.unionWith M.union
                          (M.fromListWith M.union
-                            [ (h, M.singleton key p)
-                            | (key@(_, k), p) <- M.toList tops
+                            [ (h, M.singleton pk p)
+                            | (pk@(_, k), p) <- M.toList tops
                             , Just h <- [remoteHost (pkRoot k)] ])
                          (M.empty <$ servers))
                       <$> topsD <*> serversD
-        forestD <- pollD [] agentForest
+        -- (the agent tree is read only while there is a host to show it under)
+        hostsRef <- liftIO (newIORef False)
+        performEvent_ $ ffor (updated byHostD) $ \m -> liftIO (writeIORef hostsRef (not (M.null m)))
+        liftIO . writeIORef hostsRef . not . M.null =<< sample (current byHostD)
+        forestD <- pollD [] (readIORef hostsRef >>= \any' -> if any' then agentForest else return [])
         builtE <- dyn $ ffor rebuildD $ \_ -> do
             localE <- listViewWithKey localD (projectNodeW env False)
             hostE  <- listViewWithKey byHostD (serverNode env serversD forestD)
@@ -2302,22 +2307,27 @@ serverNode :: forall t m . MonadWidget t m
            -> m (Event t (Either ProjectEvents TerminalsEvents))
 serverNode env serversD forestD host projsD = do
   stD <- holdUniqDyn (M.lookup host <$> serversD)
-  let agentsD = ffor forestD $ \ns -> M.fromList
+  -- (only this host's agents, and only when they change: the forest also
+  -- changes with every local agent's activity)
+  agentsD <- holdUniqDyn $ ffor forestD $ \ns -> M.fromList
         [ ((not (anLive n), T.toLower (anName n), anSession n), n)
         | n <- flattenForest ns, remoteHost (anDir n) == Just host ]
-      flattenForest = concatMap (\n -> n : flattenForest (anChildren n))
   closed <- liftIO (S.member host <$> readIORef collapsedServers)
-  (outE, toggledE) <- treeItemTracked "server" (not closed)
+  -- A file to reveal in one of its projects opens it.
+  revealD <- holdUniqDyn (maybe False ((== Just host) . remoteHost) <$> revealFileD env)
+  (outE, toggledE) <- treeItemTracked' revealD "server" (not closed)
     (do let ticksD = maybe (False, False) (\st -> (svStartup st, svWake st)) <$> stD
             homeD  = (>>= svHome) <$> stD
+            item (l, x) = (l, (Nothing, x))
             menuItems =
-              map (fmap (fmap Right) . (<$> ticksD)) (serverMenuItems host)
-              <> [ constDyn ("Add Project on " <> host <> "\8230", Left (requestAddProjectOn host))
-                 , ffor homeD $ \case
-                     Nothing -> ("", Left (return ()))     -- (hidden until known)
+              map (fmap (item . fmap Right) . (<$> ticksD)) (serverMenuItems host)
+              <> [ constDyn (item ("Add Project on " <> host <> "\8230", Left (requestAddProjectOn host)))
+                   -- (left out until its home directory is known)
+                 , ffor homeD $ \mh -> item $ case mh of
+                     Nothing -> ("", Left (return ()))
                      Just h  -> ( "New Claude Session"
                                 , Left (runClaudeCmd (ClaudeNew (renderRemotePath host (T.unpack h))))) ]
-        (rowEl, mE) <- treeSelect' "workspace" (menu menuItems) $ do
+        (rowEl, mE) <- treeSelect' "workspace" (menuSplitWith (\_ _ -> Left (return ())) menuItems) $ do
           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-host-remote.svg") blank
           elDynAttr "span" (ffor stD $ \st ->
               "class" =: (if (st >>= svReachable) == Just False then "server-name server-down" else "server-name")) $
@@ -2348,6 +2358,8 @@ serverNode env serversD forestD host projsD = do
   performEvent_ $ ffor toggledE $ \open -> liftIO $
     atomicModifyIORef' collapsedServers (\cs -> (if open then S.delete host cs else S.insert host cs, ()))
   return outE
+  where
+    flattenForest = concatMap (\n -> n : flattenForest (anChildren n))
 
 -- | "Agents (N)" under a server node: one row per agent there, running ones
 -- first.  Self-hides when there are none.
@@ -2366,9 +2378,11 @@ hostAgentsNode host agentsD = do
           void . listViewWithKey agentsD $ \(_, _, sid) nD -> hostAgentRow sid nD
           return (never :: Event t ()))
 
--- | One agent on a remote host: its face, name and title, and what it is
--- doing.  Double-click (or Show Agent) brings its pane up; an agent that is
--- not running is resumed there instead.
+-- | One agent on a remote host: its face, name and title, and its state in
+-- the Agents pane's glyph and colour ('glyphOf' \/ 'colourOf' — shapes that
+-- differ, not only colours).  Double-click (or Show Agent) brings its pane
+-- up; an agent that is not running is resumed there instead.  What an action
+-- could not do goes to the Log pane.
 hostAgentRow :: forall t m . MonadWidget t m => Text -> Dynamic t AgentNode -> m (Event t ())
 hostAgentRow sid nD = do
   nameD <- holdUniqDyn ((\n -> if T.null (anName n) then Nothing else Just (anName n)) <$> nD)
@@ -2376,22 +2390,24 @@ hostAgentRow sid nD = do
   let labelD = ffor nD $ \n ->
         (if T.null (anName n) then T.take 8 sid else anName n)
           <> (if T.null (anTitle n) then "" else " \8212 " <> anTitle n)
-      badgeD = ffor nD $ \n -> if not (anLive n) then Nothing else case anState n of
-        "waiting" -> Just ("\9650", "#f85149", "waiting for approval")
-        st | st `elem` ["busy", "shell"] -> Just ("\9679", "#d29922", "working")
-        _ -> Just ("\9679", "#3fb950", "idle")
-      bringUp live = void . forkIO $
-        if live then void (showAgentPane sid) else void (agentResume sid)
+      badgeD = ffor nD $ \n -> Just (glyphOf (anState n), colourOf (anState n), anState n)
+      who n = if T.null (anName n) then T.take 8 sid else anName n
+      note t = withApp (`appNote` t)
+      bringUp n = void . forkIO $ if anLive n
+        then showAgentPane sid >>= \ok -> unless ok $
+               note (who n <> ": its pane could not be found")
+        else agentResume sid >>= either (\e -> note (who n <> " could not be resumed: " <> e))
+                                        (const (return ()))
+      suspend = void . forkIO $ agentSuspend sid False >>= note . T.strip
   elDynAttr "li" (ffor liveD $ \l -> "class" =: ("agent-session server-agent" <> if l then "" else " server-agent-gone")) $ do
     (rowEl, mE) <- treeSelect' "workspace"
-        (menu [ ffor liveD $ \l -> (if l then "Show Agent" else "Resume Agent", bringUp l)
-              , ffor liveD $ \l -> ( if l then "Suspend Agent" else ""
-                                   , void . forkIO . void $ agentSuspend sid False ) ]) $ do
+        (menuSplit [ ffor nD $ \n -> (if anLive n then "Show Agent" else "Resume Agent", (Nothing, bringUp n))
+                   , ffor liveD $ \l -> (if l then "Suspend Agent" else "", (Nothing, suspend)) ]) $ do
         agentFace nameD
         elDynAttr "span" (ffor nD $ \n -> "title" =: anDetail n) $ dynText labelD
         statusBadge badgeD
         return (never :: Event t (IO ()))
-    performEvent_ $ liftIO . bringUp <$> tag (current liveD) (domEvent Dblclick rowEl)
+    performEvent_ $ liftIO . bringUp <$> tag (current nD) (domEvent Dblclick rowEl)
     performEvent_ $ liftIO <$> mE
   return never
 
