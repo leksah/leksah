@@ -48,6 +48,8 @@ module IDE.Web.Agent
   , agentList
   , agentStatus
   , agentSend
+  , SendResult(..)
+  , sendOrQueue
   , agentRead
   , agentLastSaid
   , renameAgentEverywhere
@@ -74,7 +76,7 @@ module IDE.Web.Agent
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (catch, SomeException)
-import Control.Monad (filterM, forM, mfilter, unless, when, void)
+import Control.Monad (filterM, forM, mfilter, unless, when, void, forM_)
 
 import Data.Char (isAlphaNum)
 import Data.List (sortOn)
@@ -118,7 +120,8 @@ import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
        (adoptContinuation, agentContinuations, agentNameFor, agentNames, renameAgent,
-        resolveAgentName, touchAgentNames)
+        remoteNameOf, resolveAgentName, touchAgentNames)
+import IDE.Web.AgentMail (addPending, claimDelivery, commandKey, logCommand)
 import IDE.App (appNote, getGlobalApp)
 import IDE.Web.AgentRoles (AgentRole(..), agentRoles, findAgentRole, findRemoteAgentRole, roleNote)
 import IDE.Web.Claude
@@ -635,6 +638,53 @@ showAgentPaneWith here sid = showLiveSessionWith' sid >>= \case
         _ -> return False
   where showLiveSessionWith' = if here then showLiveSessionHere else showLiveSession
 
+-- | What became of a message an agent sent.
+data SendResult
+  = Sent Text      -- ^ typed into the target's pane (the usual answer)
+  | Queued         -- ^ not reachable from here: in this machine's event log,
+                   --   for the leksah that can reach it ('IDE.Web.AgentMail')
+  | Failed Text    -- ^ could not be sent or queued (why)
+
+-- | 'agentSend' for an agent speaking (@caller@, its session): a target this
+-- leksah cannot reach — on another machine, say: an agent there reporting to
+-- the one that forked it — is queued in this machine's event log for
+-- whichever leksah can reach it, which delivers it once.  With no caller (a
+-- shell, not an agent) there is nobody to queue it from: the usual answer.
+sendOrQueue :: Maybe Text -> Text -> Bool -> Text -> IO SendResult
+sendOrQueue caller sid submit txt = agentPane sid >>= \case
+  Just _ -> Sent <$> agentSend sid submit txt
+  Nothing -> case caller of
+    Nothing -> Failed <$> agentSend sid submit txt
+    Just me -> do
+      logCommand me "send" (sid : [ "--submit" | submit ] <> [txt])
+      return Queued
+
+-- | An agent's name, here or on a shared host — without naming it (as
+-- 'agentNameFor' would) when it has none: then its short id.
+nameOfSession :: Text -> IO Text
+nameOfSession sid = do
+  local <- M.lookup sid <$> agentNames
+  remote <- remoteNameOf sid
+  return (fromMaybe (T.take 8 sid) (local <|> remote))
+
+-- | Deliver a message a machine's event log holds ('IDE.Web.AgentMail'): the
+-- machine (@Nothing@: this one), the command's key, the target, Enter or
+-- not, the text.  Delivered only if this leksah can reach the target and
+-- its claim on the delivery is the one that holds; otherwise it is retried
+-- on every poll for a while (the target may be resumed, or shown by this
+-- leksah later).
+deliverLogged :: Maybe Text -> Text -> Text -> Bool -> Text -> IO ()
+deliverLogged mhost key sid submit txt = do
+  settled <- attempt
+  unless settled $ addPending key attempt
+  where
+    attempt = agentPane sid >>= \case
+      Nothing -> return False
+      Just _ -> claimDelivery mhost key >>= \case
+        Nothing    -> return False              -- (its store unreachable: later)
+        Just False -> return True               -- (another leksah has it)
+        Just True  -> True <$ agentSend sid submit txt
+
 -- | Type @txt@ into a live session's composer, optionally pressing Enter to
 -- submit it as a turn.
 --
@@ -773,9 +823,15 @@ agentDone sid summary = do
   agentParentOf sid >>= \case
     Nothing -> return ("Marked " <> name <> " done.\n")
     Just p  -> do
-      _ <- agentSend p True (name <> " is done: " <> summary)
-      pname <- agentNameFor p
-      return ("Marked " <> name <> " done, and sent the summary to " <> pname <> ".\n")
+      r <- sendOrQueue (Just sid) p True (name <> " is done: " <> summary)
+      pname <- nameOfSession p
+      return $ case r of
+        Sent _   -> "Marked " <> name <> " done, and sent the summary to " <> pname <> ".\n"
+        Queued   -> "Marked " <> name <> " done; the summary for " <> pname <> " is queued: "
+                    <> pname <> " is not reachable from here (it may be on another machine), "
+                    <> "and the leksah that shows it will deliver it.\n"
+        Failed e -> "Marked " <> name <> " done, but could not send the summary to "
+                    <> pname <> ": " <> e
 
 -- | @agent roles@: the roles an agent can be started in from @cwd@.
 agentRoleList :: FilePath -> IO Text
@@ -1226,7 +1282,27 @@ remoteAgentEvent host history line = case decodeStrict' line of
               (a : rest) | not ("-" `T.isPrefixOf` a) ->
                 either (const (a, rest)) (\s -> (s, rest)) <$> resolveAgentName [] a
               _ -> return (caller, args0)
-            applyLoggedCommand (if T.null host then Nothing else Just host) t ev sid args
+            let mhost = if T.null host then Nothing else Just host
+            applyLoggedCommand mhost t ev sid args
+            case ev of
+              -- (a message its sender's leksah could not deliver)
+              "send" -> do
+                let submit = "--submit" `elem` args
+                    txt = T.unwords (filter (/= "--submit") args)
+                unless (T.null txt) $
+                  deliverLogged mhost (commandKey caller t ev) sid submit txt
+              -- (an agent that said it was done with no leksah answering:
+              -- its summary goes to the agent that started it)
+              "done" -> do
+                parent <- case mhost of
+                  Nothing -> agentParentOf sid
+                  Just _  -> (>>= aiParent . snd) <$> remoteAgentRecord sid
+                forM_ parent $ \p -> do
+                  name <- nameOfSession sid
+                  let summary = fromMaybe (T.unwords [ a | a <- args, not ("-" `T.isPrefixOf` a) ])
+                                  (lookup "--summary" (zip args (drop 1 args)))
+                  deliverLogged mhost (commandKey sid t ev) p True (name <> " is done: " <> summary)
+              _ -> return ()
             pokeClaudeStatus
           _ -> return ()
   _ -> return ()

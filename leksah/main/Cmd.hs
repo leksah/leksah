@@ -321,7 +321,9 @@ main = getArgs >>= \case
   -- on this machine: kept on the machine's event log, where any leksah
   -- showing the machine — one elsewhere, or this one when it is back —
   -- applies it ("IDE.Web.RemoteAgents").
-  ("agent":verb:rest) | verb `elem` ["describe", "done"] -> agentOffline verb rest
+  -- (And a message to another agent: a leksah elsewhere that can reach it
+  -- delivers it — "IDE.Web.AgentMail".)
+  ("agent":verb:rest) | verb `elem` loggableVerbs -> agentOffline verb rest
 
   args          -> send args
 
@@ -578,15 +580,37 @@ runClient path payload = do
 -- leksah reads it, under the session this was run from (found by walking up
 -- this process's parents to a running Claude session).
 agentOffline :: String -> [String] -> IO ()
-agentOffline verb rest = tryReply ("agent" : verb : rest) >>= \case
-  Just t  -> T.putStr t
-  Nothing -> ownClaudeSession >>= \case
-    Nothing -> cmdSocketPath >>= noSocket
-    Just sid -> do
-      appendEventLog "command" (T.pack verb) . BL.toStrict . encode $
-        object [ "session_id" .= sid, "args" .= map T.pack rest ]
-      putStrLn "No leksah is running on this machine; recorded for the leksah \
-               \that shows it to pick up."
+agentOffline verb rest = replyOrLog ("agent" : verb : rest) >>= \case
+  Right t -> T.putStr t
+  Left _  -> cmdSocketPath >>= noSocket
+
+-- | The agent verbs kept on the event log when no leksah answers here.
+loggableVerbs :: [String]
+loggableVerbs = ["describe", "done", "send"]
+
+-- | One request to leksah.  With none answering on this machine, an agent's
+-- describe \/ done \/ send goes onto the machine's event log instead, as a
+-- command for whichever leksah acts on it (one showing this machine from
+-- elsewhere, or this one when it is back — "IDE.Web.RemoteAgents", and for
+-- a send "IDE.Web.AgentMail"), under the session this was run from (found by
+-- walking up this process's parents to a running Claude session).  'Left'
+-- when there is no leksah and nothing could be logged.
+replyOrLog :: [String] -> IO (Either Text Text)
+replyOrLog args = tryReply args >>= \case
+  Just t  -> return (Right t)
+  Nothing -> case args of
+    ("agent" : verb : rest) | verb `elem` loggableVerbs -> ownClaudeSession >>= \case
+      Nothing -> return (Left noLeksah)
+      Just sid -> do
+        appendEventLog "command" (T.pack verb) . BL.toStrict . encode $
+          object [ "session_id" .= sid, "args" .= map T.pack rest ]
+        return . Right $ case (verb, rest) of
+          ("send", who : _) -> "No leksah is running on this machine; the message is queued \
+                               \for the leksah that can reach " <> T.pack who <> ".\n"
+          _ -> "No leksah is running on this machine; recorded for the leksah \
+               \that shows it to pick up.\n"
+    _ -> return (Left noLeksah)
+  where noLeksah = "leksah is not running (no control socket answered)"
 
 -- | The running Claude session this process was started from: the nearest
 -- ancestor with a @~\/.claude\/sessions\/PID.json@.
@@ -618,7 +642,8 @@ ownClaudeSession = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 -- and so that nothing is lost while no leksah runs here.  One line each, the
 -- payload shrunk to what the recorders read (long strings cut short), so
 -- every line is one small @write@ and concurrent hooks cannot interleave.
--- Rotated (to @.1@) past 4MB.  Never fails.
+-- Rotated (to @.1@) past 4MB.  Never fails.  (A command line must match what
+-- the library writes for the same purpose: @IDE.Web.AgentMail.logCommand@.)
 appendEventLog :: Text -> Text -> BS.ByteString -> IO ()
 appendEventLog kind ev payload = (`catch` \(_ :: SomeException) -> return ()) $ do
   home <- getHomeDirectory
@@ -1446,9 +1471,9 @@ mcpCall params = do
       ]
   where
     -- One one-shot socket round trip; a missing socket = leksah isn't running.
-    sock args = tryReply args >>= \case
-      Nothing -> return (Left "leksah is not running (no control socket answered)")
-      Just t  -> return (Right t)
+    -- (an agent's describe / done / send is logged when none answers:
+    -- 'replyOrLog')
+    sock = replyOrLog
 
 --------------------------------------------------------------------------------
 -- The worktree-registry PostToolUse hook

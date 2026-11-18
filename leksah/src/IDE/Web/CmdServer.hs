@@ -147,7 +147,7 @@ import IDE.LSP (requestTerminalHover)
 import IDE.Web.Agent
        (ForkPlace(..), ForkRequest(..), agentDone, agentFind, agentList,
         agentEvents, agentHook, agentManagerStart, agentManagerStatus, agentRead, agentRefresh,
-        agentResume, agentRoleList, agentSend, agentStatus, agentSuspend,
+        agentResume, agentRoleList, agentStatus, agentSuspend, SendResult(..), sendOrQueue,
         emptyForkRequest, forkAgent, renameAgentEverywhere, resolveAgent,
         agentAnswerApproval, showAgentPane)
 import IDE.Web.AgentInfo (describeAgent)
@@ -907,10 +907,18 @@ handleConn app conn = do
         -- prefix of its id ('resolveAgent').
         ("status" : who : _) | not (T.null who) -> withAgent who $ \sid ->
             agentStatus sid >>= reply
+        -- (from an agent, to one this leksah can't reach — on another
+        -- machine: queued for the leksah that can, 'sendOrQueue')
         ("send" : who : rest)
           | not (T.null who), (submit, ps) <- sendFlags rest, not (null ps) ->
               withAgent who $ \sid ->
-                agentSend sid submit (T.intercalate " " ps) >>= reply
+                sendOrQueue me sid submit (T.intercalate " " ps) >>= \case
+                  Sent r   -> reply r
+                  Failed r -> reply r
+                  Queued   -> reply ("Queued for whichever leksah can reach " <> who
+                                     <> ": " <> who <> " is not reachable from here "
+                                     <> "(it may be on another machine), and that leksah "
+                                     <> "will deliver it.\n")
         ("read" : who : rest) | not (T.null who) -> withAgent who $ \sid ->
             agentRead sid (fromMaybe 1 (intFlag ["--last", "-n"] rest)) >>= reply
         -- (here, by its run key, or on the shared host it runs on)
