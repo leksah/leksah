@@ -339,6 +339,7 @@ parseSnapshot host now p fs = HostSnapshot
   , hsNames = names
   , hsInfos = infos
   , hsTails = tails
+  , hsEventsAt = hsEventsAt p   -- (the caller moves it on)
   }
   where
     sessions = mapMaybe (\(t, _, b) -> if t == "S" then parseSessionFile (Just host) b else Nothing) fs
