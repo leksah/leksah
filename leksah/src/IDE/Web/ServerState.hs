@@ -19,7 +19,6 @@ data ServerState = ServerState
   , svLeksah    :: Maybe Bool  -- ^ a leksah is running there ('Nothing':
                                --   unknown — only hosts whose agents this
                                --   leksah shares are watched for one)
-  , svHome      :: Maybe Text  -- ^ its home directory, once known
   , svStartup   :: Bool        -- ^ opened at startup (remote.startup)
   , svWake      :: Bool        -- ^ Wake-on-LAN is set up for it
   } deriving (Eq, Show)

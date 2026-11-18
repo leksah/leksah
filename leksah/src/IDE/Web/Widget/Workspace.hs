@@ -2315,17 +2315,22 @@ serverNode env serversD forestD host projsD = do
   revealD <- holdUniqDyn (maybe False ((== Just host) . remoteHost) <$> revealFileD env)
   (outE, toggledE) <- treeItemTracked' revealD "server" (not closed)
     (do let ticksD = maybe (False, False) (\st -> (svStartup st, svWake st)) <$> stD
-            homeD  = (>>= svHome) <$> stD
             item (l, x) = (l, (Nothing, x))
-            menuItems =
+            baseItems =
               map (fmap (item . fmap Right) . (<$> ticksD)) (serverMenuItems host)
-              <> [ constDyn (item ("Add Project on " <> host <> "\8230", Left (requestAddProjectOn host)))
-                   -- (left out until its home directory is known)
-                 , ffor homeD $ \mh -> item $ case mh of
-                     Nothing -> ("", Left (return ()))
-                     Just h  -> ( "New Claude Session"
-                                , Left (runClaudeCmd (ClaudeNew (renderRemotePath host (T.unpack h))))) ]
-        (rowEl, mE) <- treeSelect' "workspace" (menuSplitWith (\_ _ -> Left (return ())) menuItems) $ do
+              <> [ constDyn (item ("Add Project on " <> host <> "\8230", Left (requestAddProjectOn host))) ]
+            -- A Claude session in each of its open projects: a folder the
+            -- host's Claude Code already knows (its home would stop at the
+            -- trust-this-folder question).  None without a project there.
+            claudeItemsD = ffor projsD $ \ps ->
+              [ item ( "New Claude Session in " <> T.pack (takeFileName (dropTrailingPathSeparator local))
+                     , Left (runClaudeCmd (ClaudeNew (pkRoot k))) )
+              | (_, k) <- M.keys ps, let local = maybe (pkRoot k) snd (parseRemotePath (pkRoot k)) ]
+        claudeKeysD <- holdUniqDyn (map fst <$> claudeItemsD)
+        let serverMenu = switchHold never =<< dyn (ffor claudeKeysD $ \_ -> do
+              cis <- sample (current claudeItemsD)
+              menuSplitWith (\_ _ -> Left (return ())) (baseItems <> map constDyn cis))
+        (rowEl, mE) <- treeSelect' "workspace" serverMenu $ do
           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-host-remote.svg") blank
           elDynAttr "span" (ffor stD $ \st ->
               "class" =: (if (st >>= svReachable) == Just False then "server-name server-down" else "server-name")) $
@@ -2394,7 +2399,8 @@ hostAgentRow sid nD = do
       badgeD = ffor nD $ \n -> Just (glyphOf (anState n), colourOf (anState n), anState n)
       who n = if T.null (anName n) then T.take 8 sid else anName n
       note t = withApp (`appNote` t)
-      bringUp n = void . forkIO $ if anLive n
+      -- (one still starting is in its pane too: at a first-run question)
+      bringUp n = void . forkIO $ if anLive n || anState n == "starting"
         then showAgentPane sid >>= \ok -> unless ok $
                note (who n <> ": its pane could not be found")
         else agentResume sid >>= either (\e -> note (who n <> " could not be resumed: " <> e))
@@ -2404,7 +2410,8 @@ hostAgentRow sid nD = do
         unless ("Suspended " `T.isPrefixOf` r) (note (T.strip r))
   elDynAttr "li" (ffor liveD $ \l -> "class" =: ("agent-session server-agent" <> if l then "" else " server-agent-gone")) $ do
     (rowEl, mE) <- treeSelect' "workspace"
-        (menuSplit [ ffor nD $ \n -> (if anLive n then "Show Agent" else "Resume Agent", (Nothing, bringUp n))
+        (menuSplit [ ffor nD $ \n -> ( if anLive n || anState n == "starting" then "Show Agent" else "Resume Agent"
+                                     , (Nothing, bringUp n) )
                      -- (not while it works: that would lose its turn, and
                      -- is refused)
                    , ffor nD $ \n -> ( if anLive n && anState n `notElem` ["busy", "shell"]

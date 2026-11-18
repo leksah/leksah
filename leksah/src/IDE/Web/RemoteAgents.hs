@@ -34,6 +34,7 @@ module IDE.Web.RemoteAgents
   , remoteTranscriptTail
   , remoteAgentName
   , remoteStartingPane
+  , remoteStartingSessions
   , setRemoteEventHandler
   , startLocalEventsPoll
   , HostStatus(..)
@@ -59,8 +60,6 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Text.Encoding (decodeUtf8With)
-import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory (createDirectoryIfMissing, getFileSize, getHomeDirectory, renameFile)
@@ -96,7 +95,6 @@ data HostSnapshot = HostSnapshot
   , hsTails    :: Map Text (Text, TranscriptGist, Maybe Text)
                                        -- ^ session → (transcript stamp, gist,
                                        --   what it is doing)
-  , hsHome     :: Maybe Text           -- ^ its @$HOME@
   , hsLeksahAge :: Maybe Integer       -- ^ seconds since a leksah there last
                                        --   wrote @~\/.leksah\/alive@
                                        --   ('startAliveWriter'), on the host's
@@ -104,7 +102,7 @@ data HostSnapshot = HostSnapshot
   }
 
 emptySnapshot :: UTCTime -> HostSnapshot
-emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty Nothing Nothing
+emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty Nothing
 
 {-# NOINLINE snapshotsRef #-}
 snapshotsRef :: IORef (Map Text HostSnapshot)
@@ -126,7 +124,6 @@ remoteLiveSessions = do
 data HostStatus = HostStatus
   { hstFresh  :: Bool        -- ^ read within 'staleAfter' (else: unreachable)
   , hstLeksah :: Bool        -- ^ a leksah there said it was alive lately
-  , hstHome   :: Maybe Text  -- ^ its home directory
   } deriving (Eq, Show)
 
 -- | Every shared host this leksah has read at least once.
@@ -136,7 +133,7 @@ remoteHostStatus = do
   m <- readIORef snapshotsRef
   return $ flip fmap m $ \hs ->
     let fresh = realToFrac (diffUTCTime now (hsAt hs)) < staleAfter
-    in HostStatus fresh (fresh && maybe False (< aliveWithin) (hsLeksahAge hs)) (hsHome hs)
+    in HostStatus fresh (fresh && maybe False (< aliveWithin) (hsLeksahAge hs))
 
 -- | A leksah that has not touched its @alive@ file for this long is gone.
 aliveWithin :: Integer
@@ -185,11 +182,31 @@ remotePaneSessions host = maybe M.empty hsPanes . M.lookup host <$> readIORef sn
 remotePaneOf :: Text -> IO (Maybe (Text, Text, Text))
 remotePaneOf sid = do
   m <- readIORef snapshotsRef
-  return $ listToMaybe
-    [ (q h s, q h w, q h pane)
-    | (h, hs) <- M.toList m, (pane, sid') <- M.toList (hsPanes hs), sid' == sid
-    , Just (s, w) <- [M.lookup pane (hsPaneAt hs)] ]
+  let at h hs pane = (\(s, w) -> (q h s, q h w, q h pane)) <$> M.lookup pane (hsPaneAt hs)
+      -- (the pane its claude runs in; else, while it has not registered —
+      -- waiting at a first-run question — the pane leksah started it in)
+      owned   = [ r | (h, hs) <- M.toList m, (pane, sid') <- M.toList (hsPanes hs), sid' == sid
+                    , Just r <- [at h hs pane] ]
+      started = [ r | (h, hs) <- M.toList m, (pane, key) <- M.toList (hsRunKeys hs)
+                    , ("#claude#" <> sid) `T.isSuffixOf` key, Just r <- [at h hs pane] ]
+  return (listToMaybe (owned <> started))
   where q h x = "ssh://" <> h <> "#" <> x
+
+-- | The sessions leksah started on a shared host that have not registered
+-- yet — nearly always waiting at a first-run question (the folder-trust one)
+-- — as (host, session, its directory there, its name there).  From the run
+-- key on its pane (@DIR#claude#SID@, 'IDE.Web.ReplTmux.newRemoteAgentWindow').
+remoteStartingSessions :: IO [(Text, Text, FilePath, Text)]
+remoteStartingSessions = do
+  now <- getCurrentTime
+  m <- readIORef snapshotsRef
+  return
+    [ (h, sid, T.unpack dir, maybe "" nrName (M.lookup sid (snd (hsNames hs))))
+    | (h, hs) <- M.toList m, realToFrac (diffUTCTime now (hsAt hs)) < staleAfter
+    , key <- M.elems (hsRunKeys hs)
+    , let (dir, rest) = T.breakOn "#claude#" key
+    , Just sid <- [T.stripPrefix "#claude#" rest], not (T.null sid), not (T.null dir)
+    , not (any ((== sid) . clSession) (hsLive hs)) ]
 
 -- | A pane on a shared host that was started for session @sid@ (its run key
 -- names it) but whose session has not registered yet — nearly always a
@@ -385,9 +402,6 @@ parseSnapshot host now p fs = HostSnapshot
   , hsInfos = infos
   , hsTails = tails
   , hsEventsAt = hsEventsAt p   -- (the caller moves it on)
-  , hsHome = case [ T.strip (decodeUtf8With lenientDecode b) | (t, _, b) <- fs, t == "H" ] of
-      (h : _) | not (T.null h) -> Just h
-      _ -> Nothing
   , hsLeksahAge = listToMaybe [ n | (t, _, b) <- fs, t == "A"
                                   , Just n <- [readMaybe (BC.unpack (BC.strip b))] ]
   }
@@ -474,10 +488,8 @@ snapshotScript = T.concat
   ,   "if [ \"$c\" = \"$2\" ]; then : > \"$tmp\"; frame \"$3\" \"=$c\" \"$tmp\"; "
   ,   "else frame \"$3\" \"$c\" \"$f\"; fi; }; "
   , "st agent-names.json \"$NK\" N; st agents.json \"$IK\" I; "
-  -- Its home (where a new agent there starts), and how long ago a leksah
-  -- there last said it was alive — worked out on the host, so the two
-  -- machines' clocks need not agree.
-  , "printf '%s\\n' \"$HOME\" > \"$tmp\"; frame H - \"$tmp\"; "
+  -- How long ago a leksah there last said it was alive — worked out on the
+  -- host, so the two machines' clocks need not agree.
   , "al=$(head -c 20 \"$HOME/.leksah/alive\" 2>/dev/null | tr -cd 0-9); "
   , "if [ -n \"$al\" ]; then echo $(( $(date +%s) - al )) > \"$tmp\"; frame A - \"$tmp\"; fi; "
   -- The event log from where this leksah left off (a log that shrank was

@@ -7718,7 +7718,6 @@ main showMenubar macTitlebar wid ctx = mdo
             one h = let ms = M.lookup h st in ServerState
               { svReachable = maybe (fst <$> M.lookup h trees) (Just . hstFresh) ms
               , svLeksah    = hstLeksah <$> ms
-              , svHome      = ms >>= hstHome
               , svStartup   = h `elem` rcStartup rc
               , svWake      = h `elem` map wolHost (rcWake rc) }
         in M.fromList [ (h, one h) | h <- nub (hosts <> M.keys (rcTmuxSockets rc)) ])
