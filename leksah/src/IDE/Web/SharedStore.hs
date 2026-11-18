@@ -48,12 +48,13 @@ import System.Directory
         renameFile, removeFile)
 import System.Exit (ExitCode(..))
 import System.FilePath (takeDirectory, takeFileName, (<.>))
-import System.IO (IOMode(..), hClose, openBinaryTempFile, openFile)
+import System.IO (hClose, openBinaryTempFile)
 #if !defined(ghcjs_HOST_OS) && !defined(mingw32_HOST_OS)
 import Foreign.C.Error (throwErrnoIfMinus1Retry_)
 import Foreign.C.Types (CInt(..))
-import GHC.IO.FD (FD(..))
-import GHC.IO.Handle.FD (handleToFd)
+import System.Posix.IO
+       (OpenFileFlags(..), OpenMode(..), closeFd, defaultFileFlags, openFd)
+import System.Posix.Types (Fd(..))
 #endif
 
 import IDE.Paths (sidecarPath)
@@ -162,9 +163,14 @@ withFileLock _ act = act
 #else
 withFileLock lockFile act = do
   createDirectoryIfMissing True (takeDirectory lockFile)
-  bracket (openFile lockFile AppendMode) hClose $ \h -> do
-    fd <- handleToFd h
-    throwErrnoIfMinus1Retry_ "flock" (c_flock (fdFD fd) lockEx)
+  -- Opened close-on-exec, atomically: a process leksah starts while it holds
+  -- the lock (a tmux client, a build) must not inherit the descriptor — a
+  -- flock lasts while ANY copy of it is open, so one inherited by a
+  -- long-lived child keeps the store locked, and every reader waits, for
+  -- as long as that child lives.
+  bracket (openFd lockFile WriteOnly defaultFileFlags { creat = Just 0o644, cloexec = True })
+          closeFd $ \(Fd fd) -> do
+    throwErrnoIfMinus1Retry_ "flock" (c_flock fd lockEx)
     act
   where lockEx = 2
 

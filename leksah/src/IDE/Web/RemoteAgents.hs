@@ -78,6 +78,7 @@ import IDE.Web.Claude
        (ClaudeLive(..), TranscriptGist(..), gistOfTail, latestActivityOf,
         parseSessionFile, pidAncestors)
 import IDE.Web.SharedStore (remoteModifyJSON)
+import IDE.Web.AgentMail (catchSync, retryPending)
 import IDE.Web.TmuxServer (remoteSocketArgs, remoteTmux)
 
 -- | One host, as last seen.
@@ -259,6 +260,9 @@ startRemoteAgentsPoll = forkIO . forever $ do
   mapM_ takeMVar dones
   -- (a host that went from the setting is forgotten)
   atomicModifyIORef' snapshotsRef (\m -> (M.restrictKeys m (S.fromList hosts), ()))
+  -- (messages read here earlier that could not be delivered then:
+  -- 'IDE.Web.AgentMail')
+  retryPending `catchSync` \_ -> return ()
   threadDelay 3000000
 
 -- | The hosts whose leksah tmux server this leksah shares.
