@@ -47,14 +47,13 @@ module IDE.Web.WorktreeRegistry
   , owningSession
   ) where
 
-import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
+import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore)
 import Control.Exception (catch, try, SomeException)
 import Control.Monad (filterM, void)
 
 import Data.Aeson
        (FromJSON(..), ToJSON(..), object, (.=), (.:), (.:?), withObject,
         encode, decode')
-import qualified Data.ByteString.Lazy as LBS
 import Data.List (sortOn)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -64,7 +63,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 
-import System.Directory (canonicalizePath, doesDirectoryExist, doesFileExist)
+import System.Directory (canonicalizePath, doesDirectoryExist)
 import System.Exit (ExitCode(..))
 import System.FilePath
        ((</>), dropTrailingPathSeparator, equalFilePath, takeDirectory,
@@ -72,7 +71,6 @@ import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Git (runGit)
-import IDE.Paths (sidecarPath, writeSidecar)
 import IDE.Utils.RemotePath (isRemotePath)
 
 --------------------------------------------------------------------------------
@@ -165,35 +163,19 @@ branchLogCap = 50
 --------------------------------------------------------------------------------
 -- The store (the agents.json pattern: one MVar, lazily loaded, save-on-write)
 
-{-# NOINLINE regVar #-}
-regVar :: MVar (Maybe (Map FilePath WorktreeInfo))
-regVar = unsafePerformIO (newMVar Nothing)
+-- Shared with every other leksah that shows this machine ("IDE.Web.SharedStore":
+-- locked, re-read whenever it changed): the worktrees are on its disk.
+{-# NOINLINE regStore #-}
+regStore :: SharedStore (Map FilePath WorktreeInfo)
+regStore = unsafePerformIO $ newSharedStore "worktrees.json"
+  (fmap (\ws -> M.fromList [ (wiPath w, w) | w <- ws ]) . decode')
+  (encode . M.elems) M.empty
 
-regPath :: IO FilePath
-regPath = sidecarPath "worktrees.json"
-
-loadRegistry :: IO (Map FilePath WorktreeInfo)
-loadRegistry = (`catch` \(_ :: SomeException) -> return M.empty) $ do
-  p  <- regPath
-  ex <- doesFileExist p
-  if not ex then return M.empty else do
-    ws <- fromMaybe [] . decode' <$> LBS.readFile p
-    return $ M.fromList [ (wiPath w, w) | w <- ws ]
-
-saveRegistry :: Map FilePath WorktreeInfo -> IO ()
-saveRegistry m = (`catch` \(_ :: SomeException) -> return ()) $ do
-  p <- regPath
-  writeSidecar p (encode (M.elems m))
-
--- | Update the (lazily loaded) store and persist it.  Vanished local worktrees
--- are pruned here, on the write path — never on a poll's peek.
 withRegistry :: (Map FilePath WorktreeInfo -> (Map FilePath WorktreeInfo, a)) -> IO a
-withRegistry f = modifyMVar regVar $ \m0 -> do
-  m  <- maybe loadRegistry return m0
-  m1 <- prune m
-  let (m', a) = f m1
-  saveRegistry m'
-  return (Just m', a)
+withRegistry f = (modifyStore regStore $ \m -> do
+    m1 <- prune m
+    return (f m1))
+  `catch` \(_ :: SomeException) -> snd . f <$> peekRegistry
   where
     prune m = do
       keep <- mapM exists (M.keys m)
@@ -204,9 +186,7 @@ withRegistry f = modifyMVar regVar $ \m0 -> do
 
 -- | The store WITHOUT writing it back (polls only look).
 peekRegistry :: IO (Map FilePath WorktreeInfo)
-peekRegistry = modifyMVar regVar $ \m0 -> do
-  m <- maybe loadRegistry return m0
-  return (Just m, m)
+peekRegistry = peekStore regStore `catch` \(_ :: SomeException) -> return M.empty
 
 --------------------------------------------------------------------------------
 -- Resolution
