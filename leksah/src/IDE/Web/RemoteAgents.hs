@@ -50,6 +50,7 @@ import Data.Aeson (Value(..), decode')
 import qualified Data.Aeson.KeyMap as KM (lookup)
 import Data.Foldable (toList)
 import qualified Data.ByteString as BS
+import Data.Char (isHexDigit)
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as LBS
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
@@ -95,6 +96,10 @@ data HostSnapshot = HostSnapshot
   , hsTails    :: Map Text (Text, TranscriptGist, Maybe Text)
                                        -- ^ session → (transcript stamp, gist,
                                        --   what it is doing)
+  , hsStarting :: [(Text, FilePath)]   -- ^ sessions leksah started here that
+                                       --   have not registered yet (a claude
+                                       --   is running in their pane): (session,
+                                       --   its directory)
   , hsLeksahAge :: Maybe Integer       -- ^ seconds since a leksah there last
                                        --   wrote @~\/.leksah\/alive@
                                        --   ('startAliveWriter'), on the host's
@@ -102,7 +107,7 @@ data HostSnapshot = HostSnapshot
   }
 
 emptySnapshot :: UTCTime -> HostSnapshot
-emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty Nothing
+emptySnapshot t = HostSnapshot t [] M.empty M.empty M.empty ("", M.empty) ("", "") (-1) M.empty [] Nothing
 
 {-# NOINLINE snapshotsRef #-}
 snapshotsRef :: IORef (Map Text HostSnapshot)
@@ -201,12 +206,9 @@ remoteStartingSessions = do
   now <- getCurrentTime
   m <- readIORef snapshotsRef
   return
-    [ (h, sid, T.unpack dir, maybe "" nrName (M.lookup sid (snd (hsNames hs))))
+    [ (h, sid, dir, maybe "" nrName (M.lookup sid (snd (hsNames hs))))
     | (h, hs) <- M.toList m, realToFrac (diffUTCTime now (hsAt hs)) < staleAfter
-    , key <- M.elems (hsRunKeys hs)
-    , let (dir, rest) = T.breakOn "#claude#" key
-    , Just sid <- [T.stripPrefix "#claude#" rest], not (T.null sid), not (T.null dir)
-    , not (any ((== sid) . clSession) (hsLive hs)) ]
+    , (sid, dir) <- hsStarting hs ]
 
 -- | A pane on a shared host that was started for session @sid@ (its run key
 -- names it) but whose session has not registered yet — nearly always a
@@ -402,15 +404,19 @@ parseSnapshot host now p fs = HostSnapshot
   , hsInfos = infos
   , hsTails = tails
   , hsEventsAt = hsEventsAt p   -- (the caller moves it on)
+  , hsStarting = starting
   , hsLeksahAge = listToMaybe [ n | (t, _, b) <- fs, t == "A"
                                   , Just n <- [readMaybe (BC.unpack (BC.strip b))] ]
   }
   where
     sessions = mapMaybe (\(t, _, b) -> if t == "S" then parseSessionFile (Just host) b else Nothing) fs
-    parents  = M.fromList [ (pid, ppid) | (t, _, b) <- fs, t == "P"
-                                        , [a, b'] <- map BC.words (BC.lines b)
+    psRows   = [ ws | (t, _, b) <- fs, t == "P", ws <- map BC.words (BC.lines b) ]
+    parents  = M.fromList [ (pid, ppid) | (a : b' : _) <- psRows
                                         , Just pid <- [readMaybe (BC.unpack a)]
                                         , Just ppid <- [readMaybe (BC.unpack b')] ]
+    -- (the claude processes: "claude", or nix's ".claude-wrapped")
+    claudePids = [ pid | (a : _ : cmd) <- psRows, "claude" `BS.isInfixOf` BC.unwords cmd
+                       , Just pid <- [readMaybe (BC.unpack a)] ]
     alive    = M.keysSet parents
     live     = [ l | l <- sessions, clPid l `S.member` alive ]
     -- A pane shows the session whose claude process descends from the pane's
@@ -433,6 +439,19 @@ parseSnapshot host now p fs = HostSnapshot
     names = store "N" (fromMaybe M.empty . decode' . LBS.fromStrict) (hsNames p)
     infos = store "I" LBS.fromStrict (hsInfos p)
     liveIds = S.fromList (map clSession live)
+    -- A pane leksah started a session in (its run key: DIR#claude#SID, SID a
+    -- session id — not a fork's or an ask's key), whose session has not
+    -- registered, with a claude running under it: waiting at a first-run
+    -- question.  (A claude that exited leaves a shell, and no claude, there.)
+    starting =
+      [ (sid, T.unpack dir)
+      | (_ : ppid : _ : _ : key) <- paneRows, not (null key)
+      , let (dir, rest) = T.breakOn "#claude#" (T.pack (BC.unpack (BC.unwords key)))
+      , Just sid <- [T.stripPrefix "#claude#" rest], isSessionId sid, not (T.null dir)
+      , not (sid `S.member` liveIds)
+      , Just pp <- [readMaybe (BC.unpack ppid)]
+      , any (\c -> pp `elem` pidAncestors parents c) claudePids ]
+    isSessionId t = T.length t == 36 && T.all (\c -> isHexDigit c || c == '-') t
     tails = M.fromList
       [ (sid, entry)
       | (t, meta, b) <- fs, t == "X"
@@ -480,7 +499,7 @@ snapshotScript = T.concat
   , "tmp=$(mktemp) || exit 1; trap 'rm -f \"$tmp\"' EXIT; "
   , "frame() { printf '@@%s %s %s\\n' \"$1\" \"$2\" \"$(wc -c < \"$3\" | tr -d ' ')\"; cat \"$3\"; }; "
   , "for f in \"$HOME\"/.claude/sessions/*.json; do [ -f \"$f\" ] && frame S - \"$f\"; done; "
-  , "ps -Ao pid=,ppid= > \"$tmp\"; frame P - \"$tmp\"; "
+  , "ps -Ao pid=,ppid=,comm= > \"$tmp\"; frame P - \"$tmp\"; "
   , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid} #{session_id} #{window_id} #{@leksah_run}' > \"$tmp\" 2>/dev/null; "
   , "frame T - \"$tmp\"; "
   , "st() { f=\"$HOME/.leksah-0.17/$1\"; [ -f \"$f\" ] || return 0; "

@@ -276,6 +276,12 @@ viewerAttachScript = concat
   ,   "tx new-session -d -t \"=$n\" -s \"$v\" \\; set-option -t \"=$v:\" @leksah_claim \"$now\" "
   ,     "\\; set-option -t \"=$v:\" @leksah_viewer \"$V\" || exit 1; "
   , "fi; "
+  -- Leaving re-claims it: the clean-up's minute (or day) counts from when
+  -- its last client went, not from when it attached — a viewer attached for
+  -- days whose connection blips is not abandoned.  (A session's hook
+  -- replaces the global one, so it refits the shared windows too:
+  -- 'fitWindowScript'.)
+  , "hk=\"run-shell -b 'T=\\$(cat \\\"\\$HOME/.leksah/fit-window.tmux\\\" 2>/dev/null); \\\"\\${T:-tmux}\\\" set-option -t \\\"=$v:\\\" @leksah_claim \\\"\\$(date +%s)\\\"; sh \\\"\\$HOME/.leksah/fit-window.sh\\\"'\"; tx set-hook -t \"=$v:\" client-detached \"$hk\"; "
   , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
   , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
 

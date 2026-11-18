@@ -216,7 +216,7 @@ import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Utils.RemoteExec (remoteInFlight, dupRemoteInFlight)
 import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
-import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
+import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor, requestTerminalRefresh)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.ModifierProbe (cmdHeldNow)
 import IDE.Web.Handoff
@@ -8559,7 +8559,10 @@ main showMenubar macTitlebar wid ctx = mdo
         remoteKey h sid = "ssh://" <> h <> "#" <> sid
     -- (off the frame thread: it is several tmux calls now — the session's
     -- remote viewers' sessions go with it)
-    performEvent_ $ ffor closeTermE $ liftIO . void . forkIO . killTerminalSession
+    -- (and re-read the tree once it is done: the refresh this event also
+    -- triggers can run before the kill has)
+    performEvent_ $ ffor closeTermE $ \n -> liftIO . void . forkIO $
+        killTerminalSession n >> requestTerminalRefresh
     performEvent_ $ ffor selectWinE  $ \(s, w)    -> do
         wlog wid ("ENTER selectWinE selectTmuxWindow " <> show (s, w))
         liftIO (selectTmuxWindow s w)

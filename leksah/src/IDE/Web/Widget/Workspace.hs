@@ -2448,8 +2448,11 @@ pollWhileD onD a0 act = do
   pb <- getPostBuild
   tick <- tickLossyFromPostBuildTime agentWorktreesPeriod
   (e, fire) <- newTriggerEvent
+  -- (the moment it turns on is not gated: in that frame 'current onD' is
+  -- still the old False)
   performEvent_ $ (liftIO . void . forkIO $ act >>= fire)
-    <$ gate (current onD) (leftmost [() <$ pb, () <$ tick, () <$ ffilter id (updated onD)])
+    <$ leftmost [ gate (current onD) (leftmost [() <$ pb, () <$ tick])
+                , () <$ ffilter id (updated onD) ]
   holdUniqDyn =<< holdDyn a0 e
 
 -- | Poll an IO action off the frame thread.
