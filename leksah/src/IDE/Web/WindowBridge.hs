@@ -121,7 +121,9 @@ data WindowBridge = WindowBridge
                                       -- ^ convert a tab into a pane (or back)
   , wbSplitOpen  :: (SplitTarget, Bool) -> IO ()
                                       -- ^ ⌥-open: split the active pane with this
-  , wbAddProject :: IO ()             -- ^ File ▸ Add Project… modal
+  , wbAddProject :: Maybe Text -> IO ()
+                                      -- ^ File ▸ Add Project… modal (with its
+                                      --   Server set, from a server node)
   , wbPickedPath :: (Int, FilePath) -> IO ()
                                       -- ^ a path chosen in that modal's native
                                       --   browse panel, tagged with the asking
@@ -246,7 +248,7 @@ startWindowBridgeDrains app = do
   drain "bridge-drain-splitopen" $
     nextSplitOpenRequest >>= \r -> route app (`wbSplitOpen` r)
   drain "bridge-drain-addproject" $
-    nextAddProjectRequest >> route app wbAddProject
+    nextAddProjectRequest >>= \h -> route app (`wbAddProject` h)
   -- Routed to the frontmost window like everything else; the token is what
   -- makes that safe — a dialog ignores a result that is not its own.
   drain "bridge-drain-pickpath" $

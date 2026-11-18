@@ -164,6 +164,7 @@ library
         IDE.Web.ProjectRecents
         IDE.Web.RecentFiles
         IDE.Web.RemoteTermRequest
+        IDE.Web.ServerState
         IDE.Web.RestartRequest
         IDE.Web.NativeBrowser
         IDE.Web.NewLwRequest

@@ -88,6 +88,7 @@ import IDE.Web.Widget.Terminal
 import IDE.Web.ReplTmux (agentsSessionName)
 import IDE.Web.Widget.Tree (treeItem)
 import IDE.Web.Widget.Menu (rowMenu)
+import IDE.Web.ServerState (serverMenuItems)
 import IDE.Web.AddServerRequest (requestAddServer)
 import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
 import IDE.Web.Frame (MonadWidget, performEvent_)
@@ -501,14 +502,7 @@ remoteHostNode activeD startupD wakeOnD hiddenIn host treeD = do
                 dynText lblD
             newE <- actionBtn "+" ("New session on " <> host)
             menuE <- rowMenu lbl
-              [ constDyn ("Open Server Connection", SelectRemoteHost host)
-              , constDyn ("New Session",            NewRemoteTerminal host)
-                -- Open its default session as a leksah window at startup.
-              , (\on -> ((if on then "\10003 " else "") <> "Open at Startup"
-                        , ToggleRemoteStartup host)) <$> startupD
-                -- Wake the machine now (or set Wake-on-LAN up for it).
-              , (\on -> (if on then "Wake on LAN" else "Wake on LAN\8230 (set up)"
-                        , WakeRemoteHost host)) <$> wakeOnD ]
+              (map (<$> ((,) <$> startupD <*> wakeOnD)) (serverMenuItems host))
             pure $ leftmost [ Right (NewRemoteTerminal host) <$ newE
                             , Right (SelectRemoteHost host)  <$ domEvent Click lbl
                             , Right <$> menuE ])

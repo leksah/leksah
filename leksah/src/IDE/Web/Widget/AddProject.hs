@@ -35,6 +35,7 @@ import Control.Exception (SomeException, catch)
 import Control.Monad (unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (nub)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.Directory (getCurrentDirectory, getHomeDirectory)
@@ -61,7 +62,7 @@ import IDE.Web.Widget.PathField
 import IDE.Web.Frame (MonadWidget, performEvent_)
 import IDE.Workspace (projectOpenKey, setProjectCmdPrefix)
 import IDE.Ws.Registry (detectProject)
-import IDE.Ws.Types (defaultEffects)
+import IDE.Web.FS (fsEffects)
 
 serverFieldId, pathFieldId, prefixFieldId :: Text
 serverFieldId = "leksah-ap-server"
@@ -79,9 +80,10 @@ prefixFieldId = "leksah-ap-prefix"
 addProjectDialog
   :: MonadWidget t m
   => Dynamic t [Text]
+  -> Maybe Text               -- ^ the Server to start with (else local)
   -> Event t (Int, FilePath)
   -> m (Event t (), Event t RecentEntry)
-addProjectDialog serversD pickedE = do
+addProjectDialog serversD mServer pickedE = do
     -- All three reads are cheap, total and done once at build.  The token is an
     -- IORef bump; the capability is registered by the front end before any
     -- window builds; the recents are an IORef read.
@@ -97,7 +99,8 @@ addProjectDialog serversD pickedE = do
     let failE     = fmapMaybe (either Just (const Nothing)) resultE
         successE  = fmapMaybe (either (const Nothing) Just) resultE
         recentsD  = constDyn recents
-        initPath  = defaultPathFor localServer recents
+        server0   = fromMaybe localServer mServer
+        initPath  = defaultPathFor server0 recents
 
     elAttr "div" ("class" =: "add-project-overlay" <> "style" =: overlayStyle) $ do
       (dialogEl, (closeE, submitE, valsD, anyPopupD)) <- elAttr' "div"
@@ -112,7 +115,7 @@ addProjectDialog serversD pickedE = do
             let serverItemsD = ffor serversD $ \servers ->
                     nub (prServers recents <> servers)
             serverF <- labelled "Server" $
-                comboField serverFieldId "local, or an ssh host" localServer
+                comboField serverFieldId "local, or an ssh host" server0
                            serverItemsD never
             serverD <- holdUniqDyn (pfValue serverF)
 
@@ -275,7 +278,9 @@ addProjectIO server path prefix fire =
                     | otherwise        = s <> ":" <> p
           resolveProjectInput cwd input >>= \case
             Left err -> fire (Left err)
-            Right fp -> detectProject defaultEffects fp >>= \case
+            -- (fsEffects: the FS seam, which reads an ssh:// path on its
+            -- host — defaultEffects would look for it on this machine)
+            Right fp -> detectProject fsEffects fp >>= \case
               -- In practice only an unreadable or non-existent path gets here:
               -- the plain-directory type claims any directory that exists.
               Nothing -> fire (Left ("No project type claims " <> T.pack fp))

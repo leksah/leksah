@@ -536,8 +536,11 @@ startRemoteAgent host name rdir spec = do
   let key = T.pack rdir <> "#claude#" <> asSession spec
   newRemoteAgentWindow host name rdir key line >>= \case
     Nothing -> return (Left ("could not start a window on " <> host))
-    Just (s, _, pane) -> do
-      requestRemoteTerm (host <> "#" <> rawTmuxId s)
+    Just (s, w, pane) -> do
+      -- Its own tab, on its own window, brought to the front — as a local
+      -- launch gets ('runClaudeCmd'); not the session's tab, which would show
+      -- whichever agent's window that tab was last on.
+      requestNewLw (s, w)
       -- (once the tab's viewer session exists — however long its ssh attach takes)
       _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
       return (Right ())
@@ -583,8 +586,8 @@ runRemoteClaudeCmd host rdir cmd = report =<< case cmd of
                    (T.stripPrefix (T.pack (renderRemotePath host rdir)) key)
       newRemoteAgentWindow host "claude" rdir key' line >>= \case
         Nothing -> return (Left ("could not start a window on " <> host))
-        Just (s, _, pane) -> do
-          requestRemoteTerm (host <> "#" <> rawTmuxId s)
+        Just (s, w, pane) -> do
+          requestNewLw (s, w)   -- (its own tab: see 'startRemoteAgent')
           _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
           return (Right ())
     unsupported = return (Left "Codex sessions can't run on another machine yet")

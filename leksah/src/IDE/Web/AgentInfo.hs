@@ -47,6 +47,7 @@ module IDE.Web.AgentInfo
   , moveAgentRecord
   , agentParentOf
   , agentForest
+  , agentForestShared
   , agentTitles
   , agentTitleSources
   , stripTags
@@ -56,7 +57,7 @@ module IDE.Web.AgentInfo
   ) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (MVar, newMVar, modifyMVar, modifyMVar_)
+import Control.Concurrent.MVar (MVar, newMVar, modifyMVar, modifyMVar_, withMVar)
 import Control.Exception (catch, SomeException)
 import Control.Applicative ((<|>))
 import Control.Monad (forM, forM_, mfilter, unless, void, when)
@@ -82,7 +83,7 @@ import Data.Ord (Down(..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
-       (UTCTime, defaultTimeLocale, diffUTCTime, formatTime, getCurrentTime)
+       (NominalDiffTime, UTCTime, defaultTimeLocale, diffUTCTime, formatTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 
 import System.Directory (doesFileExist, getModificationTime)
@@ -90,8 +91,8 @@ import System.FilePath (dropTrailingPathSeparator, takeFileName)
 import System.IO.Unsafe (unsafePerformIO)
 
 import IDE.Paths (sidecarPath, writeSidecar)
-import IDE.Web.SharedStore (SharedStore, newSharedStore, peekStore, modifyStore, remoteModifyJSON)
-import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Web.SharedStore (SharedStore, atomicWriteFile, newSharedStore, peekStore, modifyStore, remoteModifyJSON)
+import IDE.Utils.RemotePath (isRemotePath, renderRemotePath)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seCompactingAt, seSubagentsAt, seTaskSummary, seTool, sessionEvents)
 import IDE.Web.AgentUsage (SessionUsage, sessionUsage)
@@ -104,7 +105,7 @@ import IDE.Web.Claude
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath,
         TranscriptGist(..), cachedTranscriptGist, liveTranscriptPath)
 import IDE.Web.Codex (codexTranscriptOf, isCodexSession)
-import IDE.Web.RemoteAgents (remoteActivity, remoteInfoBytes)
+import IDE.Web.RemoteAgents (remoteActivity, remoteInfoBytes, remoteStartingSessions)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), TitleSource(..), chooseTitle, claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
@@ -343,6 +344,124 @@ remoteAgentRecord sid = do
   _ <- remoteInfos   -- (decode any store that changed)
   m <- readIORef remoteInfosRef
   return $ listToMaybe [ (h, i) | (h, (_, im)) <- M.toList m, Just i <- [M.lookup sid im] ]
+
+-- | A row with nothing known about it but its session: the base the rows
+-- built from a record (not a live session) fill in.
+blankAgentNode :: Text -> AgentNode
+blankAgentNode sid = AgentNode
+  { anSession = sid, anName = "", anTitle = T.take 8 sid, anState = "gone"
+  , anDetail = "", anActivity = Nothing, anDone = Nothing, anRole = Nothing
+  , anDir = "", anDesc = Nothing, anAge = "", anLive = False
+  , anBranch = Nothing, anPr = Nothing, anWorktrees = []
+  , anBio = Nothing, anManager = False, anBorn = Nothing
+  , anParentName = Nothing, anChildNames = []
+  , anEdits = [], anError = Nothing, anCwd = Nothing, anUsage = Nothing
+  , anBackground = Nothing, anApproval = Nothing, anLastSaid = Nothing
+  , anAgent = "claude", anChildren = [] }
+
+-- | The first of these that is not empty (else empty).
+firstNonEmpty :: [Text] -> Text
+firstNonEmpty xs = fromMaybe "" (listToMaybe (filter (not . T.null) xs))
+
+-- | The agents on the shared hosts that are not running now but can be
+-- brought back — suspended, or interrupted by their host going down — as
+-- Agents-pane rows (and the Workspace tree's server nodes'), from each
+-- host's own store; their directory is the @ssh://@ one.  (Not the ones that
+-- simply ended: their transcripts are on the host, so how long ago is not
+-- known here.)
+remoteRestingNodes :: Double -> Map Text a -> S.Set Text -> IO [(Text, AgentNode)]
+remoteRestingNodes posix live hidden = do
+  _ <- remoteInfos   -- (decode any store that changed)
+  m <- readIORef remoteInfosRef
+  seen <- remoteTitles
+  return
+    [ (aiSession i, n)
+    | (h, (_, im)) <- M.toList m, i <- M.elems im
+    , not (aiSession i `M.member` live), not (aiSession i `S.member` hidden)
+    , let suspended = isJust (aiSuspended i)
+    , suspended || isInterrupted posix i
+    , let n = (blankAgentNode (aiSession i))
+            -- The title it showed while it ran (this leksah saw it), else
+            -- its record's — one it chose, or the prompt it was started with.
+            { anTitle   = firstNonEmpty [ M.findWithDefault "" (aiSession i) seen
+                                        , maybe "" T.strip (aiTitle i)
+                                        , T.take 8 (aiSession i) ]
+            , anState   = if suspended then "suspended" else "interrupted"
+            , anDetail  = (if suspended then "Suspended" else "Interrupted: " <> h <> " went down under it")
+                          <> " — resuming brings it back on " <> h
+            , anDone    = aiDone i
+            , anRole    = aiRole i
+            , anDir     = renderRemotePath h (aiDir i)
+            , anDesc    = aiDesc i } ]
+
+-- | The last title each remote agent showed while it ran — what its row
+-- shows once it stops, when only the host's record of it is left.  Kept in
+-- @remote-agent-titles.json@ too, so a restart does not lose them.
+{-# NOINLINE remoteTitlesRef #-}
+remoteTitlesRef :: IORef (Maybe (Map Text Text))
+remoteTitlesRef = unsafePerformIO (newIORef Nothing)
+
+remoteTitlesPath :: IO FilePath
+remoteTitlesPath = sidecarPath "remote-agent-titles.json"
+
+remoteTitles :: IO (Map Text Text)
+remoteTitles = readIORef remoteTitlesRef >>= \case
+  Just m  -> return m
+  Nothing -> do
+    m <- (`catch` \(_ :: SomeException) -> return M.empty) $ do
+      bytes <- LBS.readFile =<< remoteTitlesPath
+      return (fromMaybe M.empty (decode' bytes))
+    atomicModifyIORef' remoteTitlesRef (\cur -> (Just (fromMaybe m cur), ()))
+    return m
+
+-- | Change the remembered titles — read, change and written under one lock,
+-- so two forest computations at once can't drop each other's — and save
+-- them when they changed.
+modifyRemoteTitles :: (Map Text Text -> Map Text Text) -> IO ()
+modifyRemoteTitles f = withMVar remoteTitlesLock $ \_ -> do
+  m <- remoteTitles
+  let m' = f m
+  unless (m' == m) $ do
+    atomicModifyIORef' remoteTitlesRef (const (Just m', ()))
+    (`catch` \(_ :: SomeException) -> return ()) $
+      remoteTitlesPath >>= \p -> atomicWriteFile p (encode m')
+
+{-# NOINLINE remoteTitlesLock #-}
+remoteTitlesLock :: MVar ()
+remoteTitlesLock = unsafePerformIO (newMVar ())
+
+noteRemoteTitle :: Text -> Text -> IO ()
+noteRemoteTitle sid t = unless (T.null t) $ modifyRemoteTitles (M.insert sid t)
+
+-- | Forget the titles of remote agents no host's store knows any more —
+-- once there are enough to matter: until every shared host has been read,
+-- @known@ is short, and pruning then would forget titles still wanted.
+pruneRemoteTitles :: S.Set Text -> IO ()
+pruneRemoteTitles known = do
+  m <- remoteTitles
+  when (M.size m > 500 && not (M.keysSet m `S.isSubsetOf` known)) $
+    modifyRemoteTitles (`M.restrictKeys` known)
+
+-- | The sessions started on a shared host that have not registered yet —
+-- waiting at a first-run question in their pane there (most often: trust
+-- this folder?) — as \"starting\" rows, so they can be found and answered
+-- (Show brings the pane up).  Their title is the host's record of what they
+-- were started for, if any.
+remoteStartingNodes :: Map Text AgentInfo -> S.Set Text -> S.Set Text -> IO [(Text, AgentNode)]
+remoteStartingNodes rinfos resting hidden = do
+  ss <- remoteStartingSessions
+  return
+    [ (sid, (blankAgentNode sid)
+        { anName    = name
+        , anTitle   = firstNonEmpty [ maybe "" T.strip (M.lookup sid rinfos >>= aiTitle), "Starting\8230" ]
+        , anState   = "starting"
+        , anDetail  = "Starting — waiting at a first-run question in its pane on " <> h
+                      <> " (most often: trust this folder?)"
+        , anRole    = M.lookup sid rinfos >>= aiRole
+        , anDir     = renderRemotePath h dir
+        , anAge     = "starting\8230" })
+    | (h, sid, dir, name) <- ss
+    , not (sid `S.member` resting), not (sid `S.member` hidden) ]
 
 -- | Mark an agent on @host@ suspended, or not, in THAT machine's store.
 setRemoteSuspended :: Text -> Text -> Bool -> IO ()
@@ -953,6 +1072,42 @@ agentGit now dir
           atomicModifyIORef' gitRef (\m -> (M.insert dir (now, v) m, ()))
           return v
 
+-- | 'agentForest', or the one it last computed if that is younger than
+-- 'sharedForestAge' — for the panes that only show the forest (the Workspace
+-- tree's server nodes, in every window), so they ride on the Agents pane's
+-- poll, and on each other's, instead of each computing it again (it runs git
+-- and writes to the stores).  Callers arriving together share one
+-- computation: the second waits for the first, then finds its result fresh.
+-- The Agents pane itself calls 'agentForest': it re-reads right after an
+-- action, and must see what the action did.
+agentForestShared :: IO [AgentNode]
+#if defined(ghcjs_HOST_OS)
+agentForestShared = agentForest
+#else
+agentForestShared = do
+  let fresh = do
+        now <- getCurrentTime
+        readIORef lastForestRef >>= \case
+          Just (at, ns) | diffUTCTime now at < sharedForestAge -> return (Just ns)
+          _ -> return Nothing
+  fresh >>= \case
+    Just ns -> return ns
+    Nothing -> withMVar sharedForestLock $ \_ -> fresh >>= maybe agentForest return
+
+-- | Longer than the Workspace tree's poll period (5s), so one window's poll
+-- serves the others'.
+sharedForestAge :: NominalDiffTime
+sharedForestAge = 6
+
+{-# NOINLINE sharedForestLock #-}
+sharedForestLock :: MVar ()
+sharedForestLock = unsafePerformIO (newMVar ())
+
+{-# NOINLINE lastForestRef #-}
+lastForestRef :: IORef (Maybe (UTCTime, [AgentNode]))
+lastForestRef = unsafePerformIO (newIORef Nothing)
+#endif
+
 -- | The agent tree, roots first: every live session, plus recently-exited
 -- agents leksah knows something about, arranged by who forked whom.
 --
@@ -1034,7 +1189,14 @@ demoNode (DemoAgent s title state detail dir desc age br pr kids name activity b
   , anChildren = map demoNode kids
   }
 #else
-agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
+agentForest = do
+  ns <- computeAgentForest
+  now <- getCurrentTime
+  atomicModifyIORef' lastForestRef (const (Just (now, ns), ()))
+  return ns
+
+computeAgentForest :: IO [AgentNode]
+computeAgentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   migrateContinued
   st    <- claudeStatusNow
   infos <- readInfos
@@ -1085,6 +1247,11 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     act <- agentActivity r
     let i = M.lookup (csrSession r) (if isJust (csrHost r) then rinfos else infos)
         n0 = (node r i) { anBranch = br, anPr = pr, anActivity = act }
+    -- (what a remote agent was called while it ran: its row keeps it when it
+    -- stops — 'remoteRestingNodes' — where only the host's record is left)
+    -- (not the short-id stand-in a row with no title at all shows)
+    when (isJust (csrHost r) && anTitle n0 /= T.take 8 (csrSession r)) $
+      noteRemoteTitle (csrSession r) (anTitle n0)
     -- Done ✓ while it rests after saying so; busy again a minute after
     -- `agent done` (the turn that said it is over by then) means it has been
     -- given more work, and the summary is stale.
@@ -1107,7 +1274,12 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
   names  <- agentNames
   events <- sessionEvents
   usage  <- sessionUsage
-  decorated <- forM (liveNodes <> filter ((`notElem` bgIds) . fst) exited <> bgNodes)
+  -- (and the agents on shared hosts that are not running but can come back:
+  -- suspended or interrupted, by their own machine's store)
+  resting <- remoteRestingNodes posix liveRows hidden
+  pruneRemoteTitles (M.keysSet rinfos <> S.fromList [ csrSession r | r <- rows, isJust (csrHost r) ])
+  rstarting <- remoteStartingNodes rinfos (S.fromList (map fst resting)) hidden
+  decorated <- forM (liveNodes <> filter ((`notElem` bgIds) . fst) exited <> bgNodes <> resting <> rstarting)
                  $ \(s, n) -> do
     wls <- worktreeClaimLines now s
     let i = M.lookup s infos
@@ -1371,7 +1543,6 @@ agentForest = (`catch` \(_ :: SomeException) -> return []) $ do
                  Just (Left i)
       _ -> Nothing
 
-    firstNonEmpty xs = fromMaybe "" (listToMaybe (filter (not . T.null) xs))
 #endif
 
 #if !defined(ghcjs_HOST_OS)

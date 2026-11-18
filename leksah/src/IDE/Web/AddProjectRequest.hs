@@ -10,20 +10,27 @@
 -- Mirrors 'IDE.Web.FindRequest' / 'IDE.Web.SaveRequest'.
 module IDE.Web.AddProjectRequest
   ( requestAddProject
+  , requestAddProjectOn
   , nextAddProjectRequest
   ) where
 
 import Control.Concurrent.Chan (Chan, newChan, writeChan, readChan)
+import Data.Text (Text)
 import System.IO.Unsafe (unsafePerformIO)
 
 {-# NOINLINE addProjectChan #-}
-addProjectChan :: Chan ()
+addProjectChan :: Chan (Maybe Text)
 addProjectChan = unsafePerformIO newChan
 
 -- | Ask for the Add Project dialog (called from the menu command action).
 requestAddProject :: IO ()
-requestAddProject = writeChan addProjectChan ()
+requestAddProject = writeChan addProjectChan Nothing
+
+-- | The dialog with its Server already set to @host@ (a Workspace-tree server
+-- node's "Add Project on HOST…").
+requestAddProjectOn :: Text -> IO ()
+requestAddProjectOn = writeChan addProjectChan . Just
 
 -- | Block until the next request (drained by the reflex bridge in "IDE.Web.Main").
-nextAddProjectRequest :: IO ()
+nextAddProjectRequest :: IO (Maybe Text)
 nextAddProjectRequest = readChan addProjectChan

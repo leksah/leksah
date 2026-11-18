@@ -58,7 +58,7 @@ import qualified Data.ByteString.Char8 as BS (unlines)
 import qualified Data.ByteString.Lazy as BS (toStrict)
 import qualified Data.ByteString.Lazy as LBS (fromStrict, readFile)
 import Data.Char (isAlphaNum, isDigit)
-import qualified Data.Dependent.Map as DM (singleton, fromList, lookup)
+import qualified Data.Dependent.Map as DM (singleton, fromList, lookup, union)
 import Data.Dependent.Sum (DSum(..))
 import Data.Foldable (Foldable(..))
 import Data.Function ((&))
@@ -216,7 +216,7 @@ import IDE.Utils.RemotePath (isRemotePath)
 import IDE.Utils.RemoteExec (remoteInFlight, dupRemoteInFlight)
 import IDE.Web.FS (fsListFilesRecursive, fsReadFile)
 import IDE.Web.RemoteRefresh (registerRemoteRefresh)
-import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor)
+import IDE.Web.TerminalRefresh (registerTerminalRefresh, ensureTerminalMonitor, requestTerminalRefresh)
 import IDE.Web.Instance (leksahPort)
 import IDE.Web.ModifierProbe (cmdHeldNow)
 import IDE.Web.Handoff
@@ -276,9 +276,13 @@ import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), emptyClaudeStatus, claudeStatusNow,
         claudeStatusRowsJson, registerClaudeStatusPush, startClaudeStatusPoll)
 import IDE.Web.AgentInfo (agentTitleSources, agentsHeld, syncAgentLiveness)
-import IDE.Web.RemoteAgents (setRemoteEventHandler, startLocalEventsPoll, startRemoteAgentsPoll)
+import IDE.Web.RemoteAgents
+       (setRemoteEventHandler, startAliveWriter, startLocalEventsPoll, startRemoteAgentsPoll)
 import IDE.Web.Agent (remoteAgentEvent, runRemoteClaudeCmd)
 #endif
+-- (every front end: the Workspace tree's server nodes)
+import IDE.Web.RemoteAgents (HostStatus(..), remoteHostStatus)
+import IDE.Web.ServerState (ServerState(..))
 import IDE.Web.NewLwRequest
        (beginConversion, endConversion, conversionActive, consolidateLock,
         setWindowGoneHandler)
@@ -1086,6 +1090,10 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
         rtid <- startRemoteAgentsPoll
         ltid <- startLocalEventsPoll
         when ghciMode $ registerGhciCleanupNamed "local-events-poll" (killThread ltid)
+        -- …and tell a leksah on another machine showing this one that a
+        -- leksah runs here (its Workspace tree's server node).
+        atid <- startAliveWriter
+        when ghciMode $ registerGhciCleanupNamed "alive-writer" (killThread atid)
         when ghciMode $ registerGhciCleanupNamed "remote-agents-poll" (killThread rtid)
         -- Which agents are running, and — after a restart, or leksah's tmux
         -- server dying — which were interrupted (the Agents pane's ↻ cards
@@ -7455,7 +7463,8 @@ main showMenubar macTitlebar wid ctx = mdo
                   lws <- view leksahWindows <$> readCell (appUi app)
                   return [ i | (i, lw) <- M.toAscList lws, lwSession lw == Just canon ]
               case existing of
-                (i : _) -> requestLocalTerm i
+                -- (its tree may not have the window it shows now: refresh it)
+                (i : _) -> fireRemotePoke () >> requestLocalTerm i
                 [] -> do
                   mlwi <- mintLeksahWindowIn Nothing (Just canon)
                             (PaneContent (PaneTmux win) Nothing)
@@ -7468,6 +7477,10 @@ main showMenubar macTitlebar wid ctx = mdo
         liftIO . void . forkIO $ do
             mlwi <- mintLeksahWindowIn (WindowId <$> target) (Just sid)
                       (PaneContent (PaneTmux wid') Nothing)
+            -- (a window on another host — an agent launched there: its host's
+            -- tree must learn it, or its panes can't be told apart — the
+            -- flipper, and the Agents pane's "which agent is in front")
+            when ("ssh://" `T.isPrefixOf` sid) $ fireRemotePoke ()
             mapM_ requestLocalTerm mlwi
     -- ⌥⌘=/⌥⌘− on a tmux pane in a MULTI-pane window (see paneFontAdjust):
     -- isolate the pane first (per-pane fonts can't share a tmux window),
@@ -7696,6 +7709,24 @@ main showMenubar macTitlebar wid ctx = mdo
                 (Nothing, Nothing)          -> (False, M.empty))
             new)
         M.empty hostTreesE
+    -- What the Workspace tree's server nodes show: every host the Terminals
+    -- tree lists plus every host whose agents this leksah shares — reachable
+    -- (the agents poll's 3s look where there is one, else the tree poll),
+    -- whether a leksah runs there, its home, and its menu's ticks.
+    hostStatusPb   <- getPostBuild
+    hostStatusTick <- tickLossyFromPostBuildTime 3
+    hostStatusE <- performEvent $ liftIO remoteHostStatus
+                     <$ leftmost [() <$ hostStatusPb, () <$ hostStatusTick]
+    hostStatusD <- holdDyn M.empty hostStatusE
+    serverStatesD <- holdUniqDyn $ (\p hosts trees st ->
+        let rc = cfgRemote p
+            one h = let ms = M.lookup h st in ServerState
+              { svReachable = maybe (fst <$> M.lookup h trees) (Just . hstFresh) ms
+              , svLeksah    = hstLeksah <$> ms
+              , svStartup   = h `elem` rcStartup rc
+              , svWake      = h `elem` map wolHost (rcWake rc) }
+        in M.fromList [ (h, one h) | h <- nub (hosts <> M.keys (rcTmuxSockets rc)) ])
+      <$> prefsD <*> remoteHostsD <*> hostTreesD <*> hostStatusD
     -- The open remote tabs' trees, keyed by TAB key and merged into the same
     -- tree the flipper and tab ordering consume ('allTreeD'), so remote
     -- windows flip and order exactly like local ones.  A tab's target may be
@@ -8477,7 +8508,10 @@ main showMenubar macTitlebar wid ctx = mdo
     -- terminals, which render as tabs in the editor area (wide0).  Each terminal
     -- reports its window title up through `tabE`; we fold those into the
     -- id->title map the list pane and tab buttons label themselves from.
-    let terminalsListE = select (fan (select (fanMap tabE) (Const2 TerminalsKey))) TerminalsTab
+    -- (the Workspace tree's server nodes ask for the same host actions)
+    let terminalsListE = leftmost
+          [ select (fan (select (fanMap tabE) (Const2 TerminalsKey))) TerminalsTab
+          , select (fan (select (fanMap tabE) (Const2 WorkspaceKey))) TerminalsTab ]
         newTermClickE = fmapMaybe (^? _NewTerminal) terminalsListE
         selectTermE   = fmapMaybe (^? _SelectTerminal) terminalsListE
         -- The Terminals pane confirms before this fires, so just act on it:
@@ -8523,7 +8557,12 @@ main showMenubar macTitlebar wid ctx = mdo
         -- connection (its default "leksah" session) — keyed "ssh://host".
         selRemoteHostE = fmapMaybe (^? _SelectRemoteHost) terminalsListE
         remoteKey h sid = "ssh://" <> h <> "#" <> sid
-    performEvent_ $ ffor closeTermE $ liftIO . killTerminalSession
+    -- (off the frame thread: it is several tmux calls now — the session's
+    -- remote viewers' sessions go with it)
+    -- (and re-read the tree once it is done: the refresh this event also
+    -- triggers can run before the kill has)
+    performEvent_ $ ffor closeTermE $ \n -> liftIO . void . forkIO $
+        killTerminalSession n >> requestTerminalRefresh
     performEvent_ $ ffor selectWinE  $ \(s, w)    -> do
         wlog wid ("ENTER selectWinE selectTmuxWindow " <> show (s, w))
         liftIO (selectTmuxWindow s w)
@@ -10472,9 +10511,13 @@ main showMenubar macTitlebar wid ctx = mdo
     let serversD = ("local" :) <$> remoteHostsD
     addProjectOpenD <- holdDyn False $
         leftmost [ True <$ addProjectReqE, False <$ addProjectCloseE ]
+    -- (the Server it opens with: a server node's own host, else local)
+    addProjectServerD <- holdDyn Nothing addProjectReqE
     addProjectDlgE <- dyn (ffor addProjectOpenD $ \case
         False -> return (never, never)
-        True  -> addProjectDialog serversD pickedPathE)
+        True  -> do
+          srv <- sample (current addProjectServerD)
+          addProjectDialog serversD srv pickedPathE)
     addProjectCloseE <- switchHold never (fst <$> addProjectDlgE)
     addProjectAddedE <- switchHold never (snd <$> addProjectDlgE)
     -- "New Claude Session in Worktree…" (tree context menus drop the clicked
@@ -10706,7 +10749,9 @@ main showMenubar macTitlebar wid ctx = mdo
       (\k selectedE _v -> do
         let toDM x = fmap (DM.singleton x . Identity)
         case k of
-          WorkspaceKey   -> toDM WorkspaceTab <$> workspaceWidget ctx treeHighlightD treeRevealD
+          WorkspaceKey   -> (\(projE, termE) -> mergeWith DM.union
+                                [toDM WorkspaceTab projE, toDM TerminalsTab termE])
+                              <$> workspaceWidget ctx serverStatesD treeHighlightD treeRevealD
           ErrorsKey      -> toDM ErrorsTab <$> errorsWidget ctx allE (paneFind ErrorsKey) (paneMoveE "errors") (paneActivateE "errors")
           LogKey         -> toDM LogTab <$> logWidget ctx (paneFind LogKey) (paneMoveE "log") (paneActivateE "log")
           GrepKey        -> toDM GrepTab <$> grepWidget grepResultsD (paneFind GrepKey)
@@ -10749,13 +10794,24 @@ main showMenubar macTitlebar wid ctx = mdo
           -- first) — the Agents pane's top card, and its tie-break within a
           -- state group.
           AgentsKey      -> toDM AgentsTab <$> (agentsWidget ctx =<< holdUniqDyn
-            ((\mru tree -> nubOrd
-                [ a | FlipPane s w p <- mru
-                    , Just (_, wins) <- [M.lookup s tree]
-                    , win <- wins, twIndex win == w
-                    , pn <- twPanes win, tpIndex pn == p
-                    , Just a <- [tpAgentName pn] ])
-              <$> flipMruD <*> allTreeD))
+            ((\mru tree lws -> nubOrd
+                [ a | item <- mru, a <- case item of
+                    FlipPane s w p ->
+                      [ a' | Just (_, wins) <- [M.lookup s tree]
+                           , win <- wins, twIndex win == w
+                           , pn <- twPanes win, tpIndex pn == p
+                           , Just a' <- [tpAgentName pn] ]
+                    -- A leksah window's tab brought to the front (a launch,
+                    -- a flip): the agent in its focused window's active pane
+                    -- — known as soon as the tree has that window, which for
+                    -- one on another host can come a moment after the tab.
+                    FlipTab (LeksahWinKey lwi) ->
+                      [ a' | Just lw <- [M.lookup lwi lws]
+                           , Just win <- [lwFocusedWindow tree lw]
+                           , pn <- take 1 (filter tpActive (twPanes win) ++ twPanes win)
+                           , Just a' <- [tpAgentName pn] ]
+                    _ -> [] ])
+              <$> flipMruD <*> allTreeD <*> leksahWindowsD'))
           ChangesKey     -> toDM ChangesTab <$> changesWidget ctx (paneFind ChangesKey)
           PreferencesKey -> toDM PreferencesTab <$> preferencesWidget ctx
           TeamKey        -> toDM TeamTab <$> teamWidget
@@ -10847,7 +10903,7 @@ main showMenubar macTitlebar wid ctx = mdo
       , wbSnap = fireSnapReq
       , wbConvert = fireConvertReq
       , wbSplitOpen = fireSplitOpen
-      , wbAddProject = fireAddProjectReq ()
+      , wbAddProject = fireAddProjectReq
       , wbPickedPath = firePickedPath
       , wbNewWorktree = fireNewWtReq
       , wbAddServer = fireAddServerReq ()
