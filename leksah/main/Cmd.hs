@@ -31,14 +31,14 @@ import Control.Monad (forM_, unless, when, void)
 import Data.Aeson
        (Value(..), Result(..), object, (.=), encode, decodeStrict, eitherDecodeStrict,
         fromJSON, toJSON)
-import qualified Data.Aeson.Key as Key (fromText)
-import qualified Data.Aeson.KeyMap as KM (KeyMap, insert, lookup)
+import qualified Data.Aeson.Key as Key (fromText, toText)
+import qualified Data.Aeson.KeyMap as KM (KeyMap, insert, lookup, toList)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8 (getLine)
 import qualified Data.ByteString.Lazy as BL (toStrict, writeFile)
 import qualified Data.ByteString.Lazy.Char8 as BL8 (putStrLn)
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
-import Data.Char (isSpace, isDigit, toLower)
+import Data.Char (isSpace, isDigit, isHexDigit, toLower)
 import Data.List (isPrefixOf, isInfixOf, dropWhileEnd, sortBy, stripPrefix)
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ord (comparing)
@@ -596,21 +596,52 @@ loggableVerbs = ["describe", "done", "send"]
 -- walking up this process's parents to a running Claude session).  'Left'
 -- when there is no leksah and nothing could be logged.
 replyOrLog :: [String] -> IO (Either Text Text)
-replyOrLog args = tryReply args >>= \case
-  Just t  -> return (Right t)
-  Nothing -> case args of
+replyOrLog args = tryReplyE args >>= \case
+  Right t     -> return (Right t)
+  -- (it reached leksah: done or not, it must not be done twice)
+  Left False  -> return (Left "leksah took the request but its answer was lost; \
+                              \not repeated (it may have been done)")
+  Left True   -> case args of
     ("agent" : verb : rest) | verb `elem` loggableVerbs -> ownClaudeSession >>= \case
       Nothing -> return (Left noLeksah)
       Just sid -> do
-        appendEventLog "command" (T.pack verb) . BL.toStrict . encode $
-          object [ "session_id" .= sid, "args" .= map T.pack rest ]
-        return . Right $ case (verb, rest) of
-          ("send", who : _) -> "No leksah is running on this machine; the message is queued \
-                               \for the leksah that can reach " <> T.pack who <> ".\n"
-          _ -> "No leksah is running on this machine; recorded for the leksah \
-               \that shows it to pick up.\n"
+        -- (a message goes to an agent known by its session id — a name
+        -- this machine knows is turned into its id; anything else is a
+        -- typo or an agent that does not exist)
+        target <- case (verb, rest) of
+          ("send", who : _) -> Just <$> resolveOffline (T.pack who)
+          _                 -> return Nothing
+        case target of
+          Just Nothing -> return . Left $
+            "there is no agent " <> T.pack (concat (take 1 rest)) <> " known here, and no leksah \
+            \is running to look further (an agent on another machine is reached by \
+            \its session id)"
+          _ -> do
+            let rest' = case target of
+                  Just (Just t) -> T.unpack t : drop 1 rest
+                  _             -> rest
+            appendEventLog "command" (T.pack verb) . BL.toStrict . encode $
+              object [ "session_id" .= sid, "args" .= map T.pack rest' ]
+            return . Right $ case (verb, rest') of
+              ("send", who : _) -> "No leksah is running on this machine; the message is queued \
+                                   \for the leksah that can reach " <> T.pack who <> ".\n"
+              _ -> "No leksah is running on this machine; recorded for the leksah \
+                   \that shows it to pick up.\n"
     _ -> return (Left noLeksah)
-  where noLeksah = "leksah is not running (no control socket answered)"
+  where
+    -- A session id (or a prefix of one) stays as it is; a name is looked up
+    -- in this machine's name store.
+    resolveOffline who
+      | T.length who >= 6, T.all (\c -> isHexDigit c || c == '-') who = return (Just who)
+      | otherwise = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+          home <- getHomeDirectory
+          bytes <- BS.readFile (home </> ".leksah-0.17" </> "agent-names.json")
+          return $ listToMaybe
+            [ Key.toText s' | Just (Object names) <- [decodeStrict bytes :: Maybe Value]
+                 , (s', Object o) <- KM.toList names
+                 , Just (String n) <- [KM.lookup "name" o]
+                 , T.toLower n == T.toLower who ]
+    noLeksah = "leksah is not running (no control socket answered)"
 
 -- | The running Claude session this process was started from: the nearest
 -- ancestor with a @~\/.claude\/sessions\/PID.json@.
@@ -668,25 +699,33 @@ appendEventLog kind ev payload = (`catch` \(_ :: SomeException) -> return ()) $ 
     shrink x          = x
 
 tryReply :: [String] -> IO (Maybe Text)
-tryReply args = do
+tryReply args = either (const Nothing) Just <$> tryReplyE args
+
+-- | 'tryReply', saying how it failed: @Left True@ — no leksah reached (no
+-- socket, or nothing listening on it), so the request was not acted on;
+-- @Left False@ — the request went, but its answer did not come back, so it
+-- may have been acted on (and must not be logged to be done again).
+tryReplyE :: [String] -> IO (Either Bool Text)
+tryReplyE args = do
   path <- cmdSocketPath
   exists <- doesFileExist path
-  if not exists then return Nothing else do
-    r <- try (collect path) :: IO (Either IOException BS.ByteString)
-    return $ either (const Nothing) (Just . decodeUtf8With lenientDecode) r
+  if not exists then return (Left True) else do
+    payload <- payloadFor args
+    sock <- socket AF_UNIX Stream defaultProtocol
+    c <- try (connect sock (SockAddrUnix path)) :: IO (Either IOException ())
+    case c of
+      Left _ -> close sock >> return (Left True)
+      Right () -> do
+        r <- try (collect sock payload `finally` close sock) :: IO (Either IOException BS.ByteString)
+        return $ either (const (Left False)) (Right . decodeUtf8With lenientDecode) r
   where
-    collect path = do
-      payload <- payloadFor args
-      sock <- socket AF_UNIX Stream defaultProtocol
-      connect sock (SockAddrUnix path)
+    collect sock payload = do
       sendAll sock payload
       shutdown sock ShutdownSend
       let go acc = do
             chunk <- recv sock 65536
             if BS.null chunk then return (BS.concat (reverse acc)) else go (chunk : acc)
-      out <- go []
-      close sock
-      return out
+      go []
 
 -- | The value of the first of @names@ present in @args@, as an @Int@.
 intArg :: [String] -> [String] -> Maybe Int

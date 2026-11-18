@@ -20,13 +20,17 @@ module IDE.Web.AgentMail
   ( logCommand
   , commandKey
   , claimDelivery
+  , releaseDelivery
   , addPending
   , retryPending
+  , maxMailAge
+  , catchSync
   ) where
 
-import Control.Concurrent.MVar (MVar, newMVar, modifyMVar_)
-import Control.Exception (SomeException, catch)
+import Control.Concurrent.MVar (MVar, newMVar, modifyMVar_, readMVar)
+import Control.Exception (SomeAsyncException, SomeException, catch, fromException, throwIO)
 import Control.Monad (filterM, when)
+import qualified Data.ByteString as BS
 import Data.Aeson (decode', encode, object, (.=))
 import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
@@ -45,17 +49,26 @@ import IDE.Web.SharedStore (SharedStore, modifyStore, newSharedStore, remoteModi
 -- (@appendEventLog@ in @main\/Cmd.hs@; the two must agree).  The caller's
 -- session, the verb, its arguments.  Never fails.
 logCommand :: Text -> Text -> [Text] -> IO ()
-logCommand sid verb args = (`catch` \(_ :: SomeException) -> return ()) $ do
+logCommand sid verb args = (`catchSync` \_ -> return ()) $ do
   home <- getHomeDirectory
   let dir = home </> ".leksah"
       f   = dir </> "agent-events.jsonl"
   createDirectoryIfMissing True dir
-  big <- (`catch` \(_ :: SomeException) -> return False) $ (> 4000000) <$> getFileSize f
-  when big $ renameFile f (f <> ".1") `catch` \(_ :: SomeException) -> return ()
+  big <- (`catchSync` \_ -> return False) $ (> 4000000) <$> getFileSize f
+  when big $ renameFile f (f <> ".1") `catchSync` \_ -> return ()
   t <- realToFrac <$> getPOSIXTime :: IO Double
-  LBS.appendFile f . (<> "\n") . encode $ object
+  -- (one strict line, one write: hooks append to the same log, and a line
+  -- written in pieces could be split by theirs)
+  BS.appendFile f . (<> "\n") . LBS.toStrict . encode $ object
     [ "t" .= t, "kind" .= ("command" :: Text), "event" .= verb
     , "payload" .= object [ "session_id" .= sid, "args" .= args ] ]
+
+-- | How old a logged message may be and still be delivered: a day — less
+-- than the two days a claim is kept ('claimDelivery'), so one re-read after
+-- its claim has gone is too old to deliver again; and an undeliverable one
+-- does not turn up days later in an agent that is finally resumed.
+maxMailAge :: Double
+maxMailAge = 86400
 
 -- | What a logged command is known by — the same for every leksah that reads
 -- the line: who sent it, when (the sending machine's clock), and the verb.
@@ -68,7 +81,7 @@ commandKey sid t verb = sid <> "@" <> T.pack (show t) <> "@" <> verb
 -- 'Nothing' when the store could not be reached (try again later).  Claims
 -- older than two days go (far older than any log a leksah re-reads).
 claimDelivery :: Maybe Text -> Text -> IO (Maybe Bool)
-claimDelivery mhost key = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+claimDelivery mhost key = (`catchSync` \_ -> return Nothing) $ do
   now <- realToFrac <$> getPOSIXTime :: IO Double
   let claim m
         | key `M.member` m = (m, False)
@@ -77,6 +90,21 @@ claimDelivery mhost key = (`catch` \(_ :: SomeException) -> return Nothing) $ do
     Nothing   -> Just <$> modifyStore deliveriesStore (return . claim)
     Just host -> either (const Nothing) Just
                    <$> remoteModifyJSON host "agent-deliveries.json" M.empty (return . claim)
+
+-- | Give a claim back — its delivery failed after all — so the message can
+-- be delivered (by this leksah's retry, or another's).
+releaseDelivery :: Maybe Text -> Text -> IO ()
+releaseDelivery mhost key = (`catchSync` \_ -> return ()) $ case mhost of
+  Nothing   -> modifyStore deliveriesStore (\m -> return (M.delete key m, ()))
+  Just host -> () <$ remoteModifyJSON host "agent-deliveries.json" (M.empty :: Map Text Double)
+                       (\m -> return (M.delete key m, ()))
+
+-- | 'catch' for everything but a thread being killed (or interrupted): a
+-- poll's cleanup must still be able to stop it.
+catchSync :: IO a -> (SomeException -> IO a) -> IO a
+catchSync act h = act `catch` \e -> case fromException e of
+  Just (a :: SomeAsyncException) -> throwIO a
+  Nothing                        -> h e
 
 {-# NOINLINE deliveriesStore #-}
 deliveriesStore :: SharedStore (Map Text Double)
@@ -96,11 +124,14 @@ addPending key try = do
   modifyMVar_ pendingRef (return . M.insertWith (\_ old -> old) key (now + 3600, try))
 
 -- | Try every pending message again (each poll): settled and expired ones go.
+-- The tries run with the set unlocked (a try may wait on ssh), and what they
+-- settled is taken out afterwards.
 retryPending :: IO ()
-retryPending = modifyMVar_ pendingRef $ \m -> do
+retryPending = do
   now <- realToFrac <$> getPOSIXTime :: IO Double
-  kept <- filterM (\(_, (expiry, try)) ->
-                      if expiry < now then return False
-                      else not <$> (try `catch` \(_ :: SomeException) -> return False))
+  m <- readMVar pendingRef
+  done <- filterM (\(_, (expiry, try)) ->
+                      if expiry < now then return True
+                      else try `catchSync` \_ -> return False)
                   (M.toList m)
-  return (M.fromList kept)
+  modifyMVar_ pendingRef (return . (`M.withoutKeys` M.keysSet (M.fromList done)))
