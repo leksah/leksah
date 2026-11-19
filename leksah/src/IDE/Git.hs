@@ -36,7 +36,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE (decodeUtf8With)
 import qualified Data.Text.Encoding.Error as TEE (lenientDecode)
 import System.Log.Logger (debugM)
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import IDE.Utils.RemoteExec (RemoteError, newRunNonce, runSsh, shellQuote)

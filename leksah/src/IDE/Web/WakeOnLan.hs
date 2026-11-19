@@ -38,7 +38,7 @@ import Network.Socket
 import Network.Socket.ByteString (sendTo)
 #endif
 import System.Exit (ExitCode(..))
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import IDE.App (App(..), getGlobalApp)
 import IDE.Config (Config(..), RemoteC(..), WakeOnLan(..), currentConfig)

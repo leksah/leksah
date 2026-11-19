@@ -42,7 +42,7 @@ import qualified Data.Text.IO as T (readFile)
 
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>), dropTrailingPathSeparator)
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import Clay ((?), (-:), Css)
 

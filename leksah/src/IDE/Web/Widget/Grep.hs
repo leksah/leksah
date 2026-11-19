@@ -23,7 +23,7 @@ import Data.Text.Encoding (decodeUtf8Lenient)
 
 import Text.Read (readMaybe)
 
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import IDE.Utils.RemoteExec (runSsh, shellQuote)
 import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)

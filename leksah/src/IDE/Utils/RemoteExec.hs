@@ -165,7 +165,7 @@ import System.FilePath ((</>))
 import System.IO (hClose, hSetBinaryMode)
 import System.IO.Error (mkIOError, doesNotExistErrorType)
 import System.Log.Logger (debugM)
-import System.Process
+import IDE.Utils.Spawn
        (StdStream(..), createProcess, proc, std_err, std_in, std_out,
         waitForProcess)
 import Data.Word (Word64)

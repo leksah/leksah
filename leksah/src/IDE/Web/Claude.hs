@@ -136,8 +136,8 @@ import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
 import IDE.Utils.RemoteExec (runSsh)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Exit (ExitCode(..))
-import System.Process
-       (CreateProcess(std_in, std_out, std_err), StdStream(..), createProcess, proc, readProcess,
+import IDE.Utils.Spawn
+       (spawnDetached, CreateProcess(std_in, std_out, std_err), StdStream(..), createProcess, proc, readProcess,
         readProcessWithExitCode, terminateProcess, waitForProcess)
 import System.Timeout (timeout)
 import Text.Read (readMaybe)
@@ -2187,10 +2187,10 @@ copySessionId sid = clipboardCopyCmd >>= \case
 
 -- | Reveal a transcript in the OS file manager.
 revealSession :: FilePath -> IO ()
-revealSession f = void . (`catch` \(_ :: SomeException) -> return ()) $
+revealSession f =
   if os == "darwin"
-    then void (createProcess (proc "open" ["-R", f]))
-    else void (createProcess (proc "xdg-open" [takeDirectory f]))
+    then spawnDetached "open" ["-R", f]
+    else spawnDetached "xdg-open" [takeDirectory f]
 
 -- | Delete a session's transcript (the caller should rescan afterwards).
 deleteSession :: FilePath -> IO ()

@@ -75,7 +75,7 @@ import System.Info (os)
 import System.Posix.User (getRealUserID, getUserEntryForID, userShell)
 #endif
 import System.Log.Logger (debugM)
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import IDE.App (App(..), getGlobalApp)
