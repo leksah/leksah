@@ -60,7 +60,7 @@ import System.Directory (createDirectoryIfMissing, findExecutable, getHomeDirect
 import System.FilePath ((</>))
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import IDE.App (appConfig, getGlobalApp)
 import IDE.Config (Config(..), RemoteC(..), currentConfig)

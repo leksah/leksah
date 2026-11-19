@@ -85,7 +85,7 @@ import System.Directory
        (createDirectoryIfMissing, doesFileExist, doesDirectoryExist,
         getDirectoryContents, removeFile,
         getHomeDirectory, makeRelativeToCurrentDirectory)
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 import Data.Aeson (Value, decodeStrict', encode, withObject, (.:))
 import qualified Data.Aeson as A
 import qualified Data.Aeson.KeyMap as KM

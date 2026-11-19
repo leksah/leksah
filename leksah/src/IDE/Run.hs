@@ -34,7 +34,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import System.Exit (ExitCode)
 import System.IO (hClose)
-import System.Process
+import IDE.Utils.Spawn
        (CreateProcess(..), ProcessHandle, StdStream(..), createProcess,
         interruptProcessGroupOf, proc, terminateProcess, waitForProcess)
 

@@ -55,7 +55,7 @@ import qualified Data.Text as T
 import System.Directory (doesFileExist)
 import System.Exit (ExitCode(..))
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import IDE.App (appWorkspace, withApp)
 import IDE.Paths (sidecarPath, writeSidecar)

@@ -136,7 +136,7 @@ import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
 import IDE.Utils.RemoteExec (runSsh)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Exit (ExitCode(..))
-import System.Process
+import IDE.Utils.Spawn
        (CreateProcess(std_in, std_out, std_err), StdStream(..), createProcess, proc, readProcess,
         readProcessWithExitCode, terminateProcess, waitForProcess)
 import System.Timeout (timeout)

@@ -50,6 +50,14 @@
   `restart --no-rebuild`.
 - **When NO instance is running**, build with the loop's PATH prefix so the
   config matches: `cd <repo> && PATH="$(pwd)/bin:$PATH" cabal build <targets>`.
+  `leksah.sh` first drops duplicate (and empty) PATH entries, keeping first
+  occurrences, so do the same if your shell's PATH has repeats (nested
+  `nix develop`), or the PATH string differs and cabal rebuilds the world:
+  `eval "$(sed -n '/^dedupe_path() {/,/^}/p' leksah.sh)"; PATH="$(dedupe_path "$PATH")"`.
+- **Start processes via `IDE.Utils.Spawn`, not `System.Process`** (same API).
+  On macOS it spawns bare command names by absolute path; plain
+  `posix_spawnp` creates (and syspolicyd scans) a throwaway process for every
+  PATH entry it tries.
 - **ffcabal** (its own repo, `leksah/ffcabal`; pulled in via a
   `source-repository-package` in `cabal.project`, no longer a `vendor/`
   submodule): fail-fast cabal wrapper — checks

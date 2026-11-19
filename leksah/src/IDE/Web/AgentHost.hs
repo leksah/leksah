@@ -37,7 +37,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readProcess)
+import IDE.Utils.Spawn (readProcess)
 import Text.Read (readMaybe)
 
 import IDE.Web.TmuxServer (TmuxServer(..), tmuxStdoutOn)

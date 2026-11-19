@@ -99,6 +99,7 @@ library
         IDE.Git
         IDE.Utils.RemoteExec
         IDE.Utils.RemotePath
+        IDE.Utils.Spawn
         IDE.LSP
         IDE.Web.Chord
         IDE.Web.Coalesce

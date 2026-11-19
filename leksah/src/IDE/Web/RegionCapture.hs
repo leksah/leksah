@@ -37,7 +37,7 @@ import System.Directory (getHomeDirectory, doesFileExist, removeFile)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.ReplTmux (sendKeysTo)

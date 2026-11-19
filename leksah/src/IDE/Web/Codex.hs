@@ -88,7 +88,7 @@ import System.FilePath ((</>), takeDirectory, takeExtension, takeFileName, dropT
 import System.IO
        (IOMode(ReadMode), SeekMode(SeekFromEnd), hFileSize, hIsEOF, hSeek, withFile)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readProcess, readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcess, readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 -- | Whether @codex@ is on PATH — cached once seen, like 'claudeAvailable'

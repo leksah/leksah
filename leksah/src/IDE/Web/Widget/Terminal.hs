@@ -163,7 +163,7 @@ import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
 import System.Posix.Signals (signalProcess, sigKILL)
 #endif
-import System.Process (readProcessWithExitCode, createProcess, proc)
+import IDE.Utils.Spawn (readProcessWithExitCode, createProcess, proc)
 import System.Exit (ExitCode(ExitSuccess))
 
 import IDE.Web.Claude

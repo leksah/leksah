@@ -26,7 +26,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import System.Exit (ExitCode(..))
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import Clay ((?), (-:), Css)
 

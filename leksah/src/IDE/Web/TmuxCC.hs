@@ -91,7 +91,7 @@ import System.IO
        (BufferMode(LineBuffering, NoBuffering), Handle, hClose,
         hSetBuffering, hSetBinaryMode)
 import qualified System.IO as IO
-import System.Process
+import IDE.Utils.Spawn
        (CreateProcess(..), ProcessHandle, StdStream(CreatePipe),
         createProcess, getProcessExitCode, proc, terminateProcess,
         waitForProcess)

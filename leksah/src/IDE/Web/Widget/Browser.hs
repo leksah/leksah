@@ -55,7 +55,7 @@ import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.Info (os)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (createProcess, proc, readProcessWithExitCode)
+import IDE.Utils.Spawn (createProcess, proc, readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import Clay ((?), (-:), Css)

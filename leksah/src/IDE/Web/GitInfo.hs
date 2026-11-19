@@ -52,7 +52,7 @@ import System.Exit (ExitCode(..))
 import System.FilePath (dropTrailingPathSeparator)
 import System.Info (os)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readProcessWithExitCode, createProcess, proc)
+import IDE.Utils.Spawn (readProcessWithExitCode, createProcess, proc)
 import Text.Read (readMaybe)
 
 import IDE.Git (runGit)

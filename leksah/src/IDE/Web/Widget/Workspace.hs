@@ -52,7 +52,7 @@ import System.FilePath
         takeFileName, splitDirectories, joinPath, makeRelative, isRelative)
 import System.IO (IOMode(ReadMode), withFile)
 import System.Info (os)
-import System.Process (proc, createProcess, readProcessWithExitCode)
+import IDE.Utils.Spawn (proc, createProcess, readProcessWithExitCode)
 
 import IDE.Git (runGit)
 import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, remoteHost, renderRemotePath)

@@ -95,7 +95,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import IDE.Utils.ExitImmediately (exitImmediately)
 import IDE.Web.GhciMode
        (ghciMode, registerGhciCleanupNamed, stopForGhci, suspendForGhci)
-import System.Process
+import IDE.Utils.Spawn
        (createProcess, proc, shell, waitForProcess, CreateProcess(std_out, std_in),
         StdStream(CreatePipe, NoStream))
 

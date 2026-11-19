@@ -62,7 +62,7 @@ import Reflex.Dom.Core
 
 import System.Directory (findExecutable)
 import System.Exit (ExitCode(..))
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 
 import IDE.Utils.RemoteExec (runSsh, shellQuote)
 import IDE.Utils.RemotePath (parseRemotePath)

@@ -133,7 +133,7 @@ import IDE.Web.Claude
         showLiveSession, showLiveSessionHere, showTmuxPaneWith, claudeProcessOf, nameNote, agentNote,
         managerNote, describeToolUse, claudePaneSessions, planHtmlNote, worktreeNote,
         raiseTabOfPane)
-import System.Process (readProcessWithExitCode)
+import IDE.Utils.Spawn (readProcessWithExitCode)
 import IDE.Web.AgentEvents
        (SessionEvents(..), seTool, perToolHookEvents, editedRecently, eventsFor, sessionEvents,
         recordCwd, recordEdit, recordFailure, recordPermission,

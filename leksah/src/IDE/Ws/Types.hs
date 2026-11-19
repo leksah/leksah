@@ -35,7 +35,7 @@ import qualified Data.Text as T
 import System.Directory (doesDirectoryExist, doesPathExist, listDirectory)
 import System.Exit (ExitCode(..))
 import System.IO (hClose)
-import System.Process
+import IDE.Utils.Spawn
   ( CreateProcess(..), StdStream(..), proc, createProcess, waitForProcess )
 
 -- | Identifies a project in a workspace: its type id (e.g. @\"cabal\"@),

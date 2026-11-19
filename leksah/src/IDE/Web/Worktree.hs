@@ -51,7 +51,7 @@ import System.Exit (ExitCode(..))
 import System.FilePath ((</>), dropTrailingPathSeparator, takeDirectory,
                         equalFilePath)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readCreateProcessWithExitCode, proc, cwd)
+import IDE.Utils.Spawn (readCreateProcessWithExitCode, proc, cwd)
 
 import IDE.Git (runGit)
 import IDE.Web.WorktreeRegistry (ClaimRole(..), registerWorktree)

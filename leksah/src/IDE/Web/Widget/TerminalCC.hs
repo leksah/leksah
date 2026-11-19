@@ -100,7 +100,7 @@ import Data.Time (NominalDiffTime, UTCTime, getCurrentTime, diffUTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Numeric (showHex)
 import System.IO (hPutStrLn, stderr)
-import System.Process (createProcess, proc)
+import IDE.Utils.Spawn (createProcess, proc)
 import Text.Read (readMaybe)
 
 import Reflex
