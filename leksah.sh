@@ -138,8 +138,8 @@ EOF
 # macOS: run the wkwebview front end from a real .app bundle so CFBundleName
 # names it "Leksah" in the menu bar, the Dock and the ⌘-Tab switcher (an
 # unbundled binary is named after the executable, "leksah-wkwebview").  The
-# bundle is a thin wrapper: its executable is hard-linked to the freshly built
-# binary on each launch (see launch_leksah below), and data files still come
+# bundle is a thin wrapper: its executable is a clone of the freshly built
+# binary, refreshed on each launch (refresh_app_bundle), and data files still come
 # from the repo via leksah_datadir — so this stays a normal incremental dev
 # loop, it just gives the process a proper bundle identity.
 APPBUNDLE="$(pwd)/Leksah.app"
@@ -191,6 +191,31 @@ PLIST
         cp -f leksah/osx/leksah.icns "$APPBUNDLE/Contents/Resources/leksah.icns"
     fi
 fi
+
+# Put the freshly built binary ($1) into Leksah.app and ad-hoc sign the whole
+# bundle.  The linker's ad-hoc signature covers only the Mach-O; with no
+# _CodeSignature, an unbound Info.plist and unsealed resources, syspolicyd
+# can't read the bundle's signing information and was seen re-scanning
+# Leksah.app (and its 250MB executable) 100+ times a second, uncached, while
+# leksah ran.  Signing takes about a second.
+#   The executable is an APFS clone (cp -c: instant, no extra disk) rather
+# than a hard link, so signing it doesn't rewrite cabal's own build output;
+# it is renamed into place, so an instance still running the previous one
+# (handoff, a second LEKSAH_PORT loop) keeps its own, still-signed, inode.
+#   /usr/bin/codesign explicitly: a nix shell may put sigtool's codesign
+# first on PATH, and that one can't sign bundles.  Exported for
+# launch_leksah / handoff_launch_str, which run under bash -c.
+refresh_app_bundle() {
+    local app macos
+    app="$(pwd)/Leksah.app"; macos="$app/Contents/MacOS"
+    rm -f "$macos/leksah.new"
+    /bin/cp -c "$1" "$macos/leksah.new" 2>/dev/null \
+        || /bin/cp "$1" "$macos/leksah.new" || return 1
+    mv -f "$macos/leksah.new" "$macos/leksah"
+    /usr/bin/codesign --force --sign - "$app" 2>/dev/null \
+        || echo "leksah.sh: warning: could not ad-hoc sign $app" >&2
+}
+export -f refresh_app_bundle
 
 if [ "$IN_TMUX" = "1" ]; then
     # A tmux config matching the one leksah uses for its own terminals, so the
@@ -541,9 +566,8 @@ if [ "${LEKSAH_HANDOFF:-0}" = "1" ] && [ "$UI" != "warp" ]; then
     export leksah_datadir="$(pwd)/leksah"
     bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
     if [ "$app" = "1" ]; then
-      macos="$(pwd)/Leksah.app/Contents/MacOS"
-      ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
-      exec "$macos/leksah" --develop-leksah $LEKSAH_RTS_ARGS "$@"
+      refresh_app_bundle "$bin"
+      exec "$(pwd)/Leksah.app/Contents/MacOS/leksah" --develop-leksah $LEKSAH_RTS_ARGS "$@"
     fi
     exec "$bin" --develop-leksah $LEKSAH_RTS_ARGS "$@"'
 
@@ -654,12 +678,11 @@ while [ $LEKSAH_EXIT_CODE -eq 2 ] || [ $LEKSAH_EXIT_CODE -eq 3 ]; do
     bin="$(cabal list-bin "$tgt" | grep "^/" | tail -1)"
     if [ "$app" = "1" ]; then
       # Run from the .app so [NSBundle mainBundle] is Leksah.app (correct name
-      # everywhere).  cabal relinks a new inode each build, so refresh the
-      # bundle executable (hard link; copy across volumes) every launch.  exec
-      # so leksah'\''s exit code still drives the relaunch loop.
-      macos="$(pwd)/Leksah.app/Contents/MacOS"
-      ln -f "$bin" "$macos/leksah" 2>/dev/null || cp -f "$bin" "$macos/leksah"
-      exec "$macos/leksah" --develop-leksah $LEKSAH_RTS_ARGS "$@"
+      # everywhere).  cabal relinks a new inode each build, so refresh (and
+      # re-sign) the bundle executable every launch.  exec so leksah'\''s
+      # exit code still drives the relaunch loop.
+      refresh_app_bundle "$bin"
+      exec "$(pwd)/Leksah.app/Contents/MacOS/leksah" --develop-leksah $LEKSAH_RTS_ARGS "$@"
     fi
     exec "$bin" --develop-leksah $LEKSAH_RTS_ARGS "$@"'
 
