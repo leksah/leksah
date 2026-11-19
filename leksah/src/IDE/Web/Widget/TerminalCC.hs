@@ -80,7 +80,7 @@ module IDE.Web.Widget.TerminalCC
 
 import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (newMVar, withMVar)
-import Control.Exception (AsyncException(ThreadKilled), SomeException, throwIO, try)
+import Control.Exception (AsyncException(ThreadKilled), throwIO)
 import Control.Lens ((^.))
 import Control.Monad (forM, forM_, forever, mfilter, unless, when, void)
 import Control.Monad.IO.Class (liftIO)
@@ -100,7 +100,7 @@ import Data.Time (NominalDiffTime, UTCTime, getCurrentTime, diffUTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Numeric (showHex)
 import System.IO (hPutStrLn, stderr)
-import IDE.Utils.Spawn (createProcess, proc)
+import IDE.Utils.Spawn (spawnDetached)
 import Text.Read (readMaybe)
 
 import Reflex
@@ -2208,8 +2208,7 @@ paneWidget cc sessionId cbs termsRef pausedRef tunnelsRef activePaneRef pendingM
                     url  <- valToText u
                     snap <- valToBool snapV
                     liftIO $ do
-                        _ <- (try (void $ createProcess (proc "open" [T.unpack url]))
-                                :: IO (Either SomeException ()))
+                        spawnDetached "open" [T.unpack url]
                         when snap $ requestSnapPane pane
                 _ -> return ())
             (fun $ \_ _ as -> case as of

@@ -52,7 +52,7 @@ import System.Exit (ExitCode(..))
 import System.FilePath (dropTrailingPathSeparator)
 import System.Info (os)
 import System.IO.Unsafe (unsafePerformIO)
-import IDE.Utils.Spawn (readProcessWithExitCode, createProcess, proc)
+import IDE.Utils.Spawn (spawnDetached, readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import IDE.Git (runGit)
@@ -62,10 +62,7 @@ import IDE.Web.RemoteRefresh (registerRemoteRefresh)
 
 -- | Open a URL in the system browser (macOS @open@ / else @xdg-open@).
 openUrl :: Text -> IO ()
-openUrl url = do
-    _ <- (try (void $ createProcess (proc opener [T.unpack url]))
-            :: IO (Either SomeException ()))
-    return ()
+openUrl url = spawnDetached opener [T.unpack url]
   where opener = if os == "darwin" then "open" else "xdg-open"
 
 -- | Subscribe to git refreshes for @dir@: for a local checkout, filesystem

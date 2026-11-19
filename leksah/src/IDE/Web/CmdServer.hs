@@ -96,7 +96,7 @@ import IDE.Utils.ExitImmediately (exitImmediately)
 import IDE.Web.GhciMode
        (ghciMode, registerGhciCleanupNamed, stopForGhci, suspendForGhci)
 import IDE.Utils.Spawn
-       (createProcess, proc, shell, waitForProcess, CreateProcess(std_out, std_in),
+       (spawnDetached, createProcess, shell, waitForProcess, CreateProcess(std_out, std_in),
         StdStream(CreatePipe, NoStream))
 
 import Network.Socket
@@ -692,8 +692,7 @@ handleConn app conn = do
       -- leksah tmux pane) snap its window over that pane.  The pane id comes from
       -- $TMUX_PANE, captured by leksah-cmd.
       ("open-browser" : pane : url : _) | not (T.null url) -> do
-        _ <- (try (void $ createProcess (proc "open" [T.unpack url]))
-                :: IO (Either SomeException ()))
+        spawnDetached "open" [T.unpack url]
         if T.null pane
           then reply $ "Opened " <> url <> " (not run in a leksah pane; not snapped).\n"
           else do

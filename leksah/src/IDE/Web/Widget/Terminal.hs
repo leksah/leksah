@@ -163,7 +163,7 @@ import System.Posix.Pty
        (spawnWithPty, readPty, writePty, resizePty, threadWaitReadPty)
 import System.Posix.Signals (signalProcess, sigKILL)
 #endif
-import IDE.Utils.Spawn (readProcessWithExitCode, createProcess, proc)
+import IDE.Utils.Spawn (spawnDetached, readProcessWithExitCode)
 import System.Exit (ExitCode(ExitSuccess))
 
 import IDE.Web.Claude
@@ -787,8 +787,7 @@ terminalWidget ctx termId selectedE = do
                   url  <- valToText u
                   snap <- valToBool snapV
                   liftIO $ do
-                      _ <- (try (void $ createProcess (proc "open" [T.unpack url]))
-                              :: IO (Either SomeException ()))
+                      spawnDetached "open" [T.unpack url]
                       when snap $ activePaneId termId >>= mapM_ requestSnapPane
               _ -> return ())
           (fun $ \_ _ as -> case as of

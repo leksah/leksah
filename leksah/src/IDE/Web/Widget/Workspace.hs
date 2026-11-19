@@ -52,7 +52,7 @@ import System.FilePath
         takeFileName, splitDirectories, joinPath, makeRelative, isRelative)
 import System.IO (IOMode(ReadMode), withFile)
 import System.Info (os)
-import IDE.Utils.Spawn (proc, createProcess, readProcessWithExitCode)
+import IDE.Utils.Spawn (spawnDetached, readProcessWithExitCode)
 
 import IDE.Git (runGit)
 import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, remoteHost, renderRemotePath)
@@ -1573,10 +1573,7 @@ instance FromJSON GhPull where
 
 -- | Open a URL in the system browser (macOS @open@ / else @xdg-open@).
 openUrl :: Text -> IO ()
-openUrl url = do
-    _ <- (try (void $ createProcess (proc opener [T.unpack url]))
-            :: IO (Either SomeException ()))
-    return ()
+openUrl url = spawnDetached opener [T.unpack url]
   where opener = if os == "darwin" then "open" else "xdg-open"
 
 -- | The collapsed \"Flake\" tree node for the project directory @dir@, shown

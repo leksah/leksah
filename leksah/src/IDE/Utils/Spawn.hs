@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
 -- | "System.Process", but on macOS a bare command name (@ps@, @tmux@, @ssh@…)
 -- is looked up on @PATH@ once, then spawned by its absolute path.  Import
@@ -38,6 +39,8 @@ module IDE.Utils.Spawn
   , readProcessWithExitCode
   , callProcess
   , spawnProcess
+  , spawnDetached
+  , reapInBackground
   , resolveCommand
   , resolveCreateProcess
   ) where
@@ -49,10 +52,12 @@ import System.Process hiding
   , callProcess, spawnProcess
   , rawSystem, runProcess, runInteractiveProcess )
 import qualified System.Process as P
+import Control.Concurrent (forkIO)
+import Control.Exception (SomeException, try)
+import Control.Monad (void)
 import System.Exit (ExitCode)
 import System.IO (Handle)
 #if defined(darwin_HOST_OS)
-import Control.Exception (SomeException, try)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import qualified Data.Map.Strict as Map
 import System.Directory (doesFileExist, executable, getPermissions)
@@ -147,3 +152,22 @@ callProcess exe args = resolveCommand exe >>= \e -> P.callProcess e args
 
 spawnProcess :: FilePath -> [String] -> IO ProcessHandle
 spawnProcess exe args = resolveCommand exe >>= \e -> P.spawnProcess e args
+
+-- | Fire and forget (@open URL@ and the like): start the process, ignore any
+-- failure to start it, and reap it in the background so it doesn't linger
+-- as a zombie once it exits.  Its stdio is inherited.
+spawnDetached :: FilePath -> [String] -> IO ()
+spawnDetached exe args = do
+  r <- try (createProcess (proc exe args))
+  case r of
+    Left (_ :: SomeException) -> return ()
+    Right (_, _, _, ph) -> reapInBackground ph
+
+-- | Wait for a process from a background thread, so that it is reaped (not
+-- left a zombie) whenever it exits, for spawns nothing else waits on.
+-- Harmless alongside another 'waitForProcess' on the same handle: the
+-- process library serialises them, and the later one sees the stored code.
+reapInBackground :: ProcessHandle -> IO ()
+reapInBackground ph = void . forkIO $ do
+  r <- try (void (waitForProcess ph))
+  either (\(_ :: SomeException) -> return ()) return r

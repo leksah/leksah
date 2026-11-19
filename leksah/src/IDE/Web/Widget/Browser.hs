@@ -55,7 +55,7 @@ import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
 import System.Info (os)
 import System.IO.Unsafe (unsafePerformIO)
-import IDE.Utils.Spawn (createProcess, proc, readProcessWithExitCode)
+import IDE.Utils.Spawn (spawnDetached, readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 import Clay ((?), (-:), Css)
@@ -283,9 +283,7 @@ openExternal u = when (isDemoPath u) . void $
     isDemoPath p = "/" `T.isPrefixOf` p && not ("//" `T.isPrefixOf` p)
     jsStr p = "'" <> T.replace "'" "\\'" (T.replace "\\" "\\\\" p) <> "'"
 #else
-openExternal u = unless (T.null u) . void $
-    (try (void $ createProcess (proc opener [T.unpack u]))
-       :: IO (Either SomeException ()))
+openExternal u = unless (T.null u) $ spawnDetached opener [T.unpack u]
   where opener = if os == "darwin" then "open" else "xdg-open"
 #endif
 

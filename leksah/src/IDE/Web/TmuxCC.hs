@@ -93,8 +93,8 @@ import System.IO
 import qualified System.IO as IO
 import IDE.Utils.Spawn
        (CreateProcess(..), ProcessHandle, StdStream(CreatePipe),
-        createProcess, getProcessExitCode, proc, terminateProcess,
-        waitForProcess)
+        createProcess, getProcessExitCode, proc, reapInBackground,
+        terminateProcess, waitForProcess)
 import System.Timeout (timeout)
 
 -- | tmux ids, kept verbatim (@\"%3\"@, @\"\@1\"@, @\"$0\"@) so they can be
@@ -309,8 +309,13 @@ reader cc hout = loop `catch` \(e :: SomeException) -> do
 
     emit = atomically . writeTChan (ccChan cc)
 
+    -- Reaching here means the child (tmux -C, or ssh running it) has closed
+    -- its stdout, i.e. exited or is exiting.  Reap it: nothing else waits
+    -- unless stopCC is called, so a client that exits by itself (session
+    -- killed, ssh dropped) would otherwise linger as a zombie.
     finish exited = do
         writeIORef (ccClosed cc) True
+        reapInBackground (ccProc cc)
         vs <- modifyMVar (ccPending cc) $ \vs -> return ([], vs)
         forM_ vs $ \case
             PendingVar v -> void $ tryPutMVar v (Left "tmux control client exited")
