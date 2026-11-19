@@ -3,6 +3,31 @@
 # called "bash -e".)
 set -e
 
+# Drop duplicate PATH entries (keeping each one's first occurrence, so every
+# lookup still finds the same binary) and empty ones (an implicit ".", which
+# no one wants in a build) before anything uses PATH.  Nested
+# `nix develop` shells leave it 100+ entries long, and on macOS each process
+# leksah starts with a bare name costs one posix_spawn attempt per entry
+# searched (see IDE.Utils.Spawn).  Everything below — every cabal call,
+# rebuild.sh, the launched leksah — sees this PATH, so the incremental-build
+# invariant (same PATH for every cabal call) holds; a manual build from a
+# shell needs the same de-duplication (CLAUDE.md).  Plain bash 3: no
+# associative arrays, no external tools.
+dedupe_path() {
+    local out="" d rest="$1:"
+    while [ -n "$rest" ]; do
+        d="${rest%%:*}"; rest="${rest#*:}"
+        [ -n "$d" ] || continue
+        case ":$out:" in
+            *":$d:"*) ;;
+            *) out="${out:+$out:}$d" ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+PATH="$(dedupe_path "$PATH")"
+export PATH
+
 # Build-and-relaunch loop for developing leksah with leksah.  Plain cabal in
 # the ambient environment: ghc/cabal/tmux must be on PATH, cabal picks the
 # compiler, and builds land in cabal's default dist-newstyle.
