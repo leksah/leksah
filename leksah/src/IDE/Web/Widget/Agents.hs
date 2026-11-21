@@ -224,21 +224,27 @@ agentsWidget ctx mruNamesD = do
               (dynText (bool "⌥ tree" "≡ list" <$> flatD'))
             let modeE = domEvent Click modeB
             -- A new agent: its own tab in the active project, where you then
-            -- tell it what to do.  ＋ starts the kind shown on it; ▾ chooses
-            -- another (and starts one).
+            -- tell it what to do.  ＋ starts one of the kind beside it; that
+            -- badge is the kind, and a click on it lists the others to
+            -- choose from (with only one CLI on PATH, it just shows it).
             cliD <- holdDyn cliInit (leftmost [pickE, moreNewE])
-            (newB, _) <- elDynAttr' "button"
-              (ffor cliD $ \c -> "class" =: "agents-action agents-new agents-fold-hide"
-                 <> "title" =: ("Start a new " <> cliLabel c <> " agent in the active project, in its own tab"))
-              (do text "＋"
-                  dyn_ (ffor cliD $ \c ->
-                    void (elDynHtmlAttr' "span" ("class" =: "agents-new-glyph") (constDyn (cliGlyph c)))))
-            pickE <- if length clis < 2 then return never else do
-              (pickB, _) <- elAttr' "button"
-                ("class" =: "agents-action agents-new-pick agents-fold-hide"
-                 <> "title" =: "Choose which kind of agent ＋ starts (and start one)") (text "▾")
-              clickMenu pickB . fmap (fmap snd) . menuModsE $
-                [ constDyn (MenuEntry [cliGlyph c] ("New " <> cliLabel c <> " agent") c) | c <- clis ]
+            (newB, pickE) <- elClass "span" "agents-new agents-fold-hide" $ do
+              (addB, _) <- elDynAttr' "button"
+                (ffor cliD $ \c -> "class" =: "agents-action agents-new-add"
+                   <> "title" =: ("Start a new " <> cliLabel c <> " agent in the active project, in its own tab"))
+                (text "＋")
+              (typeB, _) <- elDynAttr' "button"
+                (ffor cliD $ \c -> "class" =: "agents-action agents-new-type"
+                   <> "title" =: (if length clis < 2 then cliLabel c <> " agents"
+                                  else cliLabel c <> " — click to choose which kind of agent ＋ starts"))
+                (dyn_ (ffor cliD $ \c ->
+                   void (elDynHtmlAttr' "span" ("class" =: "agents-new-glyph") (constDyn (cliGlyph c)))))
+              chosen <- if length clis < 2 then return never else
+                clickMenu typeB . fmap (fmap snd) . menuModsE $
+                  [ ffor cliD $ \cur -> MenuEntry [cliGlyph c]
+                      (cliLabel c <> if c == cur then "  ✓" else "") c
+                  | c <- clis ]
+              return (addB, chosen)
             teamE <- actionBtn "agents-fold-hide" "👥" "Open the Team pane: a bio card for every agent"
             h <- actionBtn "agents-fold-hide" "⟳" "Re-read the agent list"
             -- When the row is too narrow for them (see 'agentLinksJs'), the
@@ -258,7 +264,7 @@ agentsWidget ctx mruNamesD = do
              <> "')}catch(e){}" :: Text)
         performEvent_ $ ffor (updated cliD) $ \c -> liftJSM . void . eval $
           ("try{localStorage.setItem('leksahAgentsNewCli','" <> cliTag c <> "')}catch(e){}" :: Text)
-        let startE = leftmost [ tag (current cliD) (domEvent Click newB), pickE, moreNewE ]
+        let startE = leftmost [ tag (current cliD) (domEvent Click newB), moreNewE ]
         performEvent_ $ ffor startE $ \c -> liftIO . void . forkIO $
           activeProjectDir >>= \case
             Nothing -> toast "Open a project first: a new agent starts in the active project"
@@ -704,11 +710,17 @@ agentsCss = do
     ".agents-pane .agents-more" ? measurable
     ".agents-pane .agents-head-fold .agents-more" ? shown
     ".agents-pane .agents-head-fold .agents-fold-hide" ? measurable
-    -- The new-agent button carries the badge of the kind it starts.
+    -- ＋ and, beside it, the badge of the kind it starts (a button of its
+    -- own: it lists the kinds to choose from).
     ".agents-pane .agents-new" ? do
         "display" -: "inline-flex"
         "align-items" -: "center"
-        "gap" -: "2px"
+        "gap" -: "0"
+        "flex" -: "0 0 auto"
+    ".agents-pane .agents-new-type" ? do
+        "display" -: "inline-flex"
+        "align-items" -: "center"
+        "padding" -: "0 3px"
     ".agents-pane .agents-new-glyph" ? do
         "display" -: "inline-flex"
         "width" -: "12px"
@@ -716,7 +728,7 @@ agentsCss = do
     ".agents-pane .agents-new-glyph > svg, .agents-pane .agents-new-glyph > img" ? do
         "width" -: "100%"
         "height" -: "100%"
-    ".agents-pane .agents-new-pick" ? ("padding" -: "0 2px")
+
     ".agents-pane .agents-chip" ? do
         "background" -: "none"
         fontSize (px 11)
