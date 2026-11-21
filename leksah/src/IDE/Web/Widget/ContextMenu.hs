@@ -10,7 +10,7 @@ import Data.Bool (bool)
 import Data.Text (Text)
 import qualified Data.Text as T (pack)
 
-import Language.Javascript.JSaddle (liftJSM)
+import Language.Javascript.JSaddle (JSM, liftJSM)
 
 import GHCJS.DOM (currentDocumentUnchecked)
 import GHCJS.DOM.Types (EventTarget(..), HTMLElement(..), Node(..), uncheckedCastTo)
@@ -20,7 +20,7 @@ import qualified GHCJS.DOM.Types as DOM (Element(..))
 import qualified GHCJS.DOM.Event as Event (getTargetUnchecked)
 import GHCJS.DOM.EventM
        (event, mouseClientXY, onSync, preventDefault)
-import qualified GHCJS.DOM.GlobalEventHandlers as DOM (contextMenu)
+import qualified GHCJS.DOM.GlobalEventHandlers as DOM (click, contextMenu)
 import GHCJS.DOM.GlobalEventHandlers (touchStart, mouseDown)
 
 import Clay
@@ -32,7 +32,7 @@ import IDE.Web.Theme (menuTopColor, dropShadowColor)
 
 import Reflex
        (leftmost, ffor, Event, never, holdDyn, switchHold,
-        fmapMaybe)
+        fmapMaybe, attachWith, current)
 import Reflex.Dom.Core
        (wrapDomEventMaybe, elAttr', wrapDomEvent, EventResult,
         getPostBuild, performEvent_,
@@ -96,3 +96,40 @@ contextMenu parent menu = mdo
 --      docScrollE <- wrapDomEvent doc (`onSync` touchStart) $ return ()
       return $ leftmost [ Nothing <$ docMouseDownE, Nothing <$ docTouchStartE, Just <$> menuEvent ]
   return (() <$ contextmenuE, fmapMaybe id events)
+
+-- | A drop-down: @menu@ opens where @anchor@ (a button) is clicked, with a
+-- plain click, and closes when an item is chosen, on a press outside it, or
+-- on another click of the button.  The context-menu's look and placement
+-- ('contextMenu').
+clickMenu
+  :: MonadWidget t m
+  => Element EventResult (DomBuilderSpace m) t
+  -> m (Event t a)
+  -> m (Event t a)
+clickMenu anchor menu = mdo
+  clickE <- wrapDomEvent (uncheckedCastTo HTMLElement $ _element_raw anchor)
+    (`onSync` DOM.click) mouseClientXY
+  -- (a click on the button toggles: the press outside the menu that closes
+  -- it is not one on the button)
+  showD <- holdDyn Nothing $ leftmost
+    [ attachWith (\open xy -> maybe (Just xy) (const Nothing) open) (current showD) clickE
+    , Nothing <$ events
+    ]
+  events <- (switchHold never =<<) . dyn $ ffor showD $ \case
+    Nothing -> return never
+    Just (x, y) -> do
+      (menuElement, menuEvent) <- elAttr' "div" ("class" =: "context-menu"
+          <> "style" =: T.pack ("top:" <> show (y + 6) <> "px; left:" <> show (max 4 (x - 12)) <> "px;")) menu
+      doc <- currentDocumentUnchecked
+      -- (a press outside both the menu and its button; once per event type)
+      let isOutside :: EventTarget -> JSM (Maybe ())
+          isOutside t = do
+            inMenu <- contains (_element_raw menuElement) (Just (uncheckedCastTo Node t))
+            onAnchor <- contains (_element_raw anchor) (Just (uncheckedCastTo Node t))
+            return (if inMenu || onAnchor then Nothing else Just ())
+      docMouseDownE <- wrapDomEventMaybe doc (`onSync` mouseDown) $
+        event >>= Event.getTargetUnchecked >>= liftJSM . isOutside
+      docTouchStartE <- wrapDomEventMaybe doc (`onSync` touchStart) $
+        event >>= Event.getTargetUnchecked >>= liftJSM . isOutside
+      return $ leftmost [ Nothing <$ docMouseDownE, Nothing <$ docTouchStartE, Just <$> menuEvent ]
+  return (fmapMaybe id events)
