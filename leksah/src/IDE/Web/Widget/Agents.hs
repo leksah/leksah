@@ -61,13 +61,13 @@ import Clay.Stylesheet (key)
 import Reflex
        (Dynamic, Event, ffor, foldDyn, getPostBuild, holdDyn, holdUniqDyn,
         leftmost, listViewWithKey, never, newTriggerEvent,
-        tickLossyFromPostBuildTime, updated)
+        tickLossyFromPostBuildTime, updated, constDyn, current, tag, ffilter, fmapMaybe)
 import Reflex.Dom.Core
        (blank, def, divClass, domEvent, dyn_, dynText, elAttr, elAttr', elClass,
-        elClass', elDynAttr, elDynAttr', elementConfig_initialAttributes,
+        elClass', elDynAttr, elDynAttr', elDynHtmlAttr', elementConfig_initialAttributes,
         inputElement, inputElementConfig_elementConfig, text,
         EventName(..), (=:), _element_raw, _inputElement_value)
-import Language.Javascript.JSaddle (liftJSM, jsg, js1, eval, valToBool)
+import Language.Javascript.JSaddle (liftJSM, jsg, js1, eval, valToBool, valToText)
 
 import IDE.App (App(..), getGlobalApp)
 import IDE.Reactive (readCell)
@@ -81,9 +81,11 @@ import IDE.Web.AgentInfo
        (AgentNode(..), acknowledgeInterrupted, agentForest, dismissAgent,
         interruptedOffer, latestInterruption, stripTags)
 import IDE.Web.Claude (ClaudeCmd(..), claudeRemoveBackground, runClaudeCmd)
-import IDE.Web.Codex (codexAvailable)
-import IDE.Web.Agy (agyAvailable)
-import IDE.Web.AgentCli (AgentCli(..))
+import IDE.Web.AgentCli (AgentCli(..), cliFromTag, cliLabel, cliTag)
+import IDE.Web.AgentGlyph (cliGlyph)
+import IDE.Web.Widget.AgentMenu (availableClis)
+import IDE.Web.Widget.ContextMenu (clickMenu)
+import IDE.Web.Widget.Menu (MenuEntry(..), menuModsE)
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
         dimColor, fgColor, hoverColor)
@@ -172,11 +174,20 @@ agentsWidget ctx mruNamesD = do
 
     (hdrE, stateE, searchD, flatD) <- divClass "agents-head" $ do
       (hdr', stE, flat') <- divClass "agents-head-row" $ do
-        elClass "span" "agents-head-label" . dynText $ ffor forestD $ \f ->
-          case length (flatten f) of
-            0 -> "No agents running"
-            1 -> "1 agent"
-            n -> T.pack (show n) <> " agents"
+        -- The count: in words, or — when the row has no room for them
+        -- ('agentLinksJs' decides, as the pane and its chips resize) — as
+        -- the number and the agents' robot.  Never on two lines.
+        let totalD = length . flatten <$> forestD
+            words' = \case
+              0 -> "No agents running"
+              1 -> "1 agent"
+              n -> T.pack (show n) <> " agents"
+        elDynAttr "span" (ffor totalD $ \n -> "class" =: "agents-head-label" <> "title" =: words' n) $ do
+          elClass "span" "agents-head-wide" (dynText (words' <$> totalD))
+          elClass "span" "agents-head-narrow" $ do
+            dynText (T.pack . show <$> totalD)
+            elAttr "img" ("class" =: "tree-icon agents-head-icon" <> "src" =: "/pics/tree-claude.svg"
+                          <> "alt" =: "agents") blank
         chipEs <- forM chips $ \(st, glyph, word, colour) -> do
           let countD = ffor forestD $ \f ->
                 length [ () | n <- flatten f, inState st n ]
@@ -194,46 +205,68 @@ agentsWidget ctx mruNamesD = do
         flatInit <- liftJSM $ valToBool =<< eval
           ("(function(){try{return localStorage.getItem('leksahAgentsFlat')==='1'}\
            \catch(e){return false}})()" :: Text)
-        rec flatD' <- foldDyn (const not) flatInit modeE
+        -- Which kind of agent ＋ starts: the last one chosen (per viewer),
+        -- if it is still on PATH, else the first that is.
+        clis <- liftIO availableClis
+        lastCli <- liftJSM $ valToText =<< eval
+          ("(function(){try{return localStorage.getItem('leksahAgentsNewCli')||''}\
+           \catch(e){return ''}})()" :: Text)
+        let cliInit = case [ c | c <- clis, Just c == cliFromTag lastCli ] <> clis of
+              (c : _) -> c
+              []      -> CliClaude
+        rec flatD' <- foldDyn (const not) flatInit (leftmost [modeE, () <$ moreToggleE])
             (modeB, _) <- elDynAttr' "button"
-              (ffor flatD' $ \fl -> "class" =: "agents-action agents-mode"
+              (ffor flatD' $ \fl -> "class" =: "agents-action agents-mode agents-fold-hide"
                  <> "title" =: (if fl then "Showing needs-you first — click for \
                                            \the tree of who started whom"
                                       else "Showing the tree of who started whom — \
                                            \click for needs-you first"))
               (dynText (bool "⌥ tree" "≡ list" <$> flatD'))
             let modeE = domEvent Click modeB
+            -- A new agent: its own tab in the active project, where you then
+            -- tell it what to do.  ＋ starts the kind shown on it; ▾ chooses
+            -- another (and starts one).
+            cliD <- holdDyn cliInit (leftmost [pickE, moreNewE])
+            (newB, _) <- elDynAttr' "button"
+              (ffor cliD $ \c -> "class" =: "agents-action agents-new agents-fold-hide"
+                 <> "title" =: ("Start a new " <> cliLabel c <> " agent in the active project, in its own tab"))
+              (do text "＋"
+                  dyn_ (ffor cliD $ \c ->
+                    void (elDynHtmlAttr' "span" ("class" =: "agents-new-glyph") (constDyn (cliGlyph c)))))
+            pickE <- if length clis < 2 then return never else do
+              (pickB, _) <- elAttr' "button"
+                ("class" =: "agents-action agents-new-pick agents-fold-hide"
+                 <> "title" =: "Choose which kind of agent ＋ starts (and start one)") (text "▾")
+              clickMenu pickB . fmap (fmap snd) . menuModsE $
+                [ constDyn (MenuEntry [cliGlyph c] ("New " <> cliLabel c <> " agent") c) | c <- clis ]
+            teamE <- actionBtn "agents-fold-hide" "👥" "Open the Team pane: a bio card for every agent"
+            h <- actionBtn "agents-fold-hide" "⟳" "Re-read the agent list"
+            -- When the row is too narrow for them (see 'agentLinksJs'), the
+            -- buttons above fold into this one's menu.
+            (moreB, _) <- elAttr' "button"
+              ("class" =: "agents-action agents-more" <> "title" =: "Layout, new agent, team, re-read") (text "⋯")
+            moreE <- clickMenu moreB . fmap (fmap snd) . menuModsE $
+              [ ffor flatD' $ \fl -> MenuEntry [] (if fl then "Show the tree of who started whom"
+                                                          else "Show needs-you first") MoreToggle ]
+              <> [ constDyn (MenuEntry [cliGlyph c] ("New " <> cliLabel c <> " agent") (MoreNew c)) | c <- clis ]
+              <> [ constDyn (MenuEntry [] "Team pane" MoreTeam)
+                 , constDyn (MenuEntry [] "Re-read the agent list" MoreRefresh) ]
+            let moreToggleE = ffilter (== MoreToggle) moreE
+                moreNewE = fmapMaybe (\case MoreNew c -> Just c; _ -> Nothing) moreE
         performEvent_ $ ffor (updated flatD') $ \fl -> liftJSM . void . eval $
           ("try{localStorage.setItem('leksahAgentsFlat','" <> (if fl then "1" else "0")
              <> "')}catch(e){}" :: Text)
-        -- A new agent: its own tab in the active project, where you then tell
-        -- it what to do.
-        newE <- actionBtn "＋" "Start a new agent in the active project, in its own tab"
-        performEvent_ $ ffor newE $ \_ -> liftIO . void . forkIO $
+        performEvent_ $ ffor (updated cliD) $ \c -> liftJSM . void . eval $
+          ("try{localStorage.setItem('leksahAgentsNewCli','" <> cliTag c <> "')}catch(e){}" :: Text)
+        let startE = leftmost [ tag (current cliD) (domEvent Click newB), pickE, moreNewE ]
+        performEvent_ $ ffor startE $ \c -> liftIO . void . forkIO $
           activeProjectDir >>= \case
             Nothing -> toast "Open a project first: a new agent starts in the active project"
-            Just d  -> runClaudeCmd (ClaudeNew d) >> refresh
-        cxAvail <- liftIO codexAvailable
-        cxE <- if cxAvail
-                 then actionBtn "⊕" "Start a new Codex agent in the active project, in its own tab"
-                 else return never
-        performEvent_ $ ffor cxE $ \_ -> liftIO . void . forkIO $
-          activeProjectDir >>= \case
-            Nothing -> toast "Open a project first: a new agent starts in the active project"
-            Just d  -> runClaudeCmd (CliNew CliCodex d) >> refresh
-        -- (An arch, for Antigravity's logo.)
-        agyAvail <- liftIO agyAvailable
-        agyE <- if agyAvail
-                  then actionBtn "⋂" "Start a new Antigravity agent in the active project, in its own tab"
-                  else return never
-        performEvent_ $ ffor agyE $ \_ -> liftIO . void . forkIO $
-          activeProjectDir >>= \case
-            Nothing -> toast "Open a project first: a new agent starts in the active project"
-            Just d  -> runClaudeCmd (CliNew CliAgy d) >> refresh
-        teamE <- actionBtn "👥" "Open the Team pane: a bio card for every agent"
-        performEvent_ $ liftIO (requestKeymapCommand CommandShowTeam) <$ teamE
-        h <- actionBtn "⟳" "Re-read the agent list"
-        return (h, leftmost chipEs, flatD')
+            Just d  -> runClaudeCmd (CliNew c d) >> refresh
+        performEvent_ $ liftIO (requestKeymapCommand CommandShowTeam)
+          <$ leftmost [teamE, () <$ ffilter (== MoreTeam) moreE]
+        let h' = leftmost [h, () <$ ffilter (== MoreRefresh) moreE]
+        return (h', leftmost chipEs, flatD')
       inp <- inputElement $ def
         & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
             ("class" =: "agents-search" <> "placeholder" =: "Search agents  (/)"
@@ -484,11 +517,16 @@ activeProjectDir = getGlobalApp >>= \case
 
 -- | A compact glyph button in a row (⟳ refresh / ✕ forget), matching the
 -- Terminals tree's management glyphs.
-actionBtn :: MonadWidget t m => Text -> Text -> m (Event t ())
-actionBtn glyph tip = do
-  (e, _) <- elAttr' "button" ("class" =: "agents-action" <> "title" =: tip) $
+-- | A header button (@cls@: its other classes).
+actionBtn :: MonadWidget t m => Text -> Text -> Text -> m (Event t ())
+actionBtn cls glyph tip = do
+  (e, _) <- elAttr' "button" ("class" =: ("agents-action " <> cls) <> "title" =: tip) $
     text glyph
   return (domEvent Click e)
+
+-- | What the header's ⋯ menu offers.
+data MoreAction = MoreToggle | MoreNew AgentCli | MoreTeam | MoreRefresh
+  deriving (Eq, Show)
 
 --------------------------------------------------------------------------------
 
@@ -513,6 +551,47 @@ agentLinksJs = T.unlines
   , "      try { if (window.__leksahOpenExtUrl)"
   , "              window.__leksahOpenExtUrl(u, !!e.altKey, !!e.shiftKey); } catch(_) {}"
   , "    }, true);"
+    -- The header row, fitted to the pane's width, in two steps: the agent
+    -- count's words give way to the number and the robot (agents-head-tight)
+    -- when the words do not fit the room the chips and buttons leave; and
+    -- when even that does not fit, the buttons fold into the ⋯ menu
+    -- (agents-head-fold).  Worked out from the parts' widths — the hidden
+    -- forms are kept measurable (see 'agentsCss') — so it does not flicker,
+    -- and looked at again whenever any part, or the row, changes size.
+    -- (The header may not be built yet: tried again a few times.)
+  , "    (function fitWhenThere(tries){"
+  , "      var row = root.querySelector('.agents-head-row'),"
+  , "          label = root.querySelector('.agents-head-label'),"
+  , "          wide = root.querySelector('.agents-head-wide'),"
+  , "          narrow = root.querySelector('.agents-head-narrow'),"
+  , "          more = root.querySelector('.agents-more');"
+  , "      if (!row || !label || !wide || !narrow || !more) {"
+  , "        if (tries > 0) setTimeout(function(){ fitWhenThere(tries - 1); }, 250);"
+  , "        return;"
+  , "      }"
+  , "      var gap = 3;"
+  , "      var fit = function(){"
+  , "        var folds = Array.prototype.slice.call(row.querySelectorAll('.agents-fold-hide'));"
+  , "        var fixed = 0, n = 0, acts = 0, na = 0;"
+  , "        Array.prototype.forEach.call(row.children, function(k){"
+  , "          if (k === label || k === more || folds.indexOf(k) >= 0 || !k.offsetWidth) return;"
+  , "          fixed += k.offsetWidth; n++;"
+  , "        });"
+  , "        folds.forEach(function(k){ if (k.offsetWidth) { acts += k.offsetWidth; na++; } });"
+  , "        var room = row.clientWidth;"
+  , "        var fold = fixed + acts + narrow.offsetWidth + gap * (n + na) > room;"
+  , "        var forLabel = room - fixed - (fold ? more.offsetWidth + gap * (n + 1) : acts + gap * (n + na));"
+  , "        var tight = fold || wide.offsetWidth > forLabel;"
+  , "        if (row.classList.contains('agents-head-fold') !== fold) row.classList.toggle('agents-head-fold', fold);"
+  , "        if (row.classList.contains('agents-head-tight') !== tight) row.classList.toggle('agents-head-tight', tight);"
+  , "      };"
+  , "      try {"
+  , "        var ro = new ResizeObserver(fit);"
+  , "        ro.observe(row); ro.observe(wide); ro.observe(narrow);"
+  , "        Array.prototype.forEach.call(row.children, function(k){ ro.observe(k); });"
+  , "      } catch(_) {}"
+  , "      fit();"
+  , "    })(20);"
     -- / anywhere in the pane (outside a text field) jumps to the search box.
     -- In JS because preventDefault from a Haskell handler arrives too late
     -- under wkwebview's asynchronous event dispatch.
@@ -583,12 +662,61 @@ agentsCss = do
         display flex
         "align-items" -: "center"
         "gap" -: "3px"
+        "position" -: "relative"
+    -- (the space the chips and buttons leave, and no more: what does not fit
+    -- is cut, never wrapped — and 'agentLinksJs' swaps the words for the
+    -- number and the robot when they would be cut)
     ".agents-pane .agents-head-label" ? do
         fontWeight bold
         color dimColor
         fontSize (px 12)
-        "flex" -: "1"
+        "flex" -: "1 1 0px"
         "min-width" -: "0"
+        "overflow" -: "hidden"
+        "white-space" -: "nowrap"
+        "position" -: "relative"
+    -- (boxes of their own: an inline span has no width to measure)
+    ".agents-pane .agents-head-wide" ? ("display" -: "inline-block")
+    ".agents-pane .agents-head-narrow" ? do
+        "display" -: "inline-flex"
+        "align-items" -: "center"
+        "gap" -: "3px"
+    ".agents-pane .agents-head-icon" ? do
+        "width" -: "13px"
+        "height" -: "13px"
+        "margin" -: "0"
+    ".agents-pane .agents-head-tight .agents-head-label" ? ("min-width" -: "max-content")
+    -- The forms not shown: out of the way, but still there to be measured
+    -- (the row's fit is worked out from every part's width — 'agentLinksJs').
+    let measurable = do
+          "position" -: "absolute"
+          "visibility" -: "hidden"
+          "pointer-events" -: "none"
+          "left" -: "0"
+          "top" -: "0"
+        shown = do
+          "position" -: "static"
+          "visibility" -: "visible"
+          "pointer-events" -: "auto"
+    ".agents-pane .agents-head-narrow" ? measurable
+    ".agents-pane .agents-head-tight .agents-head-narrow" ? shown
+    ".agents-pane .agents-head-tight .agents-head-wide" ? measurable
+    ".agents-pane .agents-more" ? measurable
+    ".agents-pane .agents-head-fold .agents-more" ? shown
+    ".agents-pane .agents-head-fold .agents-fold-hide" ? measurable
+    -- The new-agent button carries the badge of the kind it starts.
+    ".agents-pane .agents-new" ? do
+        "display" -: "inline-flex"
+        "align-items" -: "center"
+        "gap" -: "2px"
+    ".agents-pane .agents-new-glyph" ? do
+        "display" -: "inline-flex"
+        "width" -: "12px"
+        "height" -: "12px"
+    ".agents-pane .agents-new-glyph > svg, .agents-pane .agents-new-glyph > img" ? do
+        "width" -: "100%"
+        "height" -: "100%"
+    ".agents-pane .agents-new-pick" ? ("padding" -: "0 2px")
     ".agents-pane .agents-chip" ? do
         "background" -: "none"
         fontSize (px 11)
