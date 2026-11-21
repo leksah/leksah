@@ -172,11 +172,20 @@ agentsWidget ctx mruNamesD = do
 
     (hdrE, stateE, searchD, flatD) <- divClass "agents-head" $ do
       (hdr', stE, flat') <- divClass "agents-head-row" $ do
-        elClass "span" "agents-head-label" . dynText $ ffor forestD $ \f ->
-          case length (flatten f) of
-            0 -> "No agents running"
-            1 -> "1 agent"
-            n -> T.pack (show n) <> " agents"
+        -- The count: in words, or — when the row has no room for them
+        -- ('agentLinksJs' decides, as the pane and its chips resize) — as
+        -- the number and the agents' robot.  Never on two lines.
+        let countD = length . flatten <$> forestD
+            words' = \case
+              0 -> "No agents running"
+              1 -> "1 agent"
+              n -> T.pack (show n) <> " agents"
+        elDynAttr "span" (ffor countD $ \n -> "class" =: "agents-head-label" <> "title" =: words' n) $ do
+          elClass "span" "agents-head-wide" (dynText (words' <$> countD))
+          elClass "span" "agents-head-narrow" $ do
+            dynText (T.pack . show <$> countD)
+            elAttr "img" ("class" =: "tree-icon agents-head-icon" <> "src" =: "/pics/tree-claude.svg"
+                          <> "alt" =: "agents") blank
         chipEs <- forM chips $ \(st, glyph, word, colour) -> do
           let countD = ffor forestD $ \f ->
                 length [ () | n <- flatten f, inState st n ]
@@ -513,6 +522,27 @@ agentLinksJs = T.unlines
   , "      try { if (window.__leksahOpenExtUrl)"
   , "              window.__leksahOpenExtUrl(u, !!e.altKey, !!e.shiftKey); } catch(_) {}"
   , "    }, true);"
+    -- The header's agent count: its words while they fit the space the
+    -- chips and buttons leave, else the number and the robot (the row's
+    -- agents-head-tight class).  Looked at again whenever that space, or
+    -- the words, change size.  (The header may not be built yet: tried
+    -- again a few times.)
+  , "    (function fitWhenThere(tries){"
+  , "      var label = root.querySelector('.agents-head-label'),"
+  , "          wide = root.querySelector('.agents-head-wide'),"
+  , "          row = root.querySelector('.agents-head-row');"
+  , "      if (!label || !wide || !row) {"
+  , "        if (tries > 0) setTimeout(function(){ fitWhenThere(tries - 1); }, 250);"
+  , "        return;"
+  , "      }"
+  , "      var fit = function(){"
+  , "        var fits = wide.offsetWidth <= label.clientWidth + 1;"
+  , "        if (row.classList.contains('agents-head-tight') === fits)"
+  , "          row.classList.toggle('agents-head-tight', !fits);"
+  , "      };"
+  , "      try { var ro = new ResizeObserver(fit); ro.observe(label); ro.observe(wide); } catch(_) {}"
+  , "      fit();"
+  , "    })(20);"
     -- / anywhere in the pane (outside a text field) jumps to the search box.
     -- In JS because preventDefault from a Haskell handler arrives too late
     -- under wkwebview's asynchronous event dispatch.
@@ -583,12 +613,36 @@ agentsCss = do
         display flex
         "align-items" -: "center"
         "gap" -: "3px"
+    -- (the space the chips and buttons leave, and no more: what does not fit
+    -- is cut, never wrapped — and 'agentLinksJs' swaps the words for the
+    -- number and the robot when they would be cut)
     ".agents-pane .agents-head-label" ? do
         fontWeight bold
         color dimColor
         fontSize (px 12)
-        "flex" -: "1"
+        "flex" -: "1 1 0px"
         "min-width" -: "0"
+        "overflow" -: "hidden"
+        "white-space" -: "nowrap"
+        "position" -: "relative"
+    -- (a box of its own: an inline span has no width to measure)
+    ".agents-pane .agents-head-wide" ? ("display" -: "inline-block")
+    ".agents-pane .agents-head-narrow" ? do
+        "display" -: "none"
+        "align-items" -: "center"
+        "gap" -: "3px"
+    ".agents-pane .agents-head-icon" ? do
+        "width" -: "13px"
+        "height" -: "13px"
+        "margin" -: "0"
+    ".agents-pane .agents-head-tight .agents-head-label" ? ("min-width" -: "max-content")
+    ".agents-pane .agents-head-tight .agents-head-narrow" ? ("display" -: "inline-flex")
+    -- (still there to be measured: the row goes back to the words once they fit)
+    ".agents-pane .agents-head-tight .agents-head-wide" ? do
+        "position" -: "absolute"
+        "visibility" -: "hidden"
+        "left" -: "0"
+        "top" -: "0"
     ".agents-pane .agents-chip" ? do
         "background" -: "none"
         fontSize (px 11)
