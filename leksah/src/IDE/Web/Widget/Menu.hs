@@ -2,7 +2,13 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module IDE.Web.Widget.Menu where
+
+import Control.Concurrent (forkIO)
+import Control.Exception (SomeException, catch)
+import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -17,11 +23,14 @@ import Clay
         em, minWidth)
 import qualified Clay (display, none)
 
-import Reflex (leftmost, never, Event, Dynamic, tag, current, attachWith)
+import Reflex
+       (leftmost, never, Event, Dynamic, tag, current, constDyn, ffor, holdDyn,
+        switchHold, getPostBuild, performEventAsync)
 
 import Reflex.Dom.Core
-       (dynText, el', el, elDynAttr', (=:), elClass, divClass, text,
-        HasDomEvent(..), EventName(..), Element, EventResult, DomBuilderSpace)
+       (dynText, el', el, elAttr', (=:), elClass, divClass, text, dyn,
+        elDynHtmlAttr', HasDomEvent(..), EventName(..), Element, EventResult,
+        DomBuilderSpace)
 
 import IDE.Web.Theme
        (selectionColor, dimColor, menuTopColor, menuBottomColor, dropShadowColor)
@@ -79,6 +88,23 @@ menuCss = do
   -- Only the directly-hovered item's flyout opens (child combinator), so
   -- hovering an outer item doesn't reveal its grandchildren.
   (".menu li.has-submenu" # hover) |> ".menu" ? Clay.display block
+  -- An entry's icons ('MenuEntry'): an agent's face, which CLI it runs in —
+  -- inline SVG or an image, fitted into a square before the label.
+  ".menu .menu-icon" ? do
+    "display" -: "inline-block"
+    "width" -: "14px"
+    "height" -: "14px"
+    "vertical-align" -: "-2px"
+    "margin-right" -: "6px"
+  ".menu .menu-icon > svg, .menu .menu-icon > img" ? do
+    "display" -: "block"
+    "width" -: "100%"
+    "height" -: "100%"
+  -- A submenu's "nothing here" / "looking…" line: not an item.
+  ".menu li.menu-note" ? do
+    color dimColor
+    "font-style" -: "italic"
+    "pointer-events" -: "none"
 
 menu
   :: MonadWidget t m
@@ -98,17 +124,58 @@ menuMods
   :: MonadWidget t m
   => [Dynamic t (Text, a)]
   -> m (Event t ((Bool, Bool), a))
-menuMods items =
+menuMods = menuModsE . map (fmap plainEntry)
+
+-- | One entry of a right-click menu ('menuModsE').
+data MenuEntry a
+  = MenuEntry [Text] Text a
+      -- ^ icons (HTML: inline SVG or an image, fitted by 'menuCss'), label,
+      --   value.  An empty label hides the entry: how a menu leaves out one
+      --   that only applies sometimes (its list of entries is fixed).
+  | MenuSubmenu [Text] Text Text (IO [MenuEntry a])
+      -- ^ icons, label, what to say when it turns out empty, and its entries
+      --   — looked for when the menu opens, off the frame thread (they can
+      --   take a scan to find: the recent sessions), so it opens at once.
+  | MenuSeparator
+
+-- | A plain @(label, value)@ item as an entry.
+plainEntry :: (Text, a) -> MenuEntry a
+plainEntry (l, v) = MenuEntry [] l v
+
+-- | 'menuMods' for entries with icons and submenus.
+menuModsE
+  :: MonadWidget t m
+  => [Dynamic t (MenuEntry a)]
+  -> m (Event t ((Bool, Bool), a))
+menuModsE items =
   divClass "menu" $
     el "ul" $
-      fmap leftmost . forM items $ \d -> do
-        -- An item whose label is empty is hidden: how a menu leaves out an
-        -- item that only applies sometimes (its list of items is fixed).
-        (li, _) <- elDynAttr' "li"
-          ((\l -> if T.null l then "style" =: "display:none" else mempty) . fst <$> d)
-          (dynText $ fst <$> d)
-        modsE <- clickMods li
-        return $ attachWith (\v mods -> (mods, v)) (snd <$> current d) modsE
+      fmap leftmost . forM items $ \d -> switchHold never =<< dyn (entryWidget <$> d)
+
+entryWidget :: MonadWidget t m => MenuEntry a -> m (Event t ((Bool, Bool), a))
+entryWidget = \case
+  MenuEntry icons l v -> do
+    (li, _) <- elAttr' "li" (if T.null l then "style" =: "display:none" else mempty) $ do
+      mapM_ icon icons
+      text l
+    fmap (\mods -> (mods, v)) <$> clickMods li
+  MenuSeparator -> elClass "li" "menu-sep" (text "") >> return never
+  MenuSubmenu icons l emptyText fetch -> elClass "li" "has-submenu" $ do
+    mapM_ icon icons
+    text l
+    elClass "span" "menu-shortcut" $ text "▸"
+    divClass "menu" $ el "ul" $ do
+      pb <- getPostBuild
+      gotE <- performEventAsync $ ffor pb $ \_ deliver -> liftIO . void . forkIO $
+        ((fetch >>= \es -> length es `seq` return es)
+           `catch` \(_ :: SomeException) -> return []) >>= deliver
+      gotD <- holdDyn Nothing (Just <$> gotE)
+      switchHold never =<< dyn (ffor gotD $ \case
+        Nothing -> elClass "li" "menu-note" (text "Looking…") >> return never
+        Just [] -> elClass "li" "menu-note" (text emptyText) >> return never
+        Just es -> leftmost <$> mapM entryWidget es)
+  where
+    icon h = void $ elDynHtmlAttr' "span" ("class" =: "menu-icon") (constDyn h)
 
 -- | A leksah right-click menu on an existing row element, listing @(label,
 -- value)@ items and firing the value of the one chosen.  Attaching it is what
@@ -133,6 +200,13 @@ menuSplit
   -> m (Event t (IO ()))
 menuSplit = menuSplitWith (curry requestSplitOpen)
 
+-- | 'menuSplit' for entries with icons and submenus.
+menuSplitE
+  :: MonadWidget t m
+  => [Dynamic t (MenuEntry (Maybe SplitTarget, IO ()))]
+  -> m (Event t (IO ()))
+menuSplitE = menuSplitWithE (curry requestSplitOpen)
+
 -- | 'menuSplit' for menus whose items yield a VALUE (e.g. a workspace-tree
 -- command) rather than an 'IO' action: ⌥-clicking an item with a
 -- 'SplitTarget' yields @wrap target shift@ — the caller embeds the
@@ -142,7 +216,15 @@ menuSplitWith
   => (SplitTarget -> Bool -> a)
   -> [Dynamic t (Text, (Maybe SplitTarget, a))]
   -> m (Event t a)
-menuSplitWith wrap = fmap (fmap decide) . menuMods
+menuSplitWith wrap = menuSplitWithE wrap . map (fmap plainEntry)
+
+-- | 'menuSplitWith' for entries with icons and submenus.
+menuSplitWithE
+  :: MonadWidget t m
+  => (SplitTarget -> Bool -> a)
+  -> [Dynamic t (MenuEntry (Maybe SplitTarget, a))]
+  -> m (Event t a)
+menuSplitWithE wrap = fmap (fmap decide) . menuModsE
   where decide ((alt, sh), (mt, normal)) = case (alt, mt) of
           (True, Just t) -> wrap t sh
           _              -> normal
