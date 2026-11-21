@@ -35,7 +35,6 @@ data SplitTarget
   | STClaudeAsk FilePath         -- ^ @claude "<explain this file>"@ (the file)
   | STCliNew AgentCli FilePath   -- ^ a new Codex \/ Antigravity (\/ Claude) session
                                  --   in the project dir
-  | STCliResume AgentCli FilePath Text -- ^ resume that CLI's session (dir, id)
   | STBrowser Int                -- ^ a browser pane by its (pre-minted) id —
                                  --   the URL is already in the pane registry
                                  --   ('IDE.Web.Widget.Browser.rememberUrl')

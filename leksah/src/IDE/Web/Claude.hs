@@ -23,7 +23,6 @@ module IDE.Web.Claude
   , ClaudeSession(..)
   , csTitle
   , claudeSessionsFor
-  , humanAge
   , claudeSessionNames
   , ClaudeLive(..)
   , claudeLiveSessions

@@ -113,14 +113,14 @@ import Control.Applicative ((<|>))
 import IDE.Web.Widget.Flake
        (FlakeResult, flakeOutputs, flakeSystemCategories, flakeSystemNames,
         flakeTreeWidget, execButton, openNixWindow, developAttr)
-import IDE.Web.Widget.Menu (menu, menuSplit, menuSplitWith, menuSplitE, menuSplitWithE, plainEntry)
+import IDE.Web.Widget.Menu (menu, menuSplit, menuSplitWith)
 import IDE.Web.Widget.FileTree
        (fileTree, agentsNodeKids, gitClass, gitBadge, statusBadge,
         WorktreeKids, expandableAgentRow)
 import IDE.Web.Widget.Changes (gitChanges, FileChange(..))
 import IDE.Web.OpenFileRequest (deliverOpenedFile)
 import IDE.Web.Claude
-       (runClaudeCmd, ClaudeCmd(..), ClaudeSession(..),
+       (claudeAvailable, runClaudeCmd, ClaudeCmd(..), ClaudeSession(..),
         claudeSessionsFor, claudeTranscriptPath, showLiveSession)
 import IDE.Web.AgentInfo (AgentNode(..), agentDirOf, agentForestShared, agentTitles)
 import IDE.Web.Agent (agentResume, agentSuspend, showAgentPane)
@@ -132,7 +132,8 @@ import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentWorktrees
        (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, currentClaimants,
         worktreesBySession, worktreesOfAgent)
-import IDE.Web.Widget.AgentMenu (availableClis, agentMenuEntries, agentMenuEntriesD)
+import IDE.Web.Codex (codexAvailable)
+import IDE.Web.Agy (agyAvailable)
 import IDE.Web.AgentCli (AgentCli(..))
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
@@ -656,9 +657,9 @@ gitSubmoduleMenu dir path = menuSplit
 -- removing it never loses anything: the row itself stays, so a closed worktree
 -- project is one click from coming back.
 worktreeMenu :: forall t m. MonadWidget t m
-             => [AgentCli] -> FilePath -> GitWorktree
+             => (Bool, Bool, Bool) -> FilePath -> GitWorktree
              -> Dynamic t (Maybe ProjectKey) -> m (Event t (IO ()))
-worktreeMenu clis dir wt keyD = menuSplitE $ map (fmap plainEntry) (
+worktreeMenu (claudeAvail, cxAvail, agyAvail) dir wt keyD = menuSplit $
   [ ffor keyD $ \case
       Nothing -> ("Add as Project",
                   (Nothing, withApp $ \app -> projectOpenPath (appWorkspace app) p))
@@ -668,11 +669,19 @@ worktreeMenu clis dir wt keyD = menuSplitE $ map (fmap plainEntry) (
   [ constDyn ("Review Worktree…", (Nothing, requestReview p)) | local ] <>
   [ constDyn ("Open Terminal Here",
               ( if local then Just (STTermDir p) else Nothing
-              , openTerminalInDir p )) ]) <>
-  -- New … Session Here (one per agent CLI, with its badge), Continue Recent
-  -- Session Here ▸ ("IDE.Web.Widget.AgentMenu").
-  map constDyn (agentMenuEntries id " Here" clis p) <>
-  map (fmap plainEntry) (
+              , openTerminalInDir p )) ] <>
+  [ constDyn ("New Claude Session Here",
+              ( if local then Just (STClaudeNew p) else Nothing
+              , runClaudeCmd (ClaudeNew p) )) | claudeAvail ] <>
+  [ constDyn ("Continue Last Claude Session Here",
+              ( if local then Just (STClaudeContinue p) else Nothing
+              , runClaudeCmd (ClaudeContinue p) )) | claudeAvail ] <>
+  [ constDyn ("New Codex Session Here",
+              ( if local then Just (STCliNew CliCodex p) else Nothing
+              , runClaudeCmd (CliNew CliCodex p) )) | cxAvail ] <>
+  [ constDyn ("New Antigravity Session Here",
+              ( if local then Just (STCliNew CliAgy p) else Nothing
+              , runClaudeCmd (CliNew CliAgy p) )) | agyAvail ] <>
   -- The session the registry says owns this worktree (newest created/working
   -- claim) — see "IDE.Web.WorktreeRegistry"; sessions register through
   -- `leksah-cmd agent register` / the register_worktree MCP tool.
@@ -701,7 +710,7 @@ worktreeMenu clis dir wt keyD = menuSplitE $ map (fmap plainEntry) (
                   refreshGit dir)) | local ] <>
   [ constDyn ("Remove Worktree",
               ( gitTarget dir ["worktree", "remove", gwPath wt]
-              , gitAction dir ["worktree", "remove", gwPath wt] )) ])
+              , gitAction dir ["worktree", "remove", gwPath wt] )) ]
   where
     p     = fullWorktreePath dir wt
     local = not (isRemotePath p)
@@ -896,7 +905,9 @@ worktreesNode env dir = do
 worktreeProjectNode :: forall t m . MonadWidget t m
                     => PNEnv t -> FilePath -> GitWorktree -> m ()
 worktreeProjectNode env dir wt = do
-  clis <- liftIO availableClis
+  claudeAvail <- liftIO claudeAvailable
+  cxAvail <- liftIO codexAvailable
+  agyAvail <- liftIO agyAvailable
   statusD <- claudeStatusRowsD
   let p     = fullWorktreePath dir wt
       pNorm = dropTrailingPathSeparator p
@@ -931,7 +942,7 @@ worktreeProjectNode env dir wt = do
         T.pack p <> (if T.null story then "" else "\n" <> story)
   void $ treeItem "worktree" False
     (do (rowEl, mE) <- treeSelect' "workspace"
-                         (worktreeMenu clis dir wt pKeyD) $ do
+                         (worktreeMenu (claudeAvail, cxAvail, agyAvail) dir wt pKeyD) $ do
             gitIcon
             -- The agents whose worktree this is now (current claims).
             void . dyn $ ffor facesD $ mapM_ $ \(_, name) ->
@@ -1907,7 +1918,9 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
        <> (if temp then "title" =: "Temporary: open while a pane shows something in it" else mempty))
        <$> isActiveProjectD <*> isTempD) initActive
     (do
-      clis <- liftIO availableClis
+      claudeAvail <- liftIO claudeAvailable
+      cxAvail <- liftIO codexAvailable
+      agyAvail <- liftIO agyAvailable
       -- ⌥-clicking the terminal/Claude items opens them into a split of
       -- the active pane (⌥⇧ = the other direction), like the ⌥-open
       -- tree gestures; wrapSplit embeds the request in the menu's
@@ -1917,8 +1930,7 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
                              (const (requestSplitOpen (t, sh))))
           localTgt t = if isRemotePath (pkRoot pKey) then Nothing else Just t
           plain = fmap (fmap (Nothing,))
-          projCmd io = ProjectCommand (CommandIDEAction "" "" (const io))
-      (projRowEl, rowE) <- treeSelect' "workspace" (menuSplitWithE wrapSplit $ map (fmap plainEntry) (
+      (projRowEl, rowE) <- treeSelect' "workspace" (menuSplitWith wrapSplit $
         [ plain . constDyn $ ("Activate", ProjectCommand . CommandIDEAction "Set as Active Project" "" $
             \app -> workspaceActivatePackage (appWorkspace app) pKey Nothing Nothing)
         ] <> case pkFile pKey of
@@ -1942,9 +1954,12 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
             ( "Open PR" <> prSuffix mpr
             , ProjectCommand (CommandIDEAction "" "" (const (maybe (return ()) (openUrl . snd) mpr))) )
         ]
-        -- New … Session (one per agent CLI on PATH, with its badge),
-        -- Continue Recent Session ▸ ("IDE.Web.Widget.AgentMenu").
-        ) <> agentMenuEntriesD projCmd "" clis (constDyn (pkRoot pKey))) $ do
+        -- Claude Code (only when the CLI is on PATH): start a fresh
+        -- session or continue the most recent one in the project dir.
+        <> [ constDyn ("New Claude Session", (localTgt (STClaudeNew (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeNew (pkRoot pKey))))))) | claudeAvail ]
+        <> [ constDyn ("Continue Last Claude Session", (localTgt (STClaudeContinue (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeContinue (pkRoot pKey))))))) | claudeAvail ]
+        <> [ constDyn ("New Codex Session", (localTgt (STCliNew CliCodex (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (CliNew CliCodex (pkRoot pKey))))))) | cxAvail ]
+        <> [ constDyn ("New Antigravity Session", (localTgt (STCliNew CliAgy (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (CliNew CliAgy (pkRoot pKey))))))) | agyAvail ]) $ do
         elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
         -- A worktree project: the faces of the agents working in it.
         when nested $ do
@@ -2025,8 +2040,10 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
     -- The project's Claude Code sessions, surfaced right under the
     -- project row (self-hides unless the project dir has sessions) so
     -- it's reachable without drilling into the Files node.
-    clis <- liftIO availableClis
-    when (not (null clis)) $ do
+    claudeAvail <- liftIO claudeAvailable
+    cxAvail <- liftIO codexAvailable
+    agyAvail <- liftIO agyAvailable
+    when (claudeAvail || cxAvail || agyAvail) $ do
         -- A project dir that is itself a worktree also lists
         -- the sessions the registry links to it, INSIDE its
         -- Agents node after its own sessions ('worktreeClaims').
@@ -2055,17 +2072,19 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
           pkgVerb t v = plainPkg $ (t,) . PackageCommand . CommandIDEAction "" ""
               . (\pkg app -> runVerb (appBuilder app) pKey (Just pkg) Nothing v)
               <$> packageD
-          -- The agent entries' actions, for the package's directory (a
-          -- Dynamic, as the package dir is: 'agentMenuEntriesD').
-          pkgCmd io = PackageCommand (CommandIDEAction "" "" (const io))
+          -- A Claude launch item for the package's directory (Dynamic
+          -- because the package dir is); @st@ is its ⌥-split target
+          -- (local dirs only — a split runs on the local tmux server).
+          pkgClaude t c st = (\d -> (t, ( if isRemotePath d then Nothing else Just (st d)
+                                        , PackageCommand (CommandIDEAction "" "" (const (runClaudeCmd (c d))))))) <$> pkgDirD
           -- ⌥-split plumbing for the package menu (see the project
           -- menu's wrapSplit/plain above).
           wrapSplitPkg t sh = PackageCommand (CommandIDEAction "" ""
                                 (const (requestSplitOpen (t, sh))))
           plainPkg = fmap (fmap ((,) Nothing))
-      -- (clis is the project-level binding above.)
+      -- claudeAvail is the project-level binding above (in scope here).
       treeItemDynAttr' pkgRevealE (("class" =:) . ("package" <>) <$> (bool "" " active" <$> isActivePackageD)) False
-        (treeSelect "workspace" (menuSplitWithE wrapSplitPkg $ map (fmap plainEntry) (
+        (treeSelect "workspace" (menuSplitWith wrapSplitPkg $
             [ plainPkg $ ("Activate",) . PackageCommand . CommandIDEAction "Set as Active Package" "" <$>
                 ((\pkg app -> workspaceActivatePackage (appWorkspace app) pKey (Just (pkgManifest pkg)) Nothing) <$> packageD)
             , pkgVerb "Build" VBuild
@@ -2076,7 +2095,10 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
             , (\cf -> ("Open Package File", (Just (STFile cf), PackageFileEvents (("" =:) (OpenFile False cf)))))
                 . pkgManifest <$> packageD
             ]
-            ) <> agentMenuEntriesD pkgCmd "" clis pkgDirD) $ do
+            <> [ pkgClaude "New Claude Session" ClaudeNew STClaudeNew | claudeAvail ]
+            <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue STClaudeContinue | claudeAvail ]
+            <> [ pkgClaude "New Codex Session" (CliNew CliCodex) (STCliNew CliCodex) | cxAvail ]
+            <> [ pkgClaude "New Antigravity Session" (CliNew CliAgy) (STCliNew CliAgy) | agyAvail ]) $ do
           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-package.svg") $ return ()
           -- The package's cabal-file path (relative to the project)
           -- is a tooltip, not an inline label — it was crowding the

@@ -56,7 +56,6 @@ module IDE.Web.Agy
     -- * Sessions leksah has seen
   , isAgySession
   , agySessionDir
-  , agySessionsIn
   , agyTranscriptOf
   , agyTranscriptFor
   , agyStarted
@@ -218,10 +217,6 @@ isAgySession = hookIsSession agyStore
 
 agySessionDir :: Text -> IO (Maybe FilePath)
 agySessionDir = hookSessionDir agyStore
-
--- | The agy sessions that ran in @dir@, with their transcripts.
-agySessionsIn :: FilePath -> IO [(Text, FilePath)]
-agySessionsIn = hookSessionsIn agyStore
 
 agyTranscriptOf :: Text -> IO (Maybe FilePath)
 agyTranscriptOf = hookTranscriptOf agyStore

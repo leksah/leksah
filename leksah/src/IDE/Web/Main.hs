@@ -9614,7 +9614,6 @@ main showMenubar macTitlebar wid ctx = mdo
               STClaudeFork d i'   -> runClaudeCmd (ClaudeResumeFork d i')
               STClaudeAsk f       -> runClaudeCmd (ClaudeAsk f)
               STCliNew c d        -> runClaudeCmd (CliNew c d)
-              STCliResume c d i' -> runClaudeCmd (CliResume c d i')
               STRunCmd keep d ks nm c -> runInTerminal keep d ks nm c
             -- A terminal-family item (a plain shell, or a claude command): a
             -- real split of the active pane running the command.
@@ -9661,7 +9660,6 @@ main showMenubar macTitlebar wid ctx = mdo
               STClaudeFork d i'   -> Just (claudeSpec (ClaudeResumeFork d i'))
               STClaudeAsk f       -> Just (claudeSpec (ClaudeAsk f))
               STCliNew c d        -> Just (claudeSpec (CliNew c d))
-              STCliResume c d i' -> Just (claudeSpec (CliResume c d i'))
               STRunCmd keep d ks _ c | not ("ssh://" `T.isPrefixOf` T.pack d) -> Just $ do
                   let dir = dropTrailingPathSeparator d
                   full <- prefixedCmdLine dir c
@@ -9745,7 +9743,6 @@ main showMenubar macTitlebar wid ctx = mdo
                   STClaudeFork d i'   -> placeClaude activePid (ClaudeResumeFork d i')
                   STClaudeAsk f       -> placeClaude activePid (ClaudeAsk f)
                   STCliNew c d        -> placeClaude activePid (CliNew c d)
-                  STCliResume c d i' -> placeClaude activePid (CliResume c d i')
                   -- A command split mirrors 'runInTerminal''s window: prefix
                   -- applied, and a shell kept always (keep) or only after a
                   -- FAILING command, so errors stay visible but a clean run

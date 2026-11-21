@@ -42,7 +42,6 @@ module IDE.Web.Codex
   , isCodexSession
   , codexTranscriptOf
   , codexSessionDir
-  , codexSessionsIn
   , codexStarted
     -- * Installing the hooks
   , codexHookEvents
@@ -200,10 +199,6 @@ isCodexSession = hookIsSession codexStore
 -- | Where a Codex session ran, if leksah knows.
 codexSessionDir :: Text -> IO (Maybe FilePath)
 codexSessionDir = hookSessionDir codexStore
-
--- | The Codex sessions that ran in @dir@, with their rollouts.
-codexSessionsIn :: FilePath -> IO [(Text, FilePath)]
-codexSessionsIn = hookSessionsIn codexStore
 
 -- | A Codex session's rollout (its transcript), if leksah knows it.
 codexTranscriptOf :: Text -> IO (Maybe FilePath)
