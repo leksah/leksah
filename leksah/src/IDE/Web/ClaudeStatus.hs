@@ -59,6 +59,8 @@ import IDE.Web.AgentNames (agentNames, touchAgentNames)
 import IDE.Web.AgentEvents (sePromptPending, sessionEvents)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import IDE.Web.RemoteAgents (remoteGist, remoteLiveSessions)
+import IDE.Web.Agy (agyPrune)
+import IDE.Web.Codex (codexPrune)
 import IDE.Web.Claude
        (ClaudeLive(..), ClaudeBackground(..), backgroundNeedsYou,
         claudeBackgroundSessions, claudeLiveBySession, claudeSessionLabel, codexDiscover,
@@ -168,6 +170,10 @@ startClaudeStatusPoll titlesIO heldIO = forkIO (loop emptyClaudeStatus M.empty)
         -- Codex sessions not yet prompted have said nothing through their
         -- hooks: find them in leksah's terminals first ('codexDiscover').
         codexDiscover
+        -- And forget the Codex and agy sessions whose process has gone
+        -- without saying so (agy never says): its pid may be reused.
+        codexPrune
+        agyPrune
         live0 <- claudeLiveBySession
         -- A prompt was just submitted (the UserPromptSubmit hook): working
         -- from this moment, though its session file may still say idle for a

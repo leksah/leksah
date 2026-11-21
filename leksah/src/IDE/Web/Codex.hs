@@ -36,6 +36,7 @@ module IDE.Web.Codex
   , codexRememberLaunch
   , codexSetStatus
   , codexSessionEnd
+  , codexPrune
   , codexRecordFor
     -- * Sessions leksah has seen
   , isCodexSession
@@ -182,6 +183,11 @@ codexSetStatus = hookSetStatus codexStore
 -- | Session @sid@ ended: its record goes.
 codexSessionEnd :: Text -> IO ()
 codexSessionEnd = hookSessionEnd codexStore
+
+-- | Drop the records of codex processes that have gone without a SessionEnd
+-- (a crash, a kill) or whose pid now runs something else — see 'hookPrune'.
+codexPrune :: IO ()
+codexPrune = hookPrune codexStore isCodexProgram
 
 --------------------------------------------------------------------------------
 -- Sessions leksah has seen

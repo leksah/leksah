@@ -103,6 +103,7 @@ import Data.Text.Encoding.Error (lenientDecode)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime, getCurrentTimeZone)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.IO.Unsafe (unsafePerformIO)
+import Text.Read (readMaybe)
 
 import System.Directory
        (doesDirectoryExist, doesFileExist, getHomeDirectory, listDirectory)
@@ -151,7 +152,7 @@ import IDE.Web.Codex
 import IDE.Web.Agy
        (HookLive(..), agyAvailable, agyInteractive, agyProcessOf, agySessionStart, agySetStatus,
         agyClaimLaunch, agyRememberLaunch, agyLiveRecords, agyRecordFor, agySessionDir,
-        agyStarted, agyTranscriptOf, agyClaudeShaped, agyStateStatus, agyPendingTool, agyPidAlive,
+        agyStarted, agyTranscriptOf, agyClaudeShaped, agyStateStatus, agyPendingTool,
         isAgySession, isAgyTranscript, agyTurns)
 import IDE.Web.AgentCli (AgentCli(..), cliFromTag, cliProgram)
 import IDE.Web.NewLwRequest (requestNewLw)
@@ -1212,6 +1213,7 @@ agentHook mpid ev raw ("codex" : rest) =
   codexHook mpid ev raw (mfilter (not . T.null) (listToMaybe rest))
 agentHook mpid ev raw ("agy" : rest) =
   agyHook mpid ev raw (mfilter (not . T.null) (listToMaybe rest))
+          (listToMaybe (drop 1 rest) >>= readMaybe . T.unpack)
 agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
   let h = parseHookIn raw
       field = hiField h
@@ -1557,10 +1559,13 @@ codexIgnored = unsafePerformIO (newIORef S.empty)
 --   * PostToolUse: the tool call and the files it changed; Stop: the turn
 --     ended.  Their answers are always empty — agy reads a PostToolUse
 --     answer as JSON, and a Claude-shaped note would not be.
-agyHook :: Maybe Int -> Text -> Text -> Maybe Text -> IO Text
-agyHook mpid ev raw token = (`catch` \(_ :: SomeException) -> return "") $
+--
+-- @agyPid@: the agy process, when the caller knows it (the title script
+-- passes its @$PPID@, which is agy itself).
+agyHook :: Maybe Int -> Text -> Text -> Maybe Text -> Maybe Int -> IO Text
+agyHook mpid ev raw token agyPid = (`catch` \(_ :: SomeException) -> return "") $
   case ev of
-    "Title" -> agyTitle mpid token (str "agent_state") (str "conversation_id") cwd
+    "Title" -> agyTitle mpid agyPid token (str "agent_state") (str "conversation_id") cwd
     _ -> do
       let sid = str "conversationId"
       ignored <- maybe (return False) (\s -> S.member s <$> readIORef agyIgnored) sid
@@ -1617,16 +1622,16 @@ agyHook mpid ev raw token = (`catch` \(_ :: SomeException) -> return "") $
 -- once; when one appears — the first prompt, a @\/clear@, the launch of a
 -- resume — 'agyConversation' moves everything over to it.  A report that
 -- changes nothing (most: agy reports quota and size changes too) is answered
--- without looking for the process.
-agyTitle :: Maybe Int -> Maybe Text -> Maybe Text -> Maybe Text -> FilePath -> IO Text
-agyTitle mpid token mstate mconv cwd = do
+-- without looking for the process — when it is the reporting process's own
+-- record (@agyPid@, from the title script): the same conversation can run in
+-- two agy processes, or have run in one that has gone.
+agyTitle :: Maybe Int -> Maybe Int -> Maybe Text -> Maybe Text -> Maybe Text -> FilePath -> IO Text
+agyTitle mpid agyPid token mstate mconv cwd = do
   let status = mstate >>= agyStateStatus
   known <- maybe (return Nothing) agyRecordFor (mconv <|> token)
-  -- (a record of a process that has gone — the same conversation resumed in
-  -- a new one — is not this report's)
-  alive <- maybe (return False) (agyPidAlive . hlPid) known
   case known of
-    Just r | alive, maybe True (== hlStatus r) status, status /= Just "waiting" ->
+    Just r | Just (hlPid r) == agyPid
+           , maybe True (== hlStatus r) status, status /= Just "waiting" ->
       agentNameFor (hlSession r)
     _ -> maybe (return Nothing) agyProcessOf mpid >>= \case
       Just (pid, args) | agyInteractive args -> do
@@ -1678,8 +1683,12 @@ agyConversation pid token new cwd status = do
     seen <- isAgySession new
     prev <- agySessionStart pid new cwd (fromMaybe "idle" status)
     conts <- agentContinuations
+    -- The launch token stands for the agent only until its first
+    -- conversation: on a resume the token IS the (started) conversation, and
+    -- a later one in the process is a /clear or a /resume.
+    tokenFresh <- maybe (return False) (fmap not . agyStarted) token
     case token of
-      Just t | t /= new, t `M.notMember` conts -> do
+      Just t | tokenFresh, not seen, t /= new, t `M.notMember` conts -> do
         _ <- adoptContinuation t new
         moveAgentRecord True t new
       _ -> case prev of

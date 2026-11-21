@@ -337,6 +337,15 @@ agentGlyph "codex" =
   \694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 \
   \00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.84\
   \9.849 0 000-1.696h-4.848z\"/></svg>"
+-- Antigravity's arch, smooth and in its colours as its website shows it (an
+-- arch on a ground of blue, warming to yellow, orange and red at the peak,
+-- with green on the left — drawn for leksah, not Google's file).  An @img@
+-- of a data-URI SVG rather than inline SVG: its gradients need ids, and an
+-- image is a document of its own, so the same ids on every card can't clash
+-- (nor go unpainted when the first card holding them is hidden).
+agentGlyph "agy" =
+  "<img class=\"agent-glyph-agy\" alt=\"\" title=\"Antigravity agent\" src=\"data:image/svg+xml,"
+    <> T.replace "#" "%23" (T.replace "<" "%3C" (T.replace ">" "%3E" agyLogoSvg)) <> "\">"
 -- Claude Code's: its little orange robot, exactly as its banner draws it in
 -- quadrant blocks:
 --
@@ -347,15 +356,6 @@ agentGlyph "codex" =
 -- one unit per quadrant, two tall because a terminal cell is twice as tall as
 -- it is wide.  The eyes are the gaps in the second row: the badge shows
 -- through them.
--- Antigravity's arch, smooth and in its colours as its website shows it (an
--- arch on a ground of blue, warming to yellow, orange and red at the peak,
--- with green on the left — drawn for leksah, not Google's file).  An @img@
--- of a data-URI SVG rather than inline SVG: its gradients need ids, and an
--- image is a document of its own, so the same ids on every card can't clash
--- (nor go unpainted when the first card holding them is hidden).
-agentGlyph "agy" =
-  "<img class=\"agent-glyph-agy\" alt=\"\" title=\"Antigravity agent\" src=\"data:image/svg+xml,"
-    <> T.replace "#" "%23" (T.replace "<" "%3C" (T.replace ">" "%3E" agyLogoSvg)) <> "\">"
 agentGlyph _ =
   "<svg class=\"agent-glyph-claude\" viewBox=\"1 0 17 10\" fill=\"#d97757\" \
   \shape-rendering=\"crispEdges\"><title>Claude Code agent</title><path d=\"\

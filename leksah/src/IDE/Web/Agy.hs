@@ -52,6 +52,7 @@ module IDE.Web.Agy
   , agySetStatus
   , agyKnownPid
   , agyPidAlive
+  , agyPrune
     -- * Sessions leksah has seen
   , isAgySession
   , agySessionDir
@@ -155,16 +156,21 @@ isAgyProgram exe = takeFileName exe `elem` ["agy", "antigravity"]
 
 -- | Is this agy command line an interactive session — not @agy -p@, nor one
 -- of its subcommands (@agy mcp@, @agy acp@ …)?
+--
+-- Only agy's own flags count: everything after @-i@ (the prompt a leksah
+-- launch passes) or @--@ is text, which may well say @-p@ itself.
 agyInteractive :: String -> Bool
 agyInteractive args = case drop 1 (words args) of
   ws@(w : _) -> w `notElem`
       [ "acp", "agent", "agents", "changelog", "help", "install", "mcp"
       , "mic-serve", "models", "plugin", "plugins", "remote-control", "update" ]
-    && not (any printFlag ws)
+    && not (any printFlag (takeWhile (not . promptStart) ws))
   [] -> True
   where
     printFlag w = w `elem` ["-p", "--print", "--prompt"]
                || any (`isPrefixOfS` w) ["--print=", "--prompt="]
+    promptStart w = w `elem` ["-i", "--prompt-interactive", "--"]
+                 || "--prompt-interactive=" `isPrefixOfS` w
     isPrefixOfS a b = take (length a) b == a
 
 -- | Conversation @sid@ is running in agy process @pid@ (a new one, a resume,
@@ -197,6 +203,11 @@ agyPidAlive pid = (True <$ signalProcess nullSignal (fromIntegral pid))
 #else
 agyPidAlive _ = return True
 #endif
+
+-- | Drop the records of agy processes that have gone (or whose pid now runs
+-- something else) — see 'hookPrune'.  agy says nothing when it exits.
+agyPrune :: IO ()
+agyPrune = hookPrune agyStore isAgyProgram
 
 --------------------------------------------------------------------------------
 -- Sessions leksah has seen
@@ -273,7 +284,8 @@ agyWriteScripts = findExecutable "leksah-cmd" >>= \case
       [ "#!/bin/sh"
       , "# Written by leksah: Antigravity's title command.  agy hands it the session's"
       , "# state at every change; leksah records it and answers with the title."
-      , "t=$(" <> cmd <> " agent hook Title agy \"${LEKSAH_AGENT_TOKEN:-}\" 2>/dev/null)"
+      , "# ($PPID is the agy process itself: it names who is reporting.)"
+      , "t=$(" <> cmd <> " agent hook Title agy \"${LEKSAH_AGENT_TOKEN:-}\" \"$PPID\" 2>/dev/null)"
       , "if [ -n \"$t\" ]; then printf '%s\\n' \"$t\"; else echo Antigravity; fi"
       , "exit 0" ]
     writeScript ms $ T.unlines
@@ -326,8 +338,7 @@ writeObject p o = do
 #if !defined(mingw32_HOST_OS)
   ex <- doesFileExist p
   mode <- if ex then Just . fileMode <$> getFileStatus p else return Nothing
-  atomicWrite p (encode (Object o))
-  mapM_ (setFileMode p) mode
+  atomicWriteWith (\tmp -> mapM_ (setFileMode tmp) mode) p (encode (Object o))
 #else
   atomicWrite p (encode (Object o))
 #endif
@@ -375,9 +386,11 @@ agyInstall = (`catch` \(e :: SomeException) -> return ("agy install failed: " <>
             s2 = KM.insert "permissions" (Object (addAllow (permissionsOf s1))) s1
         writeObject sp s2
         mcp <- mcpScript
-        mcpMsg <- agyCli ["mcp", "add", "leksah", mcp] >>= \case
-          Right _  -> return "the leksah MCP server is registered (agy mcp add leksah)"
-          Left err -> return ("the MCP server could not be registered: " <> err)
+        registered <- mcpRegistered
+        mcpMsg <- if registered then return "the leksah MCP server was already registered" else
+          agyCli ["mcp", "add", "leksah", mcp] >>= \case
+            Right _  -> return "the leksah MCP server is registered (agy mcp add leksah)"
+            Left err -> return ("the MCP server could not be registered: " <> err)
         return $ T.unlines
           [ "Installed leksah's Antigravity hooks into " <> T.pack hp <> ","
           , titleMsg <> ","
@@ -478,14 +491,7 @@ agyStatus = do
         Right s | Just (Array xs) <- KM.lookup "allow" (permissionsOf s) ->
           all (\r -> String r `elem` toList xs) allowRules
         _ -> False
-  mcp <- (`catch` \(_ :: SomeException) -> return False) $ do
-    p <- mcpJson
-    ex <- doesFileExist p
-    if not ex then return False else do
-      v <- decodeStrict' <$> BS.readFile p
-      return $ case v of
-        Just (Object o) | Just (Object ss) <- KM.lookup "mcpServers" o -> KM.member "leksah" ss
-        _ -> False
+  mcp <- mcpRegistered
   return $ T.unlines
     [ "agy on PATH:       " <> yn avail
     , "hooks installed:   " <> yn inst <> "  (" <> T.pack script <> ")"
@@ -493,6 +499,17 @@ agyStatus = do
     , "allow-list:        " <> yn allowed
     , "MCP server:        " <> yn mcp ]
   where yn b = if b then "yes" else "no"
+
+-- | Is the leksah MCP server in agy's mcp_config.json?
+mcpRegistered :: IO Bool
+mcpRegistered = (`catch` \(_ :: SomeException) -> return False) $ do
+  p <- mcpJson
+  ex <- doesFileExist p
+  if not ex then return False else do
+    v <- decodeStrict' <$> BS.readFile p
+    return $ case v of
+      Just (Object o) | Just (Object ss) <- KM.lookup "mcpServers" o -> KM.member "leksah" ss
+      _ -> False
 
 agyCli :: [String] -> IO (Either Text Text)
 agyCli args = (`catch` \(e :: SomeException) -> return (Left (T.pack (show e)))) $

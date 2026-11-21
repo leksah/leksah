@@ -37,13 +37,16 @@ module IDE.Web.HookSessions
   , hookTranscriptOf
   , hookStarted
     -- * Files
+  , hookPrune
   , leksahDir
   , atomicWrite
+  , atomicWriteWith
   ) where
 
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Exception (SomeException, catch)
 import Control.Monad (forM, unless)
+import Data.List (intercalate)
 import Data.Aeson (Value(..), (.=), (.:?), decodeStrict', encode, object, withObject)
 import Data.Aeson.Types (parseMaybe)
 import qualified Data.Aeson.Key as Key
@@ -51,6 +54,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import System.IO.Unsafe (unsafePerformIO)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
@@ -62,7 +66,7 @@ import System.Directory
        (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
         getHomeDirectory, listDirectory, removeFile, renameFile)
 import System.FilePath ((</>), takeExtension, dropTrailingPathSeparator)
-import IDE.Utils.Spawn (readProcess)
+import IDE.Utils.Spawn (readProcess, readProcessWithExitCode)
 import Text.Read (readMaybe)
 
 leksahDir :: IO FilePath
@@ -274,6 +278,23 @@ hookSetStatus st sid status what = withMVar (hsRecordLock st) $ \_ ->
       return True
     _ -> return False
 
+-- | Drop the records whose process is gone, or no longer runs the CLI
+-- (@isProg@, on its first argument).  A CLI that reports nothing when it
+-- exits (agy), or one that crashed, leaves its record behind, and once the
+-- system hands its pid to another process the old session would look live
+-- again.  Run by the status poll: one @ps@ for all the records, none without.
+hookPrune :: HookStore -> (FilePath -> Bool) -> IO ()
+hookPrune st isProg = (`catch` \(_ :: SomeException) -> return ()) $ do
+  rs <- hookLiveRecords st
+  unless (null rs) $ do
+    (_, out, _) <- readProcessWithExitCode "ps"
+                     ["-o", "pid=,args=", "-p", intercalate "," (map (show . hlPid) rs)] ""
+    let ours = [ p | l <- lines out, (pT : exe : _) <- [words l]
+                   , Just p <- [readMaybe pT], isProg exe ]
+        stale = [ r | r <- rs, hlPid r `notElem` ours ]
+    unless (null stale) $ withMVar (hsRecordLock st) $ \_ ->
+      mapM_ (removeRecordFile st . hlPid) stale
+
 -- | Session @sid@ ended: its record goes.
 hookSessionEnd :: HookStore -> Text -> IO ()
 hookSessionEnd st sid = withMVar (hsRecordLock st) $ \_ -> do
@@ -348,10 +369,25 @@ hookTranscriptOf st sid = hookRecordFor st sid >>= \case
 -- | Write a file by renaming a sibling into place — readers never see half of
 -- it — and not at all when it already says the same.
 atomicWrite :: FilePath -> BL.ByteString -> IO ()
-atomicWrite path bytes = do
+atomicWrite = atomicWriteWith (const (return ()))
+
+-- | 'atomicWrite', running @prepare@ on the (empty) sibling before anything
+-- is written to it — to give it the file's permissions, say, so a private
+-- file is never readable on the way.  Each write has a sibling of its own:
+-- two threads writing the same file (two agents launched at once) must not
+-- share one.
+atomicWriteWith :: (FilePath -> IO ()) -> FilePath -> BL.ByteString -> IO ()
+atomicWriteWith prepare path bytes = do
   ex <- doesFileExist path
   same <- if not ex then return False else (== BL.toStrict bytes) <$> BS.readFile path
   unless same $ do
-    let tmp = path <> ".tmp-leksah"
+    n <- atomicModifyIORef' tmpCounter (\c -> (c + 1, c))
+    let tmp = path <> ".tmp-leksah-" <> show n
+    BS.writeFile tmp ""
+    prepare tmp
     BL.writeFile tmp bytes
     renameFile tmp path
+
+{-# NOINLINE tmpCounter #-}
+tmpCounter :: IORef Int
+tmpCounter = unsafePerformIO (newIORef 0)
