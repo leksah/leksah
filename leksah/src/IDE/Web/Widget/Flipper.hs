@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module IDE.Web.Widget.Flipper
@@ -223,14 +224,16 @@ flipperWidget
        , Event t (Map Text k)          -- ^ committed tab selection
        , Event t (Map Text k) )        -- ^ …the subset made by CLICKING an item
                                        --   (fires alongside the one above)
-flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE enterE atTitleD label = do
+flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE enterE atTitleD label = mdo
   let flipdown = () <$ ffilter id  flipStep
       flipup   = () <$ ffilter not flipStep
 
   numberOfTabsD <- holdUniqDyn $ length <$> recentTabs
+  -- (a click picks too, and closes it like any other pick: the AI picker
+  -- opened from a menu or a tool has no modifier to release)
   visibleD <- holdUniqDyn =<< holdDyn False
    (leftmost [ True <$ flipdown, True <$ flipup, True <$ openAt0
-             , False <$ flipdone, False <$ cancelE, False <$ enterE ])
+             , False <$ flipdone, False <$ cancelE, False <$ enterE, False <$ clickE ])
   selectionIndexD <- foldDyn ($) (0::Int) $ leftmost
     [ (\n x -> let n' = max 1 n; x' = succ x in if x' >= n' then 0 else x') <$> tag (current numberOfTabsD) flipdown
     , (\n x -> let n' = max 1 n; x' = pred x in if x' < 0 then n' - 1 else x')  <$> tag (current numberOfTabsD) flipup
@@ -238,6 +241,7 @@ flipperWidget recentTabs flipStep flipdone selfSelD openAt0 cancelE enterE atTit
     , const 0 <$ openAt0
     , const 0 <$ cancelE
     , const 0 <$ enterE
+    , const 0 <$ clickE
     ]
   let selectionD = listToMaybe <$> (drop <$> selectionIndexD <*> recentTabs)
   clickE <- fmap (fmap (mconcat . (^.. traverse))) $

@@ -700,9 +700,11 @@ agentsCss = do
           "pointer-events" -: "none"
           "left" -: "0"
           "top" -: "0"
+        -- (inherit, not visible: a pane behind another side-bar tab is
+        -- visibility:hidden, and a "visible" child would show through it)
         shown = do
           "position" -: "static"
-          "visibility" -: "visible"
+          "visibility" -: "inherit"
           "pointer-events" -: "auto"
     ".agents-pane .agents-head-narrow" ? measurable
     ".agents-pane .agents-head-tight .agents-head-narrow" ? shown
