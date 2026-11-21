@@ -36,6 +36,7 @@ module IDE.Web.HookSessions
   , hookSessionDir
   , hookTranscriptOf
   , hookStarted
+  , hookSessionsIn
     -- * Files
   , hookPrune
   , leksahDir
@@ -350,6 +351,15 @@ hookIsSession :: HookStore -> Text -> IO Bool
 hookIsSession st sid = do
   live <- isJust <$> hookRecordFor st sid
   if live then return True else M.member sid <$> readIndex st
+
+-- | The sessions that ran in @dir@ with a conversation of their own (not a
+-- launch token that never got one), and their transcripts.
+hookSessionsIn :: HookStore -> FilePath -> IO [(Text, FilePath)]
+hookSessionsIn st dir = do
+  let d = dropTrailingPathSeparator dir
+  m <- readIndex st
+  return [ (sid, tr) | (sid, (tr, cw)) <- M.toList m, not (null tr)
+                     , dropTrailingPathSeparator cw == d ]
 
 -- | Where a session ran, if leksah knows.
 hookSessionDir :: HookStore -> Text -> IO (Maybe FilePath)

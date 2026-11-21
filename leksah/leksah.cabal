@@ -184,6 +184,9 @@ library
         IDE.Web.Codex
         IDE.Web.Agy
         IDE.Web.AgentCli
+        IDE.Web.AgentGlyph
+        IDE.Web.RecentSessions
+        IDE.Web.Widget.AgentMenu
         IDE.Web.HookSessions
         IDE.Web.AISession
         IDE.Web.Agent
