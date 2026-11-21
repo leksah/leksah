@@ -142,7 +142,16 @@ that default on top — tap the chord and let go to use it, or hold the modifier
 and press again (or use the arrow keys) to pick another, which then becomes
 that pane's default. A session you pick that has since exited is resumed.
 
-**Agents have names and faces.** Every Claude Code session Leksah sees is
+**Three kinds of agent.** Leksah works with Claude Code, OpenAI's Codex CLI
+and Google's Antigravity CLI (`agy`) alike: a session of any of them is an
+agent, shown with its CLI's badge (Claude's robot, Codex's cloud,
+Antigravity's arch). Leksah follows Codex and agy sessions through hooks it
+installs into them the first time it starts one (`leksah-cmd codex
+install|status` and `leksah-cmd agy install|status` do it by hand; Codex asks
+you to trust the hooks once). `agent fork --codex` or `--agy` starts one of
+those instead of a Claude Code session.
+
+**Agents have names and faces.** Every agent session Leksah sees is
 given an animal name — Wren, Otter, Heron… — and a matching face, used
 everywhere it appears: its tab, its tmux session, the tab flipper (per pane,
 so a window holding two agents shows both), the status light, the menu-bar
@@ -168,11 +177,28 @@ card says what the agent is doing right now (the tool it is running, the
 approval it is waiting for, an API error its last turn ended on), the files
 it edited, the branch and pull request it is on, and the description it
 wrote for itself, with links to its PRs, CI builds and issues. **⟳** asks it
-to refresh that; **＋ New agent** and a card's **Branch off** start another.
-Clicking a card brings the agent's pane to the front, or resumes it where it
-left off. Leksah learns all this from Claude Code's hooks, which it installs
-for the sessions it launches — the same hooks warn an agent that is about to
-edit a file another live agent edited recently.
+to refresh that; **＋** starts a new agent of the kind its badge shows (click
+the badge to choose another), and a card's **Branch off** starts another from
+it. **Approve** and **Deny** answer an agent waiting on a tool. In a narrow
+side bar the header folds its buttons into a **⋯** menu. Clicking a card
+brings the agent's pane to the front, or resumes it where it left off. Leksah
+learns all this from the CLIs' hooks, which it installs for the sessions it
+launches — the same hooks warn an agent that is about to edit a file another
+live agent edited recently.
+
+**Starting and continuing agents from a project.** The workspace tree's
+project, package, worktree and folder menus offer **New Claude / Codex /
+Antigravity Session** (for each CLI on PATH, with its badge) and **Continue
+Recent Session ▸**: the sessions that ran in that folder and are not
+running, newest first, whichever CLI ran them — with each agent's face,
+badge, name and what it was about. ⌥-click opens one in a split.
+
+**Agents on other machines.** In a project on a machine you reach over SSH
+whose leksah tmux server this leksah shares, agents run on that machine —
+Claude Code, Codex and agy alike — and show up here like local ones: named,
+with their state, readable, and answerable from their cards. A leksah
+running there is not needed: when none answers an agent's hooks, the
+leksah showing the machine keeps the agent's records for it.
 
 **The Team pane** (AI ▸ Team) shows a bio card for every agent; **the Manager
 pane** (bottom bar, ⌃⌘5) is the team's manager agent — one per workspace,
