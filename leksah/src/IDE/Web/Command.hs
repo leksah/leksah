@@ -44,6 +44,7 @@ import IDE.Workspace
         activeProject, prDir)
 import IDE.Ws.Types (Package, Project(..), Verb(..))
 import IDE.Web.Claude (runClaudeCmd, ClaudeCmd(..))
+import IDE.Web.AgentCli (AgentCli(..))
 
 -- | The active-target flavours of a command's action: run with the current
 -- workspace snapshot / the active project / the active package (a build-log
@@ -454,7 +455,15 @@ commandCodexNew = CommandIDEAction
   ""
   "Start an OpenAI Codex session in the active project"
   (\app -> readCell (wsCell (appWorkspace app)) >>=
-      mapM_ (runClaudeCmd . CodexNew . prDir) . activeProject)
+      mapM_ (runClaudeCmd . CliNew CliCodex . prDir) . activeProject)
+
+-- | Start a new Antigravity (agy) session in the active project's directory.
+commandAgyNew :: Command
+commandAgyNew = CommandIDEAction
+  ""
+  "Start a Google Antigravity CLI session in the active project"
+  (\app -> readCell (wsCell (appWorkspace app)) >>=
+      mapM_ (runClaudeCmd . CliNew CliAgy . prDir) . activeProject)
 
 -- | Continue the most recent Claude Code session in the active project.
 commandClaudeContinue :: Command

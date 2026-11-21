@@ -82,6 +82,8 @@ import IDE.Web.AgentInfo
         interruptedOffer, latestInterruption, stripTags)
 import IDE.Web.Claude (ClaudeCmd(..), claudeRemoveBackground, runClaudeCmd)
 import IDE.Web.Codex (codexAvailable)
+import IDE.Web.Agy (agyAvailable)
+import IDE.Web.AgentCli (AgentCli(..))
 import IDE.Web.Theme
        (btnBottomColor, btnHoverBottomColor, btnHoverTopColor, btnTopColor,
         dimColor, fgColor, hoverColor)
@@ -218,7 +220,16 @@ agentsWidget ctx mruNamesD = do
         performEvent_ $ ffor cxE $ \_ -> liftIO . void . forkIO $
           activeProjectDir >>= \case
             Nothing -> toast "Open a project first: a new agent starts in the active project"
-            Just d  -> runClaudeCmd (CodexNew d) >> refresh
+            Just d  -> runClaudeCmd (CliNew CliCodex d) >> refresh
+        -- (An arch, for Antigravity's logo.)
+        agyAvail <- liftIO agyAvailable
+        agyE <- if agyAvail
+                  then actionBtn "⋂" "Start a new Antigravity agent in the active project, in its own tab"
+                  else return never
+        performEvent_ $ ffor agyE $ \_ -> liftIO . void . forkIO $
+          activeProjectDir >>= \case
+            Nothing -> toast "Open a project first: a new agent starts in the active project"
+            Just d  -> runClaudeCmd (CliNew CliAgy d) >> refresh
         teamE <- actionBtn "👥" "Open the Team pane: a bio card for every agent"
         performEvent_ $ liftIO (requestKeymapCommand CommandShowTeam) <$ teamE
         h <- actionBtn "⟳" "Re-read the agent list"

@@ -32,6 +32,7 @@ import System.FilePath (takeFileName)
 
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AISession (AIChoice(..), AIRow(..))
+import IDE.Web.AgentCli (cliLabel)
 import IDE.Web.Theme (dimColor)
 import IDE.Web.Frame (MonadWidget)
 import IDE.Web.Widget.Flipper (overlayKeysJs)
@@ -120,7 +121,7 @@ aiChoiceLabel choiceD = do
       | not (T.null (arName r)) = "class" =: "ai-name"
     nameAttr _                  = "style" =: "display:none"
     titleFor (AISessionChoice r) = arTitle r
-    titleFor (AINewSession cx _) = if cx then "New Codex session" else "New Claude session"
+    titleFor (AINewSession cli _) = "New " <> cliLabel cli <> " session"
     dirFor (AISessionChoice r) = T.pack (takeFileName (arDir r))
     dirFor (AINewSession _ d)  = T.pack (takeFileName d)
     noteAttr (AISessionChoice r)

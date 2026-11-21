@@ -73,6 +73,8 @@ import IDE.Web.Claude
         copySessionId, revealSession, deleteSession)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.Codex (codexAvailable)
+import IDE.Web.Agy (agyAvailable)
+import IDE.Web.AgentCli (AgentCli(..))
 import IDE.Web.AgentNames (agentNames)
 import IDE.Web.AgentWorktrees (AgentWorktree, worktreesBySession)
 import IDE.Web.Worktree (requestNewWorktree)
@@ -262,7 +264,8 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
   -- Suppressed at a dir already covered by a project/package row's Claude node.
   avail <- liftIO claudeAvailable
   cxAvail <- liftIO codexAvailable
-  when (claudeHere && (avail || cxAvail)) $ agentsNode treeName dir
+  agyAvail <- liftIO agyAvailable
+  when (claudeHere && (avail || cxAvail || agyAvail)) $ agentsNode treeName dir
   postBuild <- getPostBuild
   newListE <- performEvent $ filesAndDirs dir <$ postBuild
   allD <- holdDyn ([], []) newListE
@@ -297,7 +300,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
         isRevealD = (== Just subPath) <$> revealD
         dirClassD = ("class" =:) . ("dir" <>) . bool "" " active" . (== Just subPath) <$> highlightD
     treeItemDynAttr' underD dirClassD False (do
-      (dirEl, dmenuE) <- treeSelect' treeName (dirClaudeMenu avail cxAvail subPath) $ do
+      (dirEl, dmenuE) <- treeSelect' treeName (dirClaudeMenu avail cxAvail agyAvail subPath) $ do
         elAttr "img" ("class" =: "tree-icon" <> "src" =: imgSrc) $ return ()
         elDynClass "span" (gitNameClass <$> aggD) . text $ T.pack subdir
         return never
@@ -352,16 +355,17 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
 
 -- | The "New Claude Session" context menu for a directory row — empty when the
 -- @claude@ CLI isn't on PATH.  Each item's value is the 'IO' action to run.
-dirClaudeMenu :: forall t m. MonadWidget t m => Bool -> Bool -> FilePath -> m (Event t (IO ()))
-dirClaudeMenu avail cxAvail dir
-  | not avail && not cxAvail = return never
+dirClaudeMenu :: forall t m. MonadWidget t m => Bool -> Bool -> Bool -> FilePath -> m (Event t (IO ()))
+dirClaudeMenu avail cxAvail agyAvail dir
+  | not avail && not cxAvail && not agyAvail = return never
   | otherwise = menuSplit $
       [ constDyn ("New Claude Session",           (Just (STClaudeNew dir),      runClaudeCmd (ClaudeNew dir))) | avail ] <>
       [ constDyn ("Continue Last Claude Session", (Just (STClaudeContinue dir), runClaudeCmd (ClaudeContinue dir))) | avail ] <>
       -- Worktrees are created on the local git CLI; remote dirs don't offer it.
       [ constDyn ("New Claude Session in Worktree…", (Nothing, requestNewWorktree dir))
       | avail, not (isRemotePath dir) ] <>
-      [ constDyn ("New Codex Session", (Just (STCodexNew dir), runClaudeCmd (CodexNew dir))) | cxAvail ]
+      [ constDyn ("New Codex Session", (Just (STCliNew CliCodex dir), runClaudeCmd (CliNew CliCodex dir))) | cxAvail ] <>
+      [ constDyn ("New Antigravity Session", (Just (STCliNew CliAgy dir), runClaudeCmd (CliNew CliAgy dir))) | agyAvail ]
 
 -- | The right-click menu for a file row — currently just "Ask Claude about this
 -- file", which starts a @claude@ session seeded to explain it.  Empty (so the
@@ -476,7 +480,7 @@ agentsNodeKids treeName dir extraD mkids = do
   -- Cold, that pegged eight cores for minutes after every ghci reload (the
   -- byte-offset cache was a CAF, so :reload wiped it).  Don't reintroduce it.
   let doScan = void . forkIO $ do
-        ok <- (||) <$> claudeAvailable <*> codexAvailable
+        ok <- or <$> sequence [claudeAvailable, codexAvailable, agyAvailable]
         (if ok then claudeSessionsFor dir else return []) >>= fireSess
         (if ok then claudeRunning dir     else return False) >>= fireRun
   performEvent_ $ liftIO doScan <$ pb
@@ -497,7 +501,8 @@ agentsNodeKids treeName dir extraD mkids = do
   namesD <- holdUniqDyn =<< holdDyn M.empty (snd <$> nameE)
   sessD <- holdDyn [] sessE
   runD  <- holdUniqDyn =<< holdDyn False runE
-  -- (Or an agent is running here: a Codex one has no saved session listed.)
+  -- (Or an agent is running here: a Codex or agy one has no saved session
+  -- listed.)
   hasD  <- holdUniqDyn ((\ss ex run -> not (null ss) || not (null ex) || run)
                           <$> sessD <*> extraD <*> runD)
   -- The node's status badge: the "worst" state among the live sessions running
@@ -506,9 +511,10 @@ agentsNodeKids treeName dir extraD mkids = do
   -- readable (older CLI).
   let badgeD = zipDynWith nodeBadge runD liveD
   cxAvail <- liftIO codexAvailable
+  agyAvail <- liftIO agyAvailable
   void . dyn $ ffor hasD $ \has -> when has . void $
     treeItem "agents" False
-      (do (rowEl, dmenuE) <- treeSelect' treeName (rootMenu cxAvail) $ do
+      (do (rowEl, dmenuE) <- treeSelect' treeName (rootMenu cxAvail agyAvail) $ do
              agentIcon
              dynText $ (\ss ex -> "Agents (" <> T.pack (show (length ss + length ex)) <> ")")
                          <$> sessD <*> extraD
@@ -543,7 +549,7 @@ agentsNodeKids treeName dir extraD mkids = do
           Just ("●", "#3fb950", "An agent session is running here")
       | otherwise = Nothing
       where here = [ l | l <- M.elems m, clDir l == dropTrailingPathSeparator dir ]
-    rootMenu cxAvail = menuSplit $
+    rootMenu cxAvail agyAvail = menuSplit $
       [ constDyn ("New Claude Session",           (Just (STClaudeNew dir),      runClaudeCmd (ClaudeNew dir)))
       , constDyn ("Continue Last Claude Session", (Just (STClaudeContinue dir), runClaudeCmd (ClaudeContinue dir)))
       , constDyn ("Resume Session…",              (Nothing,                     runClaudeCmd (ClaudeResumePicker dir)))
@@ -552,7 +558,8 @@ agentsNodeKids treeName dir extraD mkids = do
       | not (isRemotePath dir) ] <>
       [ constDyn ("Agent Task Queue…", (Nothing, requestTaskQueue dir))
       | not (isRemotePath dir) ] <>
-      [ constDyn ("New Codex Session", (Just (STCodexNew dir), runClaudeCmd (CodexNew dir))) | cxAvail ]
+      [ constDyn ("New Codex Session", (Just (STCliNew CliCodex dir), runClaudeCmd (CliNew CliCodex dir))) | cxAvail ] <>
+      [ constDyn ("New Antigravity Session", (Just (STCliNew CliAgy dir), runClaudeCmd (CliNew CliAgy dir))) | agyAvail ]
 
 -- | One session row under an Agents node (@rescan@ refreshes the list, e.g. after
 -- a delete; @liveD@ is the live-session map, polled by 'agentsNode', so renaming

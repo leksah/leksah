@@ -158,6 +158,8 @@ import IDE.Web.Claude
        (leksahPluginInstall, leksahPluginStatus, leksahPluginUninstall, leksahPluginWrite,
         sessionOwningPid)
 import IDE.Web.Codex (codexInstall, codexStatus, codexUninstall)
+import IDE.Web.Agy (agyInstall, agyStatus, agyUninstall)
+import IDE.Web.AgentCli (AgentCli(..))
 
 import IDE.Web.Instance (cmdSocketFileName)
 import IDE.Web.Handoff (handoffEnabled, requestHandoff)
@@ -481,6 +483,12 @@ handleConn app conn = do
       ("codex" : "uninstall" : _) -> codexUninstall >>= reply
       ("codex" : rest) | rest `elem` [[], ["status"]] -> codexStatus >>= reply
       ("codex" : _) -> reply "codex: install | uninstall | status  (leksah must be running)\n"
+      -- Antigravity (agy) sessions report through hooks in agy's hooks.json
+      -- and a title command in its settings.json (see "IDE.Web.Agy").
+      ("agy" : "install" : _)   -> agyInstall >>= reply
+      ("agy" : "uninstall" : _) -> agyUninstall >>= reply
+      ("agy" : rest) | rest `elem` [[], ["status"]] -> agyStatus >>= reply
+      ("agy" : _) -> reply "agy: install | uninstall | status  (leksah must be running)\n"
 
       -- Cheap liveness check for `leksah-cmd wait-ready` / `restart --wait`:
       -- answered as soon as the control socket is serving, so it marks the point
@@ -1026,8 +1034,10 @@ handleConn app conn = do
           "--tab"      -> go fr { frPlace = PlaceTab    } as
           "--window"   -> go fr { frPlace = PlaceTab    } as
           "--fresh"    -> go fr { frFresh = True } as
-          "--codex"    -> go fr { frCodex = True, frFresh = True } as
-          "--claude"   -> go fr { frClaude = True } as
+          "--codex"    -> go fr { frCli = Just CliCodex, frFresh = True } as
+          "--agy"      -> go fr { frCli = Just CliAgy, frFresh = True } as
+          "--antigravity" -> go fr { frCli = Just CliAgy, frFresh = True } as
+          "--claude"   -> go fr { frCli = Just CliClaude } as
           "--from"     -> arg as $ \v as' -> go fr { frFrom = Just v } as'
           "--as"       -> arg as $ \v as' -> go fr { frRole = Just v } as'
           "--dir"      -> arg as $ \v as' -> go fr { frDir = Just (resolve cwd v) } as'
@@ -1121,8 +1131,9 @@ handleConn app conn = do
       , "      --as ROLE         a fresh agent in that role (see `agent roles`)"
       , "      --dir DIR         work here (only with --fresh: see `agent fork`)"
       , "      --codex           a fresh OpenAI Codex agent instead of Claude Code"
-      , "      --claude          Claude Code, also when you are a Codex agent (whose"
-      , "                        forks are fresh Codex agents otherwise)"
+      , "      --agy             a fresh Google Antigravity (agy) agent instead"
+      , "      --claude          Claude Code, also when you are a Codex or agy agent"
+      , "                        (whose forks are fresh ones of their own kind otherwise)"
       , "  list                  live sessions: id, name, state (waiting/busy/idle),"
       , "                        detail, pane, dir, title"
       , "      --all             also the agents not running but waiting to be"

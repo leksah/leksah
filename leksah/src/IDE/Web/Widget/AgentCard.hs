@@ -308,7 +308,8 @@ badgeAttrs, managerAttrs, roleAttrs, stateAttrs, ageAttrs, line3Attrs, branchAtt
   :: AgentNode -> Map Text Text
 badgeAttrs n = "class" =: "agent-card-badge" <> "style" =: ("color:" <> colourOf (anState n))
 -- | The badge on the left of the face: which CLI the agent runs in — Codex's
--- logo (its rounded cloud with a @>_@ prompt cut out) or Claude Code's spark.
+-- logo (its rounded cloud with a @>_@ prompt cut out), Antigravity's arch, or
+-- Claude Code's robot.
 -- Drawn, not typed: a font glyph sits on its baseline, so it never lines up
 -- with the state glyph opposite; these are centred in their box by
 -- construction.  The Codex mark is its mid-blue rather than its gradient: the
@@ -336,6 +337,15 @@ agentGlyph "codex" =
   \694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 \
   \00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.84\
   \9.849 0 000-1.696h-4.848z\"/></svg>"
+-- Antigravity's arch, smooth and in its colours as its website shows it (an
+-- arch on a ground of blue, warming to yellow, orange and red at the peak,
+-- with green on the left — drawn for leksah, not Google's file).  An @img@
+-- of a data-URI SVG rather than inline SVG: its gradients need ids, and an
+-- image is a document of its own, so the same ids on every card can't clash
+-- (nor go unpainted when the first card holding them is hidden).
+agentGlyph "agy" =
+  "<img class=\"agent-glyph-agy\" alt=\"\" title=\"Antigravity agent\" src=\"data:image/svg+xml,"
+    <> T.replace "#" "%23" (T.replace "<" "%3C" (T.replace ">" "%3E" agyLogoSvg)) <> "\">"
 -- Claude Code's: its little orange robot, exactly as its banner draws it in
 -- quadrant blocks:
 --
@@ -351,6 +361,31 @@ agentGlyph _ =
   \shape-rendering=\"crispEdges\"><title>Claude Code agent</title><path d=\"\
   \M3 0h13v2H3zM3 2h2v2H3zM6 2h7v2H6zM14 2h2v2h-2zM1 4h17v2H1zM3 6h13v2H3z\
   \M3 8h1v2H3zM5 8h1v2H5zM13 8h1v2h-1zM15 8h1v2h-1z\"/></svg>"
+
+-- | Antigravity's badge ('agentGlyph'): its arch, clipped from a blue ground
+-- with soft spots of the logo's other colours.  Single quotes only (it goes
+-- into a double-quoted attribute).
+agyLogoSvg :: Text
+agyLogoSvg = T.concat
+  [ "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs>"
+  , "<clipPath id='a'><path d='M85 90C90 94 97 91 91 85C71 65 74 8 50 8C26 8 29 65 9 85"
+  , "C3 91 10 94 15 90C35 76 33 52 50 52C67 52 65 76 85 90Z'/></clipPath>"
+  , spot "g" 20 38 34 "#00B95C" ".85" Nothing
+  , spot "r" 68 24 34 "#FC413D" "1" (Just ".7")
+  , spot "o" 52 10 16 "#FBBC04" "1" Nothing
+  , spot "y" 38 16 22 "#FFE432" "1" Nothing
+  , "</defs><g clip-path='url(#a)'><rect width='100' height='100' fill='#3186FF'/>"
+  , T.concat [ "<rect width='100' height='100' fill='url(#" <> i' <> ")'/>" | i' <- ["g", "r", "o", "y"] ]
+  , "</g></svg>" ]
+  where
+    spot :: Text -> Int -> Int -> Int -> Text -> Text -> Maybe Text -> Text
+    spot i' cx cy r c o mid = T.concat
+      [ "<radialGradient id='", i', "' cx='", tshow cx, "' cy='", tshow cy, "' r='", tshow r
+      , "' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='", c
+      , "' stop-opacity='", o, "'/>"
+      , maybe "" (\m -> "<stop offset='.5' stop-color='" <> c <> "' stop-opacity='" <> m <> "'/>") mid
+      , "<stop offset='1' stop-color='", c, "' stop-opacity='0'/></radialGradient>" ]
+    tshow = T.pack . show
 managerAttrs n = if anManager n then "class" =: "agent-card-tag agent-card-tag-manager"
                                 else hidden
 roleAttrs n = maybe hidden (const ("class" =: "agent-card-tag")) (anRole n)
@@ -549,6 +584,11 @@ agentCardCss = do
   ".agent-card .agent-card-agent svg.agent-glyph-codex" ? do
     "width" -: "11px"
     "height" -: "11px"
+  -- Antigravity's arch (an image: see 'agentGlyph'), square.
+  ".agent-card .agent-card-agent img.agent-glyph-agy" ? do
+    "display" -: "block"
+    "width" -: "12px"
+    "height" -: "12px"
   -- The robot is wide and short (17:10): as wide as the badge allows.
   ".agent-card .agent-card-agent svg.agent-glyph-claude" ? do
     "width" -: "12px"

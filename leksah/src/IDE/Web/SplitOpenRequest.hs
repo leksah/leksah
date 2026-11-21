@@ -21,6 +21,7 @@ module IDE.Web.SplitOpenRequest
 import Control.Concurrent.Chan (Chan, newChan, writeChan, readChan)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.Text (Text)
+import IDE.Web.AgentCli (AgentCli)
 
 -- | What to open into the freshly-split pane.
 data SplitTarget
@@ -32,7 +33,8 @@ data SplitTarget
   | STClaudeResume FilePath Text -- ^ @claude --resume <id>@ (dir, session id)
   | STClaudeFork FilePath Text   -- ^ @claude --resume <id> --fork-session@
   | STClaudeAsk FilePath         -- ^ @claude "<explain this file>"@ (the file)
-  | STCodexNew FilePath          -- ^ @codex@ in the project dir
+  | STCliNew AgentCli FilePath   -- ^ a new Codex \/ Antigravity (\/ Claude) session
+                                 --   in the project dir
   | STBrowser Int                -- ^ a browser pane by its (pre-minted) id —
                                  --   the URL is already in the pane registry
                                  --   ('IDE.Web.Widget.Browser.rememberUrl')
