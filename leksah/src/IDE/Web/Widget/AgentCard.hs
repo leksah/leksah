@@ -347,28 +347,45 @@ agentGlyph "codex" =
 -- one unit per quadrant, two tall because a terminal cell is twice as tall as
 -- it is wide.  The eyes are the gaps in the second row: the badge shows
 -- through them.
--- Antigravity's arch, as the agy CLI's banner draws it in half blocks:
---
--- >     ▄▀▀▄
--- >    ▀▀▀▀▀▀
--- >   ▀▀▀▀▀▀▀▀
--- >  ▄▀▀    ▀▀▄
--- > ▄▀▀      ▀▀▄
---
--- (each @▀@ there has a background colour too, so it is a whole cell; a @▄@
--- is the lower half) — one unit wide, two tall per cell, like the robot.  In
--- the middle blue of the banner's green-to-blue gradient.
+-- Antigravity's arch, smooth and in its colours as its website shows it (an
+-- arch on a ground of blue, warming to yellow, orange and red at the peak,
+-- with green on the left — drawn for leksah, not Google's file).  An @img@
+-- of a data-URI SVG rather than inline SVG: its gradients need ids, and an
+-- image is a document of its own, so the same ids on every card can't clash
+-- (nor go unpainted when the first card holding them is hidden).
 agentGlyph "agy" =
-  "<svg class=\"agent-glyph-agy\" viewBox=\"1 0 12 10\" fill=\"#5fafd7\" \
-  \shape-rendering=\"crispEdges\"><title>Antigravity agent</title><path d=\"\
-  \M5 1h1v1H5zM6 0h2v2H6zM8 1h1v1H8zM4 2h6v2H4zM3 4h8v2H3z\
-  \M2 7h1v1H2zM3 6h2v2H3zM9 6h2v2H9zM11 7h1v1h-1z\
-  \M1 9h1v1H1zM2 8h2v2H2zM10 8h2v2h-2zM12 9h1v1h-1z\"/></svg>"
+  "<img class=\"agent-glyph-agy\" alt=\"\" title=\"Antigravity agent\" src=\"data:image/svg+xml,"
+    <> T.replace "#" "%23" (T.replace "<" "%3C" (T.replace ">" "%3E" agyLogoSvg)) <> "\">"
 agentGlyph _ =
   "<svg class=\"agent-glyph-claude\" viewBox=\"1 0 17 10\" fill=\"#d97757\" \
   \shape-rendering=\"crispEdges\"><title>Claude Code agent</title><path d=\"\
   \M3 0h13v2H3zM3 2h2v2H3zM6 2h7v2H6zM14 2h2v2h-2zM1 4h17v2H1zM3 6h13v2H3z\
   \M3 8h1v2H3zM5 8h1v2H5zM13 8h1v2h-1zM15 8h1v2h-1z\"/></svg>"
+
+-- | Antigravity's badge ('agentGlyph'): its arch, clipped from a blue ground
+-- with soft spots of the logo's other colours.  Single quotes only (it goes
+-- into a double-quoted attribute).
+agyLogoSvg :: Text
+agyLogoSvg = T.concat
+  [ "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs>"
+  , "<clipPath id='a'><path d='M85 90C90 94 97 91 91 85C71 65 74 8 50 8C26 8 29 65 9 85"
+  , "C3 91 10 94 15 90C35 76 33 52 50 52C67 52 65 76 85 90Z'/></clipPath>"
+  , spot "g" 20 38 34 "#00B95C" ".85" Nothing
+  , spot "r" 68 24 34 "#FC413D" "1" (Just ".7")
+  , spot "o" 52 10 16 "#FBBC04" "1" Nothing
+  , spot "y" 38 16 22 "#FFE432" "1" Nothing
+  , "</defs><g clip-path='url(#a)'><rect width='100' height='100' fill='#3186FF'/>"
+  , T.concat [ "<rect width='100' height='100' fill='url(#" <> i' <> ")'/>" | i' <- ["g", "r", "o", "y"] ]
+  , "</g></svg>" ]
+  where
+    spot :: Text -> Int -> Int -> Int -> Text -> Text -> Maybe Text -> Text
+    spot i' cx cy r c o mid = T.concat
+      [ "<radialGradient id='", i', "' cx='", tshow cx, "' cy='", tshow cy, "' r='", tshow r
+      , "' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='", c
+      , "' stop-opacity='", o, "'/>"
+      , maybe "" (\m -> "<stop offset='.5' stop-color='" <> c <> "' stop-opacity='" <> m <> "'/>") mid
+      , "<stop offset='1' stop-color='", c, "' stop-opacity='0'/></radialGradient>" ]
+    tshow = T.pack . show
 managerAttrs n = if anManager n then "class" =: "agent-card-tag agent-card-tag-manager"
                                 else hidden
 roleAttrs n = maybe hidden (const ("class" =: "agent-card-tag")) (anRole n)
@@ -567,10 +584,11 @@ agentCardCss = do
   ".agent-card .agent-card-agent svg.agent-glyph-codex" ? do
     "width" -: "11px"
     "height" -: "11px"
-  -- The arch is 12:10.
-  ".agent-card .agent-card-agent svg.agent-glyph-agy" ? do
-    "width" -: "11px"
-    "height" -: "9px"
+  -- Antigravity's arch (an image: see 'agentGlyph'), square.
+  ".agent-card .agent-card-agent img.agent-glyph-agy" ? do
+    "display" -: "block"
+    "width" -: "12px"
+    "height" -: "12px"
   -- The robot is wide and short (17:10): as wide as the badge allows.
   ".agent-card .agent-card-agent svg.agent-glyph-claude" ? do
     "width" -: "12px"
