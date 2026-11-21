@@ -133,6 +133,8 @@ import IDE.Web.AgentWorktrees
        (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, currentClaimants,
         worktreesBySession, worktreesOfAgent)
 import IDE.Web.Codex (codexAvailable)
+import IDE.Web.Agy (agyAvailable)
+import IDE.Web.AgentCli (AgentCli(..))
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
 import IDE.Web.WorktreeRegistry
@@ -655,9 +657,9 @@ gitSubmoduleMenu dir path = menuSplit
 -- removing it never loses anything: the row itself stays, so a closed worktree
 -- project is one click from coming back.
 worktreeMenu :: forall t m. MonadWidget t m
-             => (Bool, Bool) -> FilePath -> GitWorktree
+             => (Bool, Bool, Bool) -> FilePath -> GitWorktree
              -> Dynamic t (Maybe ProjectKey) -> m (Event t (IO ()))
-worktreeMenu (claudeAvail, cxAvail) dir wt keyD = menuSplit $
+worktreeMenu (claudeAvail, cxAvail, agyAvail) dir wt keyD = menuSplit $
   [ ffor keyD $ \case
       Nothing -> ("Add as Project",
                   (Nothing, withApp $ \app -> projectOpenPath (appWorkspace app) p))
@@ -675,8 +677,11 @@ worktreeMenu (claudeAvail, cxAvail) dir wt keyD = menuSplit $
               ( if local then Just (STClaudeContinue p) else Nothing
               , runClaudeCmd (ClaudeContinue p) )) | claudeAvail ] <>
   [ constDyn ("New Codex Session Here",
-              ( if local then Just (STCodexNew p) else Nothing
-              , runClaudeCmd (CodexNew p) )) | cxAvail ] <>
+              ( if local then Just (STCliNew CliCodex p) else Nothing
+              , runClaudeCmd (CliNew CliCodex p) )) | cxAvail ] <>
+  [ constDyn ("New Antigravity Session Here",
+              ( if local then Just (STCliNew CliAgy p) else Nothing
+              , runClaudeCmd (CliNew CliAgy p) )) | agyAvail ] <>
   -- The session the registry says owns this worktree (newest created/working
   -- claim) — see "IDE.Web.WorktreeRegistry"; sessions register through
   -- `leksah-cmd agent register` / the register_worktree MCP tool.
@@ -902,6 +907,7 @@ worktreeProjectNode :: forall t m . MonadWidget t m
 worktreeProjectNode env dir wt = do
   claudeAvail <- liftIO claudeAvailable
   cxAvail <- liftIO codexAvailable
+  agyAvail <- liftIO agyAvailable
   statusD <- claudeStatusRowsD
   let p     = fullWorktreePath dir wt
       pNorm = dropTrailingPathSeparator p
@@ -936,7 +942,7 @@ worktreeProjectNode env dir wt = do
         T.pack p <> (if T.null story then "" else "\n" <> story)
   void $ treeItem "worktree" False
     (do (rowEl, mE) <- treeSelect' "workspace"
-                         (worktreeMenu (claudeAvail, cxAvail) dir wt pKeyD) $ do
+                         (worktreeMenu (claudeAvail, cxAvail, agyAvail) dir wt pKeyD) $ do
             gitIcon
             -- The agents whose worktree this is now (current claims).
             void . dyn $ ffor facesD $ mapM_ $ \(_, name) ->
@@ -1914,6 +1920,7 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
     (do
       claudeAvail <- liftIO claudeAvailable
       cxAvail <- liftIO codexAvailable
+      agyAvail <- liftIO agyAvailable
       -- ⌥-clicking the terminal/Claude items opens them into a split of
       -- the active pane (⌥⇧ = the other direction), like the ⌥-open
       -- tree gestures; wrapSplit embeds the request in the menu's
@@ -1951,7 +1958,8 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
         -- session or continue the most recent one in the project dir.
         <> [ constDyn ("New Claude Session", (localTgt (STClaudeNew (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeNew (pkRoot pKey))))))) | claudeAvail ]
         <> [ constDyn ("Continue Last Claude Session", (localTgt (STClaudeContinue (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (ClaudeContinue (pkRoot pKey))))))) | claudeAvail ]
-        <> [ constDyn ("New Codex Session", (localTgt (STCodexNew (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (CodexNew (pkRoot pKey))))))) | cxAvail ]) $ do
+        <> [ constDyn ("New Codex Session", (localTgt (STCliNew CliCodex (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (CliNew CliCodex (pkRoot pKey))))))) | cxAvail ]
+        <> [ constDyn ("New Antigravity Session", (localTgt (STCliNew CliAgy (pkRoot pKey)), ProjectCommand (CommandIDEAction "" "" (const (runClaudeCmd (CliNew CliAgy (pkRoot pKey))))))) | agyAvail ]) $ do
         elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-project.svg") $ return ()
         -- A worktree project: the faces of the agents working in it.
         when nested $ do
@@ -2034,7 +2042,8 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
     -- it's reachable without drilling into the Files node.
     claudeAvail <- liftIO claudeAvailable
     cxAvail <- liftIO codexAvailable
-    when (claudeAvail || cxAvail) $ do
+    agyAvail <- liftIO agyAvailable
+    when (claudeAvail || cxAvail || agyAvail) $ do
         -- A project dir that is itself a worktree also lists
         -- the sessions the registry links to it, INSIDE its
         -- Agents node after its own sessions ('worktreeClaims').
@@ -2088,7 +2097,8 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
             ]
             <> [ pkgClaude "New Claude Session" ClaudeNew STClaudeNew | claudeAvail ]
             <> [ pkgClaude "Continue Last Claude Session" ClaudeContinue STClaudeContinue | claudeAvail ]
-            <> [ pkgClaude "New Codex Session" CodexNew STCodexNew | cxAvail ]) $ do
+            <> [ pkgClaude "New Codex Session" (CliNew CliCodex) (STCliNew CliCodex) | cxAvail ]
+            <> [ pkgClaude "New Antigravity Session" (CliNew CliAgy) (STCliNew CliAgy) | agyAvail ]) $ do
           elAttr "img" ("class" =: "tree-icon" <> "src" =: "/pics/tree-package.svg") $ return ()
           -- The package's cabal-file path (relative to the project)
           -- is a tooltip, not an inline label — it was crowding the

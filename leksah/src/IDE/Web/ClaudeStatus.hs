@@ -81,7 +81,7 @@ data ClaudeStatusRow = ClaudeStatusRow
                           --   ('backgroundNeedsYou': blocked, recently) — it
                           --   counts on every status surface, but is not a live
                           --   session (no pane; showing it resumes it)
-  , csrAgent   :: Text  -- ^ which CLI runs it: @claude@ or @codex@
+  , csrAgent   :: Text  -- ^ which CLI runs it: @claude@, @codex@ or @agy@
   , csrLastSaid :: Maybe Text -- ^ the first line of the last thing it said
                               --   ('IDE.Web.Claude.tgLastSaid')
   , csrHost    :: Maybe Text  -- ^ the machine it runs on, when not this one

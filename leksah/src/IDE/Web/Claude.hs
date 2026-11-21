@@ -144,10 +144,15 @@ import Text.Read (readMaybe)
 
 import IDE.App (appNote, appUi, getGlobalApp)
 import IDE.Web.Codex
-       (CodexLive(..), codexLiveRecords, codexEnsureInstalled, codexWriteScripts,
+       (HookLive(..), codexLiveRecords, codexEnsureInstalled, codexWriteScripts,
         codexClaimLaunch, codexRememberLaunch, codexStarted, isCodexProgram,
         codexAvailable, codexInteractive, codexKnownPid,
         codexTranscriptOf, rolloutFirstPrompt, rolloutTurns, isRollout)
+import IDE.Web.Agy
+       (agyLiveRecords, agyEnsureInstalled, agyWriteScripts, agyRememberLaunch,
+        agyStarted, agyLaunchSettings, agyTranscriptOf, agyFirstPrompt, agyTurns,
+        isAgyTranscript)
+import IDE.Web.AgentCli (AgentCli(..), cliTag)
 import IDE.Reactive (readCell)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.DemoAgents (demoShowAgent)
@@ -234,9 +239,9 @@ data ClaudeLive = ClaudeLive
                                 --   one ("IDE.Web.RemoteAgents": a session on a
                                 --   host whose leksah tmux server this leksah
                                 --   shares); 'Nothing' here
-  , clAgent      :: Text        -- ^ which CLI runs it: @claude@, or @codex@ (a
-                                --   record leksah's own hooks keep — see
-                                --   "IDE.Web.Codex")
+  , clAgent      :: Text        -- ^ which CLI runs it ('cliTag'): @claude@, or
+                                --   @codex@ \/ @agy@ (a record leksah's own hooks
+                                --   keep — see "IDE.Web.HookSessions")
   } deriving (Eq, Show)
 
 -- | Every Claude Code session running right now.
@@ -299,17 +304,22 @@ continuedFrom l = (`catch` \(_ :: SomeException) -> return Nothing) $ do
       return [ T.pack (takeBaseName f) | not (null says) ]
     return (listToMaybe (concat hits))
 
--- | Every @~\/.claude\/sessions\/*.json@ as a 'ClaudeLive', and every Codex
--- session leksah's hooks keep a record of ("IDE.Web.Codex") — pid liveness and
--- continuations not considered yet.
+-- | Every @~\/.claude\/sessions\/*.json@ as a 'ClaudeLive', and every Codex and
+-- Antigravity session leksah's hooks keep a record of
+-- ("IDE.Web.HookSessions") — pid liveness and continuations not considered
+-- yet.
 claudeSessionFiles :: IO [ClaudeLive]
-claudeSessionFiles = (<>) <$> claudeOwnSessionFiles <*> (map fromCodex <$> codexLiveRecords)
+claudeSessionFiles = do
+  own   <- claudeOwnSessionFiles
+  codex <- map (fromHook CliCodex) <$> codexLiveRecords
+  agy   <- map (fromHook CliAgy) <$> agyLiveRecords
+  return (own <> codex <> agy)
   where
-    fromCodex r = ClaudeLive
-      { clPid = cxPid r, clSession = cxSession r, clDir = cxDir r, clName = Nothing
+    fromHook cli r = ClaudeLive
+      { clPid = hlPid r, clSession = hlSession r, clDir = hlDir r, clName = Nothing
       , clDerivedName = Nothing
-      , clStatus = Just (cxStatus r), clWaitingFor = cxWaitingFor r
-      , clJob = Nothing, clKind = Nothing, clHost = Nothing, clAgent = "codex" }
+      , clStatus = Just (hlStatus r), clWaitingFor = hlWaitingFor r
+      , clJob = Nothing, clKind = Nothing, clHost = Nothing, clAgent = cliTag cli }
 
 claudeOwnSessionFiles :: IO [ClaudeLive]
 claudeOwnSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
@@ -786,10 +796,11 @@ data ClaudeCmd
                                        --   the dir seeded with a free-form task
                                        --   prompt (the Stage-4 task queue)
   | ClaudeAgent        AgentSpec       -- ^ one agent forking another — see
-                                       --   "IDE.Web.Agent" (a Codex one too,
-                                       --   with 'asCodex')
-  | CodexNew           FilePath        -- ^ @codex@ — a fresh Codex session
-  | CodexResume        FilePath Text   -- ^ @codex resume <id>@
+                                       --   "IDE.Web.Agent" (a Codex or
+                                       --   Antigravity one too, with 'asCli')
+  | CliNew    AgentCli FilePath        -- ^ a fresh session of that CLI
+                                       --   (@claude@, @codex@, @agy@)
+  | CliResume AgentCli FilePath Text   -- ^ resume that CLI's session @<id>@
 
 -- | A child agent an agent asked for: what to run, and who asked.
 --
@@ -815,7 +826,8 @@ data AgentSpec = AgentSpec
                             --   its notes and permissions intact
   , asManager :: Bool       -- ^ it is the workspace's manager: 'managerNote',
                             --   and the wider allow-list that job needs
-  , asCodex   :: Bool       -- ^ run Codex rather than Claude Code ('codexCommandLine')
+  , asCli     :: AgentCli   -- ^ the CLI it runs in ('codexCommandLine',
+                            --   'agyCommandLine' for the others)
   } deriving (Eq, Show)
 
 -- | A fresh RFC 4122 version-4 UUID, the shape @claude --session-id@ wants.
@@ -865,8 +877,8 @@ claudeCmdDir = \case
   ClaudeAsk d            -> d
   ClaudePrompt d _       -> d
   ClaudeAgent s          -> asDir s
-  CodexNew d             -> d
-  CodexResume d _        -> d
+  CliNew _ d             -> d
+  CliResume _ d _        -> d
 
 -- | How 'runClaudeCmd' starts a command whose directory is on another
 -- machine (host, host-local dir): set at start-up by "IDE.Web.Agent"
@@ -911,18 +923,23 @@ claudeCommandLine (ClaudeNew d) = do
   claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Nothing
     , asParent = Nothing, asRoleNote = Nothing, asResume = False
-    , asManager = False, asCodex = False }
-claudeCommandLine (CodexNew d) = do
+    , asManager = False, asCli = CliClaude }
+claudeCommandLine (CliNew CliClaude d) = claudeCommandLine (ClaudeNew d)
+claudeCommandLine (CliResume CliClaude d i) = claudeCommandLine (ClaudeResume d i)
+-- (Codex and agy cannot be told their session id: a token stands in for it
+-- until the session reports its real one — see 'codexCommandLine'.)
+claudeCommandLine (CliNew cli d) = do
   tok <- newAgentSessionId
-  codexCommandLine AgentSpec
+  claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = tok, asFrom = Nothing, asPrompt = Nothing
     , asParent = Nothing, asRoleNote = Nothing, asResume = False
-    , asManager = False, asCodex = True }
-claudeCommandLine (CodexResume d i) = codexCommandLine AgentSpec
+    , asManager = False, asCli = cli }
+claudeCommandLine (CliResume cli d i) = claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = i, asFrom = Nothing, asPrompt = Nothing
     , asParent = Nothing, asRoleNote = Nothing, asResume = True
-    , asManager = False, asCodex = True }
-claudeCommandLine (ClaudeAgent s) | asCodex s = codexCommandLine s
+    , asManager = False, asCli = cli }
+claudeCommandLine (ClaudeAgent s) | asCli s == CliCodex = codexCommandLine s
+                                  | asCli s == CliAgy   = agyCommandLine s
 claudeCommandLine (ClaudePrompt d p) = do
   -- Pinned for the same reason, and so a queued task's agent has a name (and
   -- an Agents-pane identity) from the moment it starts.  The run key keeps the
@@ -931,7 +948,7 @@ claudeCommandLine (ClaudePrompt d p) = do
   claudeCommandLine . ClaudeAgent $ AgentSpec
     { asDir = d, asSession = sid, asFrom = Nothing, asPrompt = Just p
     , asParent = Nothing, asRoleNote = Nothing, asResume = False
-    , asManager = False, asCodex = False }
+    , asManager = False, asCli = CliClaude }
 claudeCommandLine cmd = do
   let d = dropTrailingPathSeparator dir
   mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
@@ -1061,6 +1078,40 @@ codexCommandLine s = do
       key = T.pack d <> "#claude#" <> asSession s
   return (d, key, maybe line (\p -> p <> " " <> line) mbPrefix)
 
+-- | The command line for an Antigravity (agy) agent.  Like Codex, agy cannot
+-- be told its conversation id, so 'asSession' is a TOKEN standing in for it
+-- (exported as @LEKSAH_AGENT_TOKEN@) until the session reports its real one —
+-- through its title command from the first prompt on, or its SessionStart
+-- hook ('IDE.Web.Agent.agyHook').  On a resume the token is the real id,
+-- which @--conversation=@ names.
+--
+-- The title command comes with the launch (@--settings@, merged over agy's
+-- settings.json and never saved), so a leksah launch reports what it is doing
+-- whatever title command the user has.  What a Claude session is told on its
+-- command line reaches an agy one from its SessionStart hook, which agy only
+-- runs for a new conversation: a resumed one keeps what its conversation
+-- already says.  The first launch installs leksah's hooks into agy if they
+-- are missing.
+agyCommandLine :: AgentSpec -> IO (FilePath, Text, Text)
+agyCommandLine s = do
+  let d = dropTrailingPathSeparator (asDir s)
+  mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
+  unless (isRemotePath d) $ do
+    _ <- agyWriteScripts
+    agyEnsureInstalled >>= mapM_ (\msg ->
+      getGlobalApp >>= mapM_ (\app -> appNote app msg))
+  -- Resuming an agent that never reached its first prompt has nothing to
+  -- resume (its id is still the launch token): start agy afresh under it.
+  started <- if asResume s then agyStarted (asSession s) else return False
+  unless started $ agyRememberLaunch (asSession s) d
+  settings <- agyLaunchSettings
+  let line = T.unwords $
+        [ "env", "LEKSAH_AGENT_TOKEN=" <> asSession s, "agy", "--settings", shq settings ]
+        <> [ "--conversation=" <> asSession s | started ]
+        <> maybe [] (\p -> ["-i", shq p]) (asPrompt s)
+      key = T.pack d <> "#claude#" <> asSession s
+  return (d, key, maybe line (\p -> p <> " " <> line) mbPrefix)
+
 -- | Codex processes in leksah's terminals that no record covers yet: record
 -- each straight away, so it shows up like any other agent.  Codex's TUI
 -- reports SessionStart only when the first prompt is sent, so without this a
@@ -1085,7 +1136,7 @@ codexDiscover = (`catch` \(_ :: SomeException) -> return ()) $
   recs  <- codexLiveRecords
   rejected <- readIORef discoverRejected
   let parents = fst <$> procs
-      covered = S.fromList (map cxPid recs)
+      covered = S.fromList (map hlPid recs)
       prog p = maybe "" (takeWhile (/= ' ') . snd) (M.lookup p procs)
       cands0 = [ p | (p, (q, args)) <- M.toList procs
                    , isCodexProgram (takeWhile (/= ' ') args), codexInteractive args
@@ -1169,7 +1220,7 @@ agentNote parent me = T.unlines
 -- | What the manager agent is for, and how it goes about it.
 managerNote :: Text
 managerNote = T.unlines
-  [ "You are the MANAGER of the coding agents (Claude Code and Codex sessions) running in this Leksah IDE. \
+  [ "You are the MANAGER of the coding agents (Claude Code, Codex and Antigravity sessions) running in this Leksah IDE. \
     \Your job is to keep the team effective — not to do the coding yourself. \
     \The user talks to you; you get the work to the right agent."
   , ""
@@ -1806,8 +1857,15 @@ data TranscriptGist = TranscriptGist
 noGist :: TranscriptGist
 noGist = TranscriptGist Nothing Nothing False Nothing
 
--- | The 'TranscriptGist' of a transcript (a Claude Code @.jsonl@, or a Codex
--- rollout), from its last 256KB: both lines are appended every turn, so the
+-- | The gist of a transcript read as turns (a Codex rollout, an agy
+-- transcript): what the agent last said.  They have no titles.
+turnsGistOf :: (FilePath -> IO [(Bool, Text)]) -> FilePath -> IO TranscriptGist
+turnsGistOf turns path = (`catch` \(_ :: SomeException) -> return noGist) $
+  turns path >>= \ts -> return $! forceGist noGist
+    { tgLastSaid = listToMaybe (mapMaybe proseLine (reverse [ t | (False, t) <- ts ])) }
+
+-- | The 'TranscriptGist' of a transcript (a Claude Code @.jsonl@, a Codex
+-- rollout or an agy transcript), from its last 256KB: both lines are appended every turn, so the
 -- latest are near the end.  @prev@, an earlier gist of the same file, saves
 -- searching the head again once its first title is settled ('tgHeadDone').
 -- Its fields are strict, and their texts forced here: a lazy one would keep
@@ -1815,9 +1873,8 @@ noGist = TranscriptGist Nothing Nothing False Nothing
 -- Use 'cachedTranscriptGist'.
 transcriptGist :: Maybe TranscriptGist -> FilePath -> IO TranscriptGist
 transcriptGist prev path
-  | isRollout path = (`catch` \(_ :: SomeException) -> return noGist) $
-      rolloutTurns path >>= \turns -> return $! forceGist noGist
-        { tgLastSaid = listToMaybe (mapMaybe proseLine (reverse [ t | (False, t) <- turns ])) }
+  | isRollout path = turnsGistOf rolloutTurns path
+  | isAgyTranscript path = turnsGistOf agyTurns path
   | otherwise = (`catch` \(_ :: SomeException) -> return noGist) $ do
     tailLines <- withFile path ReadMode $ \h -> do
       size <- hFileSize h
@@ -1934,11 +1991,12 @@ cachedTranscriptGist p = (`catch` \(_ :: SomeException) -> maybe noGist snd . M.
 gistCache :: IORef (Map FilePath (UTCTime, TranscriptGist))
 gistCache = unsafePerformIO (newIORef M.empty)
 
--- | Where a live session's transcript is: its Codex rollout, or the Claude
--- Code transcript for its directory.
+-- | Where a live session's transcript is: its Codex rollout, its agy
+-- transcript, or the Claude Code transcript for its directory.
 liveTranscriptPath :: ClaudeLive -> IO (Maybe FilePath)
 liveTranscriptPath l
   | clAgent l == "codex" = codexTranscriptOf (clSession l)
+  | clAgent l == "agy"   = agyTranscriptOf (clSession l)
   | otherwise            = Just <$> claudeTranscriptPath (clDir l) (clSession l)
 
 -- | A tool call in a few words — @Bash: cabal build@, @Edit Main.hs@,
@@ -2176,7 +2234,9 @@ claudeSessionLabel :: FilePath -> Text -> IO (Maybe Text)
 claudeSessionLabel dir sid = (`catch` \(_ :: SomeException) -> return Nothing) $
   codexTranscriptOf sid >>= \case
     Just r  -> rolloutFirstPrompt r          -- a Codex session
-    Nothing -> claudeTranscriptPath dir sid >>= fmap snd . scanHead
+    Nothing -> agyTranscriptOf sid >>= \case
+      Just t  -> agyFirstPrompt t            -- an Antigravity one
+      Nothing -> claudeTranscriptPath dir sid >>= fmap snd . scanHead
 
 -- | Copy a session id to the system clipboard (best-effort).
 copySessionId :: Text -> IO ()

@@ -308,7 +308,8 @@ badgeAttrs, managerAttrs, roleAttrs, stateAttrs, ageAttrs, line3Attrs, branchAtt
   :: AgentNode -> Map Text Text
 badgeAttrs n = "class" =: "agent-card-badge" <> "style" =: ("color:" <> colourOf (anState n))
 -- | The badge on the left of the face: which CLI the agent runs in — Codex's
--- logo (its rounded cloud with a @>_@ prompt cut out) or Claude Code's spark.
+-- logo (its rounded cloud with a @>_@ prompt cut out), Antigravity's arch, or
+-- Claude Code's robot.
 -- Drawn, not typed: a font glyph sits on its baseline, so it never lines up
 -- with the state glyph opposite; these are centred in their box by
 -- construction.  The Codex mark is its mid-blue rather than its gradient: the
@@ -346,6 +347,23 @@ agentGlyph "codex" =
 -- one unit per quadrant, two tall because a terminal cell is twice as tall as
 -- it is wide.  The eyes are the gaps in the second row: the badge shows
 -- through them.
+-- Antigravity's arch, as the agy CLI's banner draws it in half blocks:
+--
+-- >     ▄▀▀▄
+-- >    ▀▀▀▀▀▀
+-- >   ▀▀▀▀▀▀▀▀
+-- >  ▄▀▀    ▀▀▄
+-- > ▄▀▀      ▀▀▄
+--
+-- (each @▀@ there has a background colour too, so it is a whole cell; a @▄@
+-- is the lower half) — one unit wide, two tall per cell, like the robot.  In
+-- the middle blue of the banner's green-to-blue gradient.
+agentGlyph "agy" =
+  "<svg class=\"agent-glyph-agy\" viewBox=\"1 0 12 10\" fill=\"#5fafd7\" \
+  \shape-rendering=\"crispEdges\"><title>Antigravity agent</title><path d=\"\
+  \M5 1h1v1H5zM6 0h2v2H6zM8 1h1v1H8zM4 2h6v2H4zM3 4h8v2H3z\
+  \M2 7h1v1H2zM3 6h2v2H3zM9 6h2v2H9zM11 7h1v1h-1z\
+  \M1 9h1v1H1zM2 8h2v2H2zM10 8h2v2h-2zM12 9h1v1h-1z\"/></svg>"
 agentGlyph _ =
   "<svg class=\"agent-glyph-claude\" viewBox=\"1 0 17 10\" fill=\"#d97757\" \
   \shape-rendering=\"crispEdges\"><title>Claude Code agent</title><path d=\"\
@@ -549,6 +567,10 @@ agentCardCss = do
   ".agent-card .agent-card-agent svg.agent-glyph-codex" ? do
     "width" -: "11px"
     "height" -: "11px"
+  -- The arch is 12:10.
+  ".agent-card .agent-card-agent svg.agent-glyph-agy" ? do
+    "width" -: "11px"
+    "height" -: "9px"
   -- The robot is wide and short (17:10): as wide as the badge allows.
   ".agent-card .agent-card-agent svg.agent-glyph-claude" ? do
     "width" -: "12px"

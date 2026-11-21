@@ -34,6 +34,8 @@ module IDE.Web.AgentInfo
   , markAgentDone
   , setAgentRole
   , titleForClaude
+  , sessionCli
+  , cliTranscriptOf
   , agentsHeld
   , setAgentSuspended
   , Interruption(..)
@@ -105,6 +107,8 @@ import IDE.Web.Claude
         claudeLiveBySession, claudeSessionLabel, claudeTranscriptPath,
         TranscriptGist(..), cachedTranscriptGist, liveTranscriptPath)
 import IDE.Web.Codex (codexTranscriptOf, isCodexSession)
+import IDE.Web.Agy (agyTranscriptOf, isAgySession)
+import IDE.Web.AgentCli (AgentCli(..), cliTag)
 import IDE.Web.RemoteAgents (remoteActivity, remoteInfoBytes, remoteStartingSessions)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), TitleSource(..), chooseTitle, claudeStatusNow)
@@ -248,7 +252,7 @@ data AgentNode = AgentNode
                               --   (from its transcript; live agents only)
   , anUsage    :: Maybe SessionUsage -- ^ its context use, cost and rate limits,
                                 --   from its status line ("IDE.Web.AgentUsage")
-  , anAgent    :: Text          -- ^ which CLI runs it: @claude@ or @codex@ (the
+  , anAgent    :: Text          -- ^ which CLI runs it ('cliTag': @claude@, @codex@, @agy@) (the
                                 --   badge on the left of its face)
   , anChildren :: [AgentNode] -- ^ the agents it forked
   } deriving (Eq, Show)
@@ -1314,9 +1318,9 @@ computeAgentForest = (`catch` \(_ :: SomeException) -> return []) $ do
     -- an approval, and remembered a while.
     reachable <- maybe (return False) (const (paneReachable s)) pending
     -- A row that is not running says which CLI it was from leksah's own
-    -- record of the Codex sessions it has seen.
+    -- record of the Codex and Antigravity sessions it has seen.
     agent <- if anLive n || anBackground n /= Nothing then return (anAgent n)
-             else (\cx -> if cx then "codex" else "claude") <$> isCodexSession s
+             else cliTag <$> sessionCli s
     return (s, n { anWorktrees = wls
                  , anAgent = agent
                  , anName = M.findWithDefault (anName n) s names
@@ -1443,8 +1447,8 @@ computeAgentForest = (`catch` \(_ :: SomeException) -> return []) $ do
       cands <- fmap (mapMaybe id) . forM (M.elems infos) $ \i ->
         if aiSession i `M.member` liveRows || null (aiDir i) then return Nothing
         else (`catch` \(_ :: SomeException) -> return Nothing) $ do
-          -- (A Codex agent's conversation is its rollout.)
-          p  <- codexTranscriptOf (aiSession i)
+          -- (A Codex agent's conversation is its rollout; an agy one's, agy's.)
+          p  <- cliTranscriptOf (aiSession i)
                   >>= maybe (claudeTranscriptPath (aiDir i) (aiSession i)) return
           ex <- doesFileExist p
           if not ex then return (starting now i) else do
@@ -1492,7 +1496,7 @@ computeAgentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         -- keeps its title when its agent stops.  (Its first prompt is read
         -- only when the chain may need it.)
         gist <- (`catch` \(_ :: SomeException) -> return Nothing) $
-          codexTranscriptOf (aiSession i)
+          cliTranscriptOf (aiSession i)
             >>= maybe (claudeTranscriptPath (aiDir i) (aiSession i)) return
             >>= fmap Just . cachedTranscriptGist
         let src = titleSourceOf i
@@ -1725,3 +1729,20 @@ sanitizeAgentHtml = T.take 4096 . go
           _ -> T.break isSpace s
 
     escapeAttr = T.replace "\"" "%22" . T.replace "<" "%3C" . T.replace ">" "%3E"
+
+-- | Which CLI session @sid@ runs (or ran) in: a Codex or Antigravity one when
+-- leksah's hooks for that CLI have seen it, else Claude Code.
+sessionCli :: Text -> IO AgentCli
+sessionCli sid = isCodexSession sid >>= \case
+  True  -> return CliCodex
+  False -> isAgySession sid >>= \case
+    True  -> return CliAgy
+    False -> return CliClaude
+
+-- | Session @sid@'s transcript when it is a Codex (its rollout) or an
+-- Antigravity session, as leksah's hooks recorded it; 'Nothing' for a Claude
+-- Code session (whose transcript is found by its directory).
+cliTranscriptOf :: Text -> IO (Maybe FilePath)
+cliTranscriptOf sid = codexTranscriptOf sid >>= \case
+  Just p  -> return (Just p)
+  Nothing -> agyTranscriptOf sid

@@ -24,7 +24,8 @@ module IDE.Web.Codex
   ( codexAvailable
   , codexHome
     -- * Live sessions
-  , CodexLive(..)
+  , CodexLive
+  , HookLive(..)
   , codexLiveRecords
   , codexProcessOf
   , isCodexProgram
@@ -57,9 +58,8 @@ module IDE.Web.Codex
   , codexPatchFiles
   ) where
 
-import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Exception (SomeException, catch)
-import Control.Monad (forM, unless, when)
+import Control.Monad (when)
 import Data.Aeson
        (Value(..), (.=), (.:?), decodeStrict', encode, object, toJSON, withObject)
 import Data.Aeson.Types (parseMaybe)
@@ -68,28 +68,24 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Foldable (toList)
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf, nub)
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Data.Time (getCurrentTime)
-import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import System.Directory
-       (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
-        findExecutable, getHomeDirectory, getPermissions, listDirectory,
-        removeFile, renameFile, setPermissions, setOwnerExecutable)
+       (createDirectoryIfMissing, doesFileExist, findExecutable,
+        getHomeDirectory, getPermissions, removeFile, setPermissions,
+        setOwnerExecutable)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..))
-import System.FilePath ((</>), takeDirectory, takeExtension, takeFileName, dropTrailingPathSeparator)
+import System.FilePath ((</>), takeDirectory, takeFileName)
 import System.IO
        (IOMode(ReadMode), SeekMode(SeekFromEnd), hFileSize, hIsEOF, hSeek, withFile)
 import System.IO.Unsafe (unsafePerformIO)
-import IDE.Utils.Spawn (readProcess, readProcessWithExitCode)
-import Text.Read (readMaybe)
+import IDE.Utils.Spawn (readProcessWithExitCode)
+import IDE.Web.HookSessions
 
 -- | Whether @codex@ is on PATH — cached once seen, like 'claudeAvailable'
 -- (it can be installed after leksah starts).
@@ -111,132 +107,31 @@ codexHome = lookupEnv "CODEX_HOME" >>= \case
   Just d | not (null d) -> return d
   _ -> (</> ".codex") <$> getHomeDirectory
 
-leksahDir :: IO FilePath
-leksahDir = (</> ".leksah") <$> getHomeDirectory
+-- | Codex's live records and the sessions its hooks have seen
+-- ("IDE.Web.HookSessions": @~\/.leksah\/codex-sessions@, @codex-index.json@).
+{-# NOINLINE codexStore #-}
+codexStore :: HookStore
+codexStore = unsafePerformIO (newHookStore "codex")
 
 --------------------------------------------------------------------------------
 -- Live sessions
 
 -- | One running Codex session, as leksah's hooks recorded it.
-data CodexLive = CodexLive
-  { cxPid        :: Int
-  , cxSession    :: Text
-  , cxDir        :: FilePath
-  , cxStatus     :: Text        -- ^ idle | busy | waiting
-  , cxWaitingFor :: Maybe Text
-  , cxTranscript :: Maybe FilePath
-  } deriving (Eq, Show)
-
-liveDir :: IO FilePath
-liveDir = (</> "codex-sessions") <$> leksahDir
+type CodexLive = HookLive
 
 -- | Every hook-written live record (pid liveness is the reader's business —
 -- 'IDE.Web.Claude.claudeLiveBySession' checks it with one @ps@).
 codexLiveRecords :: IO [CodexLive]
-codexLiveRecords = cached recordsCache readRecordsFromDisk
-
--- | The records and the index are read on every status poll, for every
--- session — mostly Claude ones that can never match — so they are kept in
--- memory.  Only leksah writes them (its hook handler and its discovery, in
--- this process), and every write drops the copy ('invalidate').  The copy is
--- versioned: a read that started before a write must not store what it read
--- after the write has dropped the copy, or the cache would keep the old state
--- (a turn's final "busy", say) until something else is written.
-type Cache a = IORef (Int, Maybe a)
-
-cached :: Cache a -> IO a -> IO a
-cached ref load = readIORef ref >>= \case
-  (_, Just x)  -> return x
-  (v, Nothing) -> do
-    x <- load
-    atomicModifyIORef' ref (\(v', c) -> if v' == v then ((v', Just x), ()) else ((v', c), ()))
-    return x
-
-invalidate :: Cache a -> IO ()
-invalidate ref = atomicModifyIORef' ref (\(v, _) -> ((v + 1, Nothing), ()))
-
-{-# NOINLINE recordsCache #-}
-recordsCache :: Cache [CodexLive]
-recordsCache = unsafePerformIO (newIORef (0, Nothing))
-
-{-# NOINLINE indexCache #-}
-indexCache :: Cache (Map Text (FilePath, FilePath))
-indexCache = unsafePerformIO (newIORef (0, Nothing))
-
-removeRecordFile :: Int -> IO ()
-removeRecordFile pid = do
-  d <- liveDir
-  removeFile (d </> (show pid <> ".json")) `catch` \(_ :: SomeException) -> return ()
-  invalidate recordsCache
-
-readRecordsFromDisk :: IO [CodexLive]
-readRecordsFromDisk = (`catch` \(_ :: SomeException) -> return []) $ do
-  d <- liveDir
-  ex <- doesDirectoryExist d
-  if not ex then return [] else do
-    fs <- filter ((== ".json") . takeExtension) <$> listDirectory d
-    concat <$> forM fs (\f -> maybe [] (: []) <$> readRecord (d </> f))
-
-readRecord :: FilePath -> IO (Maybe CodexLive)
-readRecord f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-  v <- decodeStrict' <$> BS.readFile f
-  return $ v >>= parseMaybe (withObject "codex" $ \o -> do
-    p  <- o .:? "pid"
-    s  <- o .:? "sessionId"
-    cw <- o .:? "cwd"
-    st <- o .:? "status"
-    wf <- o .:? "waitingFor"
-    tr <- o .:? "transcript"
-    case (p, s) of
-      (Just p', Just s') -> return CodexLive
-        { cxPid = p', cxSession = s'
-        , cxDir = maybe "" (dropTrailingPathSeparator . T.unpack) cw
-        , cxStatus = fromMaybe "idle" st
-        , cxWaitingFor = mfilterT wf
-        , cxTranscript = T.unpack <$> mfilterT tr }
-      _ -> fail "no pid/session")
-  where mfilterT = (>>= \t -> if T.null t then Nothing else Just t)
-
-writeRecord :: CodexLive -> IO ()
-writeRecord r = do
-  d <- liveDir
-  createDirectoryIfMissing True d
-  now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime :: IO Double
-  atomicWrite (d </> (show (cxPid r) <> ".json")) . encode $ object
-    [ "pid" .= cxPid r, "sessionId" .= cxSession r, "cwd" .= cxDir r
-    , "status" .= cxStatus r, "waitingFor" .= cxWaitingFor r
-    , "transcript" .= cxTranscript r, "kind" .= ("codex" :: Text)
-    , "updatedAt" .= now ]
-  invalidate recordsCache
-
--- | Hooks arrive concurrently (from several sessions at once): one writer at a time.
-{-# NOINLINE recordLock #-}
-recordLock :: MVar ()
-recordLock = unsafePerformIO (newMVar ())
+codexLiveRecords = hookLiveRecords codexStore
 
 -- | The live record for session @sid@, if one is open.
 codexRecordFor :: Text -> IO (Maybe CodexLive)
-codexRecordFor sid = (\rs -> case [ r | r <- rs, cxSession r == sid ] of
-                                (r : _) -> Just r
-                                []      -> Nothing) <$> codexLiveRecords
+codexRecordFor = hookRecordFor codexStore
 
 -- | The codex process a hook runs under: the nearest ancestor of @pid@ (the
--- hook client) whose program is Codex's (@codex@; nixpkgs' wrapper execs
--- @.codex-wrapped@; npm's launcher runs @codex-\<target\>@).
+-- hook client) whose program is Codex's ('isCodexProgram').
 codexProcessOf :: Int -> IO (Maybe (Int, String))
-codexProcessOf pid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-  out <- readProcess "ps" ["-Ao", "pid=,ppid=,args="] ""
-  let procs = M.fromList
-        [ (p, (q, args)) | l <- lines out
-                         , (pT : qT : args@(_ : _)) <- [words l]
-                         , Just p <- [readMaybe pT], Just q <- [readMaybe qT] ]
-      go :: Int -> Int -> Maybe (Int, String)
-      go 0 _ = Nothing
-      go n p = case M.lookup p procs of
-        Just (q, args@(exe : _)) | isCodexProgram exe -> Just (p, unwords args)
-                      | q > 1       -> go (n - 1) q
-        _ -> Nothing
-  return (go (14 :: Int) pid)
+codexProcessOf = hookProcessOf isCodexProgram
 
 -- | Is this codex command line an interactive session — not @codex exec@,
 -- nor one of the other subcommands (which run the same hooks, being Codex)?
@@ -249,163 +144,59 @@ codexInteractive args = case drop 1 (words args) of
     , "exec-server", "features", "help", "execpolicy" ]
   [] -> True
 
--- | Is this program (a process's first argument) Codex's?
+-- | Is this program (a process's first argument) Codex's?  (@codex@;
+-- nixpkgs' wrapper execs @.codex-wrapped@; npm's launcher runs
+-- @codex-\<target\>@.)
 isCodexProgram :: FilePath -> Bool
 isCodexProgram exe = let b = takeFileName exe
                      in "codex" `isPrefixOf` b || ".codex" `isPrefixOf` b
 
--- | A session started in codex process @pid@ (a new one, a resume, or the
--- fresh id a @\/clear@ gives the same process): its record now says so.
--- Answers the session that process was running before, if it was another.
--- Records of processes that are gone are tidied away while we are here.
+-- | A session started in codex process @pid@ — see 'hookSessionStart'.
 codexSessionStart :: Int -> Text -> FilePath -> Maybe FilePath -> IO (Maybe Text)
-codexSessionStart pid sid cwd transcript = withMVar recordLock $ \_ -> do
-  rs <- codexLiveRecords
-  -- The process's previous session: its record, else what it last started
-  -- (a /clear can report the old session's end first, which takes its
-  -- record away — so the process's last session is remembered too).
-  remembered <- M.lookup pid <$> readIORef lastSessionOfPid
-  let prev = [ cxSession r | r <- rs, cxPid r == pid, cxSession r /= sid ]
-             <> [ o | Just o <- [remembered], o /= sid ]
-  alive <- livePids
-  mapM_ (removeRecordFile . cxPid)
-        [ r | r <- rs, cxPid r /= pid, not (M.null alive), cxPid r `M.notMember` alive ]
-  writeRecord CodexLive { cxPid = pid, cxSession = sid
-                        , cxDir = dropTrailingPathSeparator cwd
-                        , cxStatus = "idle", cxWaitingFor = Nothing
-                        , cxTranscript = transcript }
-  atomicModifyIORef' lastSessionOfPid (\m -> (M.insert pid sid m, ()))
-  rememberSession sid cwd (fromMaybe "" transcript)
-  return (case prev of (p : _) -> Just p; [] -> Nothing)
-  where
-    livePids = (`catch` \(_ :: SomeException) -> return M.empty) $ do
-      out <- readProcess "ps" ["-Ao", "pid="] ""
-      return $ M.fromList [ (p, ()) | l <- lines out, Just p <- [readMaybe l :: Maybe Int] ]
-
--- | What each codex process last started (see 'codexSessionStart').
-{-# NOINLINE lastSessionOfPid #-}
-lastSessionOfPid :: IORef (Map Int Text)
-lastSessionOfPid = unsafePerformIO (newIORef M.empty)
+codexSessionStart pid sid cwd transcript = hookSessionStart codexStore pid sid cwd transcript "idle"
 
 -- | Has leksah recorded a session for codex process @pid@ before (in this
--- run)?  Discovery leaves such a process alone: between a @/clear@'s
--- SessionEnd and the next prompt's SessionStart it has no record, and
--- claiming it then would break the chain from its old session to its new.
+-- run)?  See 'hookKnownPid'.
 codexKnownPid :: Int -> IO Bool
-codexKnownPid pid = M.member pid <$> readIORef lastSessionOfPid
+codexKnownPid = hookKnownPid codexStore
 
 -- | A leksah launch's codex process has appeared (see
--- 'IDE.Web.Claude.watchCodexLaunch'): record it under its launch token —
--- unless its SessionStart got there first, which is decided under the same
--- lock the hooks write under, so neither can overwrite the other.
+-- 'IDE.Web.Claude.codexDiscover'): record it under its launch token.
 codexClaimLaunch :: Int -> Text -> FilePath -> IO ()
-codexClaimLaunch pid tok cwd = withMVar recordLock $ \_ -> do
-  rs <- codexLiveRecords
-  unless (any ((== pid) . cxPid) rs) $ do
-    writeRecord CodexLive { cxPid = pid, cxSession = tok
-                          , cxDir = dropTrailingPathSeparator cwd
-                          , cxStatus = "idle", cxWaitingFor = Nothing
-                          , cxTranscript = Nothing }
-    atomicModifyIORef' lastSessionOfPid (\m -> (M.insert pid tok m, ()))
+codexClaimLaunch = hookClaimLaunch codexStore
 
--- | A leksah launch of a NEW Codex agent under token @tok@: remember it as a
--- Codex agent that has not started a conversation yet ('codexStarted'), so
--- resuming it later starts Codex afresh rather than Claude Code — or a
--- @codex resume@ of an id Codex never had.
+-- | A leksah launch of a NEW Codex agent under token @tok@ — see
+-- 'hookRememberLaunch'.
 codexRememberLaunch :: Text -> FilePath -> IO ()
-codexRememberLaunch tok cwd = rememberSessionWith (M.member tok) tok cwd ""
+codexRememberLaunch = hookRememberLaunch codexStore
 
 -- | Has Codex session @sid@ got a conversation of its own to resume?  'False'
 -- for a launch token that never reached its first prompt.
 codexStarted :: Text -> IO Bool
-codexStarted sid = isJust <$> codexTranscriptOf sid
+codexStarted = hookStarted codexStore
 
 -- | Session @sid@ is now @status@ (idle | busy | waiting), waiting for @what@.
--- 'True' when that changed anything.  Nothing to change when no record is
--- open for it (a session leksah never saw start — one that was already
--- running when its hooks were trusted).
 codexSetStatus :: Text -> Text -> Maybe Text -> IO Bool
-codexSetStatus sid status what = withMVar recordLock $ \_ ->
-  codexRecordFor sid >>= \case
-    Just r | cxStatus r /= status || cxWaitingFor r /= what -> do
-      writeRecord r { cxStatus = status, cxWaitingFor = what }
-      return True
-    _ -> return False
+codexSetStatus = hookSetStatus codexStore
 
 -- | Session @sid@ ended: its record goes.
 codexSessionEnd :: Text -> IO ()
-codexSessionEnd sid = withMVar recordLock $ \_ -> do
-  rs <- codexLiveRecords
-  mapM_ (removeRecordFile . cxPid) [ r | r <- rs, cxSession r == sid ]
+codexSessionEnd = hookSessionEnd codexStore
 
 --------------------------------------------------------------------------------
 -- Sessions leksah has seen
 
--- | Every Codex session leksah's hooks have seen start, with its rollout file
--- and directory: what makes a session id a Codex one once it has exited (to
--- resume it with @codex resume@, read its transcript).
-indexPath :: IO FilePath
-indexPath = (</> "codex-index.json") <$> leksahDir
-
-readIndex :: IO (Map Text (FilePath, FilePath))
-readIndex = cached indexCache readIndexFromDisk
-
-readIndexFromDisk :: IO (Map Text (FilePath, FilePath))
-readIndexFromDisk = (`catch` \(_ :: SomeException) -> return M.empty) $ do
-  p <- indexPath
-  v <- decodeStrict' <$> BS.readFile p
-  return . M.fromList $ case v of
-    Just (Object o) ->
-      [ (Key.toText k, (T.unpack tr, T.unpack cw))
-      | (k, e) <- KM.toList o
-      , Just (tr, cw) <- [parseMaybe (withObject "e" $ \x ->
-                              (,) <$> (fromMaybe "" <$> x .:? "transcript")
-                                  <*> (fromMaybe "" <$> x .:? "cwd")) e] ]
-    _ -> []
-
-rememberSession :: Text -> FilePath -> FilePath -> IO ()
-rememberSession sid cwd transcript =
-  rememberSessionWith (\m -> M.lookup sid m == Just (transcript, cwd)) sid cwd transcript
-
--- | Add (or update) a session in the index unless @skip@ says it is already
--- there as it should be.  One writer at a time ('indexLock'): the hooks and
--- discovery both add to it, and an update read by one and written over by
--- the other would lose the first's entry.  (A rollout already known is not
--- forgotten for an empty one.)
-rememberSessionWith :: (Map Text (FilePath, FilePath) -> Bool) -> Text -> FilePath -> FilePath -> IO ()
-rememberSessionWith skip sid cwd transcript = withMVar indexLock $ \_ ->
-  (`catch` \(_ :: SomeException) -> return ()) $ do
-    m <- readIndex
-    unless (skip m) $ do
-      let tr' = if null transcript then maybe "" fst (M.lookup sid m) else transcript
-      p <- indexPath
-      atomicWrite p . encode . object $
-        [ Key.fromText k .= object [ "transcript" .= tr, "cwd" .= cw ]
-        | (k, (tr, cw)) <- M.toList (M.insert sid (tr', cwd) m) ]
-      invalidate indexCache
-
-{-# NOINLINE indexLock #-}
-indexLock :: MVar ()
-indexLock = unsafePerformIO (newMVar ())
-
 -- | Is @sid@ a Codex session (running now, or seen by leksah's hooks before)?
 isCodexSession :: Text -> IO Bool
-isCodexSession sid = do
-  live <- isJust <$> codexRecordFor sid
-  if live then return True else M.member sid <$> readIndex
+isCodexSession = hookIsSession codexStore
 
 -- | Where a Codex session ran, if leksah knows.
 codexSessionDir :: Text -> IO (Maybe FilePath)
-codexSessionDir sid = codexRecordFor sid >>= \case
-  Just r | not (null (cxDir r)) -> return (Just (cxDir r))
-  _ -> (>>= \(_, cw) -> if null cw then Nothing else Just cw) . M.lookup sid <$> readIndex
+codexSessionDir = hookSessionDir codexStore
 
 -- | A Codex session's rollout (its transcript), if leksah knows it.
 codexTranscriptOf :: Text -> IO (Maybe FilePath)
-codexTranscriptOf sid = codexRecordFor sid >>= \case
-  Just r | Just t <- cxTranscript r -> return (Just t)
-  -- (A launch that never started has an entry with no rollout.)
-  _ -> (>>= \(tr, _) -> if null tr then Nothing else Just tr) . M.lookup sid <$> readIndex
+codexTranscriptOf = hookTranscriptOf codexStore
 
 --------------------------------------------------------------------------------
 -- Installing the hooks
@@ -713,13 +504,3 @@ codexPatchFiles v = nub
       Object o -> concatMap strings (KM.elems o)
       _        -> []
 
---------------------------------------------------------------------------------
-
-atomicWrite :: FilePath -> BL.ByteString -> IO ()
-atomicWrite path bytes = do
-  ex <- doesFileExist path
-  same <- if not ex then return False else (== BL.toStrict bytes) <$> BS.readFile path
-  unless same $ do
-    let tmp = path <> ".tmp-leksah"
-    BL.writeFile tmp bytes
-    renameFile tmp path

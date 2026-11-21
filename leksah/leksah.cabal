@@ -182,6 +182,9 @@ library
         IDE.Web.Claude
         IDE.Web.ClaudeStatus
         IDE.Web.Codex
+        IDE.Web.Agy
+        IDE.Web.AgentCli
+        IDE.Web.HookSessions
         IDE.Web.AISession
         IDE.Web.Agent
         IDE.Web.AgentEvents

@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Agents forking agents: one Claude Code session starting another in a
 -- terminal pane of its own, and the small vocabulary the two need to work
@@ -115,7 +116,8 @@ import IDE.Web.AgentInfo
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
         moveAgentRecord, recordAgentFork, recordRemoteFork, remoteAgentRecord,
         setRemoteSuspended, applyLoggedCommand, setAgentManager, setAgentRole,
-        setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude)
+        setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude,
+        sessionCli, cliTranscriptOf)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
@@ -145,8 +147,13 @@ import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow, pokeClaudeStatus)
 import IDE.Web.Codex
        (codexAvailable, codexInteractive, codexProcessOf, codexSessionStart, codexSetStatus, codexSessionEnd,
-        codexPatchFiles, codexSessionDir, codexStarted, codexTranscriptOf, isCodexSession,
-        isRollout, rolloutTurns)
+        codexPatchFiles, codexSessionDir, codexStarted, isRollout, rolloutTurns)
+import IDE.Web.Agy
+       (HookLive(..), agyAvailable, agyInteractive, agyProcessOf, agySessionStart, agySetStatus,
+        agyClaimLaunch, agyRememberLaunch, agyLiveRecords, agyRecordFor, agySessionDir,
+        agyStarted, agyTranscriptOf, agyClaudeShaped, agyStateStatus, agyPendingTool, agyPidAlive,
+        isAgySession, isAgyTranscript, agyTurns)
+import IDE.Web.AgentCli (AgentCli(..), cliFromTag, cliProgram)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.ReplTmux
        (freshSessionName, liveRunPanes, newAgentWindow, newRemoteAgentWindow, pasteTo,
@@ -182,18 +189,19 @@ data ForkRequest = ForkRequest
   , frRole   :: Maybe Text     -- ^ start it in this role ("IDE.Web.AgentRoles");
                                --   a role agent is always fresh
   , frManager :: Bool          -- ^ start it as the workspace's manager
-  , frCodex  :: Bool           -- ^ run Codex rather than Claude Code (always a
-                               --   fresh agent: a Claude conversation cannot be
-                               --   carried into Codex)
-  , frClaude :: Bool           -- ^ run Claude Code even when forking from a Codex
-                               --   agent (whose children are Codex ones otherwise)
+  , frCli    :: Maybe AgentCli -- ^ the CLI to run it in, when asked for one
+                               --   (@--codex@, @--agy@, @--claude@).  Not given:
+                               --   the parent's.  A Codex or Antigravity agent is
+                               --   always a fresh one: a conversation cannot be
+                               --   carried from one CLI to another, and neither
+                               --   can fork its own into a session leksah names
   } deriving (Eq, Show)
 
 emptyForkRequest :: FilePath -> ForkRequest
 emptyForkRequest cwd = ForkRequest
   { frPlace = PlaceBeside, frDir = Nothing, frFrom = Nothing, frFresh = False
   , frPrompt = Nothing, frParent = Nothing, frCwd = cwd, frRole = Nothing
-  , frManager = False, frCodex = False, frClaude = False }
+  , frManager = False, frCli = Nothing }
 
 -- | Start a child agent, and answer with its session id and a line the parent
 -- can act on.
@@ -215,22 +223,21 @@ emptyForkRequest cwd = ForkRequest
 -- With 'frRole', the role is looked up first (from the directory the agent
 -- will work in) and the agent starts fresh, with the role's instructions.
 --
--- A Codex conversation cannot be forked at all (into Claude Code, or into
--- Codex: @codex fork@ mints its own id), so a fork FROM a Codex agent — the
--- caller, or @--from@ — is a fresh agent, and a Codex one like its parent
--- unless @--claude@ asks otherwise.
+-- A Codex or Antigravity conversation cannot be forked at all (into Claude
+-- Code, or into its own CLI: @codex fork@ and agy's @/fork@ mint their own
+-- ids), so a fork FROM such an agent — the caller, or @--from@ — is a fresh
+-- agent, in its parent's CLI unless another is asked for.
 forkAgent :: ForkRequest -> IO (Either Text (Text, Text))
 forkAgent fr1 = do
   live <- claudeLiveBySession
-  srcCodex <- case frFrom fr1 <|> frParent fr1 of
-    Nothing  -> return False
+  srcCli <- case frFrom fr1 <|> frParent fr1 of
+    Nothing  -> return CliClaude
     Just src -> case M.lookup src live of
-      Just l  -> return (clAgent l == "codex")
-      Nothing -> isCodexSession src
-  let fr0 | frCodex fr1                  = fr1 { frFresh = True }
-          | srcCodex, not (frClaude fr1) = fr1 { frCodex = True, frFresh = True }
-          | srcCodex                     = fr1 { frFresh = True }
-          | otherwise                    = fr1
+      Just l  -> return (fromMaybe CliClaude (cliFromTag (clAgent l)))
+      Nothing -> sessionCli src
+  let cli = fromMaybe srcCli (frCli fr1)
+      fr0 | cli /= CliClaude || srcCli /= CliClaude = fr1 { frCli = Just cli, frFresh = True }
+          | otherwise                               = fr1 { frCli = Just CliClaude }
   case frRole fr0 of
     Nothing -> forkAgentAs Nothing fr0
     -- (a project on another machine: its roles are that machine's files)
@@ -243,9 +250,10 @@ forkAgent fr1 = do
 forkAgentAs :: Maybe AgentRole -> ForkRequest -> IO (Either Text (Text, Text))
 forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                   return (Left ("agent fork failed: " <> T.pack (show e)))) $
-    (if frCodex fr then codexAvailable else claudeAvailable) >>= \case
-      False -> return (Left (if frCodex fr then "the codex CLI is not on leksah's PATH"
-                                           else "the claude CLI is not on leksah's PATH"))
+    (case cli of CliClaude -> claudeAvailable
+                 CliCodex  -> codexAvailable
+                 CliAgy    -> agyAvailable) >>= \case
+      False -> return (Left ("the " <> T.pack (cliProgram cli) <> " CLI is not on leksah's PATH"))
       True  -> do
         -- (the parent may run on a shared host: its directory is then an
         -- ssh:// path, so a fork of its conversation is started THERE)
@@ -259,6 +267,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
             \fork — resume it first, or use --fresh"
           _ -> go live parent (dirOf <$> mParent)
   where
+    cli = fromMaybe CliClaude (frCli fr)
     orElse a b = maybe b Just a
 
     go live parent parentDir = do
@@ -283,7 +292,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                                   , asRoleNote = roleNote <$> mrole
                                   , asResume  = False
                                   , asManager = frManager fr
-                                  , asCodex   = frCodex fr }
+                                  , asCli     = cli }
              (_, key, line) <- claudeCommandLine (ClaudeAgent spec)
              place live spec key line
 
@@ -312,7 +321,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                                    , asRoleNote = roleNote <$> mrole
                                    , asResume  = False
                                    , asManager = frManager fr
-                                   , asCodex   = False }
+                                   , asCli     = CliClaude }
               fmap (const (child, name)) <$> startRemoteAgent host name rdir spec
 
     -- Beside the parent when we can find its pane; its own tab otherwise.
@@ -357,8 +366,10 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
           Nothing | Just ro <- mrole ->
                      "It is a fresh agent in the role " <> roleName ro
                        <> ": it knows only that role and the prompt you gave it."
-                  | asCodex spec ->
+                  | asCli spec == CliCodex ->
                      "It is a fresh Codex agent: it knows only the prompt you gave it."
+                  | asCli spec == CliAgy ->
+                     "It is a fresh Antigravity agent: it knows only the prompt you gave it."
                   | otherwise ->
                      "It is a fresh agent: it knows only the prompt you gave it."
       , maybe "No prompt was sent, so it is waiting at its prompt."
@@ -422,7 +433,7 @@ agentList withStopped me = do
         , T.pack (clDir l)
         , T.takeWhile (/= '\n') title
         , T.unwords ([ "(you)" | me == Just (clSession l) ]
-                     <> [ "(codex)" | clAgent l == "codex" ]) ]
+                     <> [ "(" <> clAgent l <> ")" | clAgent l /= "claude" ]) ]
     return . T.unlines $
       "# session\tname\tstate\tdetail\tpane\tdir\ttitle" : rows <> stopped
   where
@@ -559,15 +570,19 @@ runRemoteClaudeCmd :: Text -> FilePath -> ClaudeCmd -> IO ()
 runRemoteClaudeCmd host rdir cmd = report =<< case cmd of
     ClaudeNew _      -> fresh Nothing
     ClaudePrompt _ p -> fresh (Just p)
-    ClaudeAgent s | asCodex s -> unsupported
+    ClaudeAgent s | asCli s /= CliClaude -> unsupported
                   | otherwise -> launch s
+    CliNew CliClaude _ -> fresh Nothing
     -- (an agent that host's store knows: resumed as itself, named; any
     -- other session there — never 'agentResume''s LOCAL fallback)
     ClaudeResume _ i -> remoteAgentRecord i >>= \case
       Just (h, _) | h == host -> fmap (const ()) <$> agentResume i
       _                       -> unnamed
-    CodexNew _       -> unsupported
-    CodexResume _ _  -> unsupported
+    CliResume CliClaude _ i -> remoteAgentRecord i >>= \case
+      Just (h, _) | h == host -> fmap (const ()) <$> agentResume i
+      _                       -> unnamed
+    CliNew _ _       -> unsupported
+    CliResume _ _ _  -> unsupported
     _                -> unnamed
   where
     fresh mprompt = do
@@ -575,7 +590,7 @@ runRemoteClaudeCmd host rdir cmd = report =<< case cmd of
       launch AgentSpec { asDir = renderRemotePath host rdir, asSession = sid
                        , asFrom = Nothing, asPrompt = mprompt, asParent = Nothing
                        , asRoleNote = Nothing, asResume = False
-                       , asManager = False, asCodex = False }
+                       , asManager = False, asCli = CliClaude }
     launch spec = remoteAgentName host (asSession spec) >>= \case
       Left err -> return (Left ("could not name the agent on " <> host <> ": " <> err))
       Right name -> do
@@ -593,7 +608,7 @@ runRemoteClaudeCmd host rdir cmd = report =<< case cmd of
           requestNewLw (s, w)   -- (its own tab: see 'startRemoteAgent')
           _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
           return (Right ())
-    unsupported = return (Left "Codex sessions can't run on another machine yet")
+    unsupported = return (Left "Codex and Antigravity sessions can't run on another machine yet")
     report = either (\e -> getGlobalApp >>= mapM_ (`appNote` ("Claude on " <> host <> ": " <> e)))
                     (const (return ()))
 
@@ -931,7 +946,7 @@ agentResume sid = remoteAgentRecord sid >>= \case
                    { asDir = renderRemotePath host (aiDir i), asSession = sid
                    , asFrom = Nothing, asPrompt = Nothing, asParent = aiParent i
                    , asRoleNote = roleNote <$> mrole, asResume = True, asManager = aiManager i
-                   , asCodex = False }
+                   , asCli = CliClaude }
             return (("Resuming " <> name <> " on " <> host <> ".\n") <$ r)
   _ -> agentResumeHere sid
 
@@ -944,11 +959,13 @@ agentResumeHere sid = do
       _ <- showAgentPane sid
       return (Right (name <> " is already running; showing it.\n"))
     else agentInfoOf sid >>= \case
-      -- Not one leksah started — but leksah's Codex hooks, or a Claude Code
-      -- background session, say where it ran: resume it there.
-      Nothing -> codexSessionDir sid >>= \case
-       Just d -> do
-        runClaudeCmd (CodexResume d sid)
+      -- Not one leksah started — but leksah's Codex or Antigravity hooks, or
+      -- a Claude Code background session, say where it ran: resume it there.
+      Nothing -> ((fmap (CliCodex,) <$> codexSessionDir sid) >>= \case
+                    Just x  -> return (Just x)
+                    Nothing -> fmap (CliAgy,) <$> agySessionDir sid) >>= \case
+       Just (cli, d) -> do
+        runClaudeCmd (CliResume cli d sid)
         return (Right ("Resuming " <> name <> " in its own tab.\n"))
        Nothing -> claudeBackgroundSessions >>= \bgs ->
         case [ b | b <- bgs, cbSession b == sid, not (null (cbDir b)) ] of
@@ -965,11 +982,11 @@ agentResumeHere sid = do
           Nothing -> return Nothing
           Just ro -> either (const Nothing) Just <$> findAgentRole (aiDir i) ro
         setAgentSuspended sid False
-        codex <- isCodexSession sid
+        cli <- sessionCli sid
         runClaudeCmd . ClaudeAgent $ AgentSpec
           { asDir = aiDir i, asSession = sid, asFrom = Nothing, asPrompt = Nothing
           , asParent = aiParent i, asRoleNote = roleNote <$> mrole
-          , asResume = True, asManager = aiManager i, asCodex = codex }
+          , asResume = True, asManager = aiManager i, asCli = cli }
         return (Right ("Resuming " <> name <> " in its own tab.\n"))
 
 -- | Resume every one of these agents (the Agents pane's "Resume all", for the
@@ -1148,8 +1165,9 @@ startingPane sid = do
 -- exited is exactly when a parent wants to read it).
 transcriptFor :: Text -> IO (Maybe FilePath)
 transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $
- codexTranscriptOf sid >>= \case
- -- (A Codex session's rollout, as its hooks reported it.)
+ cliTranscriptOf sid >>= \case
+ -- (A Codex session's rollout, or an agy one's transcript, as its hooks
+ -- reported it.)
  Just p -> return (Just p)
  Nothing -> do
   live <- claudeLiveBySession
@@ -1192,6 +1210,8 @@ transcriptFor sid = (`catch` \(_ :: SomeException) -> return Nothing) $
 agentHook :: Maybe Int -> Text -> Text -> [Text] -> IO Text
 agentHook mpid ev raw ("codex" : rest) =
   codexHook mpid ev raw (mfilter (not . T.null) (listToMaybe rest))
+agentHook mpid ev raw ("agy" : rest) =
+  agyHook mpid ev raw (mfilter (not . T.null) (listToMaybe rest))
 agentHook mpid ev raw _ = (`catch` \(_ :: SomeException) -> return "") $ do
   let h = parseHookIn raw
       field = hiField h
@@ -1522,6 +1542,160 @@ codexHook mpid ev raw token = (`catch` \(_ :: SomeException) -> return "") $ do
 codexIgnored :: IORef (S.Set Text)
 codexIgnored = unsafePerformIO (newIORef S.empty)
 
+-- | An Antigravity hook, or its title command (@leksah-cmd agent hook EVENT
+-- agy [TOKEN]@, run by the @~\/.leksah\/agy-hook@ and @agy-title@ wrappers — see
+-- "IDE.Web.Agy").  agy's payloads are its own (camelCase, a @toolCall@), so
+-- they are read here and handed on Claude-shaped ('agyClaudeShaped') to the
+-- same per-session records as the other CLIs'.
+--
+--   * Title (the title command, at every change of the session's state): the
+--     live record — which conversation the process runs, and whether it is
+--     idle, working or waiting on an approval — and the answer is the title
+--     ('agyTitle').
+--   * SessionStart (a new conversation's first prompt): the same hand-over,
+--     and the briefing, as agy's @injectSteps@.
+--   * PostToolUse: the tool call and the files it changed; Stop: the turn
+--     ended.  Their answers are always empty — agy reads a PostToolUse
+--     answer as JSON, and a Claude-shaped note would not be.
+agyHook :: Maybe Int -> Text -> Text -> Maybe Text -> IO Text
+agyHook mpid ev raw token = (`catch` \(_ :: SomeException) -> return "") $
+  case ev of
+    "Title" -> agyTitle mpid token (str "agent_state") (str "conversation_id") cwd
+    _ -> do
+      let sid = str "conversationId"
+      ignored <- maybe (return False) (\s -> S.member s <$> readIORef agyIgnored) sid
+      if ignored then return "" else do
+        unless (ev `elem` perToolHookEvents) $
+          logHook ev Nothing [sid, Just "agy", token]
+        case (ev, sid) of
+          ("SessionStart", Just new) -> agyProcess >>= \case
+            -- `agy -p` and the like run the same global hooks: they are not
+            -- agents.
+            Just (_, args) | not (agyInteractive args) -> do
+              atomicModifyIORef' agyIgnored (\m -> (S.insert new m, ()))
+              return ""
+            proc -> do
+              mapM_ (\(p, _) -> agyConversation p token new cwd Nothing) proc
+              void . forkIO $ ensureSessionWorktree new cwd
+              notes <- briefing new
+              return . TE.decodeUtf8 . BL.toStrict . encode $ object
+                [ "injectSteps" .=
+                    [ object [ "systemMessage" .= object
+                        [ "systemMessage" .= T.intercalate "\n\n" (notes <> [worktreeNote]) ] ] ] ]
+          ("PostToolUse", Just s) -> do
+            let (tool, inp) = toolCall
+                h = HookIn { hiField = \k -> if k == "tool_use_id" then toolId else Nothing
+                           , hiTool = tool, hiInput = inp, hiResponse = Nothing }
+            recordHookEvent "PostToolUse" s h
+            recordEdit s [ if null cwd then f else normalise (cwd </> f)
+                         | f <- editedFiles tool inp Nothing ]
+            return ""
+          ("Stop", Just s) -> do
+            recordHookEvent "Stop" s (parseHookIn "{}")
+            _ <- agySetStatus s "idle" Nothing
+            pokeClaudeStatus
+            return ""
+          _ -> return ""
+  where
+    v = decodeStrict' (TE.encodeUtf8 raw) :: Maybe Value
+    str k = v >>= parseMaybe (withObject "agy" (.: k)) >>= \t -> if T.null t then Nothing else Just t
+    cwd = maybe "" T.unpack (str "cwd")
+    agyProcess = maybe (return Nothing) agyProcessOf mpid
+    callObj = v >>= parseMaybe (withObject "agy" (.: "toolCall")) :: Maybe Object
+    toolId = callObj >>= parseMaybe (.: "id")
+    toolCall = case callObj of
+      Just c | Just n <- parseMaybe (.: "name") c ->
+        agyClaudeShaped n (fromMaybe mempty (parseMaybe (.: "args") c))
+      _ -> ("", mempty)
+
+-- | A title-command report: agy process (found from @mpid@) is in state
+-- @mstate@, running conversation @mconv@ (none before a new session's first
+-- prompt).  Recorded, and answered with the pane title — the agent's name.
+--
+-- Until it has a conversation the process is recorded under its launch token
+-- (or, for an @agy@ typed into a terminal, a fresh one), so it shows up at
+-- once; when one appears — the first prompt, a @\/clear@, the launch of a
+-- resume — 'agyConversation' moves everything over to it.  A report that
+-- changes nothing (most: agy reports quota and size changes too) is answered
+-- without looking for the process.
+agyTitle :: Maybe Int -> Maybe Text -> Maybe Text -> Maybe Text -> FilePath -> IO Text
+agyTitle mpid token mstate mconv cwd = do
+  let status = mstate >>= agyStateStatus
+  known <- maybe (return Nothing) agyRecordFor (mconv <|> token)
+  -- (a record of a process that has gone — the same conversation resumed in
+  -- a new one — is not this report's)
+  alive <- maybe (return False) (agyPidAlive . hlPid) known
+  case known of
+    Just r | alive, maybe True (== hlStatus r) status, status /= Just "waiting" ->
+      agentNameFor (hlSession r)
+    _ -> maybe (return Nothing) agyProcessOf mpid >>= \case
+      Just (pid, args) | agyInteractive args -> do
+        mine <- listToMaybe . filter ((== pid) . hlPid) <$> agyLiveRecords
+        sid <- case (mconv, mine) of
+          (Just conv, _) | maybe True ((/= conv) . hlSession) mine -> do
+            agyConversation pid token conv cwd status
+            return conv
+          (Just conv, _) -> return conv
+          (Nothing, Just r) -> return (hlSession r)
+          (Nothing, Nothing) -> do
+            tok <- maybe newAgentSessionId return token
+            agyRememberLaunch tok cwd
+            agyClaimLaunch pid tok cwd
+            pokeClaudeStatus
+            return tok
+        mapM_ (agySetState sid (hlStatus <$> mine)) status
+        agentNameFor sid
+      _ -> return ""
+
+-- | Session @s@ is now @status@ (was @before@): recorded — with, while it
+-- waits, the tool call it waits to have approved (agy writes the call to its
+-- transcript before it asks) — and the status surfaces look again.
+agySetState :: Text -> Maybe Text -> Text -> IO ()
+agySetState s before status = do
+  what <- if status /= "waiting" then return Nothing else
+    agyTranscriptOf s >>= maybe (return Nothing) agyPendingTool >>= \case
+      Just (tool, inp) -> do
+        let t = approvalText tool inp
+        recordPermission s t
+        return (Just t)
+      Nothing -> return (Just "approval")
+  -- (A prompt was submitted: the turn starts now, as a UserPromptSubmit
+  -- would say for the other CLIs.)
+  when (status == "busy" && before == Just "idle") $ recordPromptSubmit s
+  changed <- agySetStatus s status what
+  when changed pokeClaudeStatus
+
+-- | Agy process @pid@ now runs conversation @new@ (with @status@, when the
+-- report says): its record says so, and — when the conversation is the
+-- launch's first, or a @\/clear@'s fresh one — the agent it was moves over
+-- to it, name and record ('adoptContinuation', 'moveAgentRecord').  A
+-- conversation leksah has seen before (a @\/resume@ inside agy) is another
+-- agent's, and takes nothing.
+agyConversation :: Int -> Maybe Text -> Text -> FilePath -> Maybe Text -> IO ()
+agyConversation pid token new cwd status = do
+  current <- agyRecordFor new
+  unless (maybe False ((== pid) . hlPid) current) $ do
+    seen <- isAgySession new
+    prev <- agySessionStart pid new cwd (fromMaybe "idle" status)
+    conts <- agentContinuations
+    case token of
+      Just t | t /= new, t `M.notMember` conts -> do
+        _ <- adoptContinuation t new
+        moveAgentRecord True t new
+      _ -> case prev of
+        Just o | not seen -> agyStarted o >>= \started -> do
+          -- (a token that never had a conversation keeps its whole story;
+          -- a conversation cleared keeps only who the agent is)
+          _ <- adoptContinuation o new
+          moveAgentRecord (not started) o new
+        _ -> return ()
+    pokeClaudeStatus
+
+-- | agy sessions that are not agents (@agy -p@ …): their hooks are ignored.
+{-# NOINLINE agyIgnored #-}
+agyIgnored :: IORef (S.Set Text)
+agyIgnored = unsafePerformIO (newIORef S.empty)
+
 -- Another live agent edited one of these files lately: tell this one, once
 -- per file and colleague (an async hook's context reaches it next turn).
 overlapNote :: Text -> [FilePath] -> IO Text
@@ -1633,7 +1807,8 @@ agentAnswerApproval sid yes mexpected = agentPane sid >>= \case
     codex <- maybe False ((== "codex") . clAgent) . M.lookup sid <$> claudeLiveBySession
     let flat = T.unwords (T.words screen)
         -- Claude Code: "1. Yes" … "Esc to cancel".  Codex: "1. Yes, proceed
-        -- (y)" … "Press enter to confirm or esc to cancel".
+        -- (y)" … "Press enter to confirm or esc to cancel".  Antigravity:
+        -- "1. Yes, run command" … "esc to cancel" (1 approves, as Claude's).
         asking = "1. Yes" `T.isInfixOf` screen
                  && T.toLower "Esc to cancel" `T.isInfixOf` T.toLower screen
         expected = mexpected <|> recorded
@@ -1695,6 +1870,7 @@ agentConversation :: Text -> Int -> IO [(Bool, Text)]
 agentConversation sid n = transcriptFor sid >>= \case
   Nothing   -> return []
   Just path | isRollout path -> (\ts -> drop (max 0 (length ts - n)) ts) <$> rolloutTurns path
+            | isAgyTranscript path -> (\ts -> drop (max 0 (length ts - n)) ts) <$> agyTurns path
   Just path -> (`catch` \(_ :: SomeException) -> return []) $ do
     ls <- withFile path ReadMode $ \h -> do
       size <- hFileSize h
@@ -1732,6 +1908,7 @@ agentConversation sid n = transcriptFor sid >>= \case
 
 assistantTail :: FilePath -> IO [Text]
 assistantTail path | isRollout path = map snd . filter (not . fst) <$> rolloutTurns path
+                   | isAgyTranscript path = map snd . filter (not . fst) <$> agyTurns path
 assistantTail path = (`catch` \(_ :: SomeException) -> return []) $ do
   ls <- withFile path ReadMode $ \h -> do
     size <- hFileSize h

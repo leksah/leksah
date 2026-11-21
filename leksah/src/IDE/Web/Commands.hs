@@ -116,6 +116,7 @@ allCommands =
     , always "ai.newClaudeSession"        "New Claude Session"    commandClaudeNew
     , always "ai.continueClaudeSession"   "Continue Claude Session" commandClaudeContinue
     , always "ai.newCodexSession"         "New Codex Session"     commandCodexNew
+    , always "ai.newAgySession"           "New Antigravity Session" commandAgyNew
 
     , withArg "nav.split"      "Select the Nth split of the active terminal" CommandSelectSplit
     , withArg "nav.sidePane"   "Select the Nth side-bar pane"                CommandSelectSidePane
