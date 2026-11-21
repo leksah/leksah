@@ -23,6 +23,7 @@ module IDE.Web.AgentNames
   , resolveAgentName
   , sessionOfRunKey
   , adoptContinuation
+  , adoptContinuationIn
   , agentContinuations
   , agentLastSeen
   , holdAgentNames
@@ -347,7 +348,12 @@ followOn m = go (8 :: Int)
 -- a backgrounded "Mole" stops being a new "Monkey"), and @old@ stops holding
 -- it.  Answers @old@'s name, if it had one.
 adoptContinuation :: Text -> Text -> IO (Maybe Text)
-adoptContinuation old new = withNames $ \now m ->
+adoptContinuation old new = withNames $ \now m -> adoptContinuationIn now old new m
+
+-- | 'adoptContinuation' on a name store's contents at time @now@ (this
+-- machine's, or a shared host's: 'IDE.Web.RemoteCli').
+adoptContinuationIn :: Double -> Text -> Text -> Map Text NameRec -> (Map Text NameRec, Maybe Text)
+adoptContinuationIn now old new m =
   let oldName = nrName <$> M.lookup old m
       m1 = M.alter (\case
              Just r  -> Just r { nrContinuedIn = Just new }

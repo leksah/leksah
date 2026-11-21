@@ -132,7 +132,7 @@ import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentWorktrees
        (AgentWorktree(..), AgentWorktrees(..), allAgentWorktrees, currentClaimants,
         worktreesBySession, worktreesOfAgent)
-import IDE.Web.Widget.AgentMenu (availableClis, agentMenuEntries, agentMenuEntriesD)
+import IDE.Web.Widget.AgentMenu (availableClisFor, agentMenuEntries, agentMenuEntriesD)
 import IDE.Web.AgentCli (AgentCli(..))
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), claudeStatusNow)
@@ -896,7 +896,7 @@ worktreesNode env dir = do
 worktreeProjectNode :: forall t m . MonadWidget t m
                     => PNEnv t -> FilePath -> GitWorktree -> m ()
 worktreeProjectNode env dir wt = do
-  clis <- liftIO availableClis
+  clis <- liftIO (availableClisFor dir)
   statusD <- claudeStatusRowsD
   let p     = fullWorktreePath dir wt
       pNorm = dropTrailingPathSeparator p
@@ -1907,7 +1907,7 @@ projectNodeW env@PNEnv{..} nested (_, pKey) projectD = do
        <> (if temp then "title" =: "Temporary: open while a pane shows something in it" else mempty))
        <$> isActiveProjectD <*> isTempD) initActive
     (do
-      clis <- liftIO availableClis
+      clis <- liftIO (availableClisFor (pkRoot pKey))
       -- ⌥-clicking the terminal/Claude items opens them into a split of
       -- the active pane (⌥⇧ = the other direction), like the ⌥-open
       -- tree gestures; wrapSplit embeds the request in the menu's
@@ -2025,7 +2025,7 @@ projectBody env@PNEnv{..} nested pKey projectD isActiveProjectD brD prD =
     -- The project's Claude Code sessions, surfaced right under the
     -- project row (self-hides unless the project dir has sessions) so
     -- it's reachable without drilling into the Files node.
-    clis <- liftIO availableClis
+    clis <- liftIO (availableClisFor (pkRoot pKey))
     when (not (null clis)) $ do
         -- A project dir that is itself a worktree also lists
         -- the sessions the registry links to it, INSIDE its

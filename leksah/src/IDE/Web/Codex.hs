@@ -52,16 +52,20 @@ module IDE.Web.Codex
   , codexInstalled
   , codexEnsureInstalled
   , codexWriteScripts
+  , codexScripts
+  , codexHooksWith
+  , codexRulesText
     -- * Transcripts (rollouts)
   , isRollout
   , rolloutTurns
+  , rolloutTurnsOf
   , rolloutFirstPrompt
     -- * Tool calls
   , codexPatchFiles
   ) where
 
 import Control.Exception (SomeException, catch)
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Data.Aeson
        (Value(..), (.=), (.:?), decodeStrict', encode, object, toJSON, withObject)
 import Data.Aeson.Types (parseMaybe)
@@ -236,25 +240,30 @@ codexWriteScripts = findExecutable "leksah-cmd" >>= \case
   Just exe -> do
     d <- leksahDir
     createDirectoryIfMissing True d
-    hs <- hookScript
-    ms <- mcpScript
-    -- The token a leksah launch set (see 'IDE.Web.Claude.claudeCommandLine')
-    -- rides along, so leksah can tie the session to the agent it started.
-    writeScript hs $ T.unlines
+    forM_ (codexScripts exe) $ \(name, body) -> do
+      let path = d </> name
+      atomicWrite path (BL.fromStrict (TE.encodeUtf8 body))
+      perms <- getPermissions path
+      setPermissions path (setOwnerExecutable True perms)
+    return True
+
+-- | leksah's wrapper scripts for Codex — their names in @~\/.leksah@, and what
+-- they say — running leksah-cmd @exe@ (on a shared host: "IDE.Web.RemoteCli").
+-- The token a leksah launch set ('IDE.Web.Claude.codexCommandLine') rides
+-- along, so leksah can tie the session to the agent it started, and the
+-- hook's parent process, to find the codex it runs under.
+codexScripts :: FilePath -> [(FilePath, Text)]
+codexScripts exe =
+  [ ("codex-hook", T.unlines
       [ "#!/bin/sh"
       , "# Written by leksah: Codex hooks report to the running leksah."
-      , "exec " <> shq (T.pack exe) <> " agent hook \"$1\" codex \"${LEKSAH_AGENT_TOKEN:-}\"" ]
-    writeScript ms $ T.unlines
+      , "exec " <> cmd <> " agent hook \"$1\" codex \"${LEKSAH_AGENT_TOKEN:-}\" \"$PPID\"" ])
+  , ("codex-mcp", T.unlines
       [ "#!/bin/sh"
       , "# Written by leksah: its MCP server (IDE tools) for Codex sessions."
-      , "exec " <> shq (T.pack exe) <> " mcp" ]
-    return True
+      , "exec " <> cmd <> " mcp" ]) ]
   where
-    writeScript p body = do
-      atomicWrite p (BL.fromStrict (TE.encodeUtf8 body))
-      perms <- getPermissions p
-      setPermissions p (setOwnerExecutable True perms)
-    shq t = "'" <> T.replace "'" "'\\''" t <> "'"
+    cmd = "'" <> T.replace "'" "'\\''" (T.pack exe) <> "'"
 
 hooksJson :: IO FilePath
 hooksJson = (</> "hooks.json") <$> codexHome
@@ -303,33 +312,13 @@ codexInstall = (`catch` \(e :: SomeException) -> return ("codex install failed: 
 -- | 'codexInstall', once @hooks.json@ has been read.
 installInto :: FilePath -> KM.KeyMap Value -> IO Text
 installInto script top = do
-    let existing = case KM.lookup "hooks" top of
-          Just (Object o) -> o
-          _               -> mempty
-        groupFor ev = object
-          [ "hooks" .= [ object
-              [ "type" .= ("command" :: Text)
-              , "command" .= (T.pack script <> " " <> ev)
-              , "timeout" .= (if ev == "SessionEnd" then 3 else 5 :: Int) ] ] ]
-        merged = foldr (\ev acc ->
-                   let k = Key.fromText ev
-                       others = case KM.lookup k acc of
-                         Just (Array gs) -> filter (not . ourGroup script) (toList gs)
-                         _               -> []
-                   in KM.insert k (toJSON (others <> [groupFor ev])) acc)
-                 existing codexHookEvents
     p <- hooksJson
     home <- codexHome
     createDirectoryIfMissing True home
-    atomicWrite p (encode (Object (KM.insert "hooks" (Object merged) top)))
+    atomicWrite p (encode (Object (codexHooksWith script top)))
     rules <- rulesFile
     createDirectoryIfMissing True (home </> "rules")
-    atomicWrite rules . BL.fromStrict . TE.encodeUtf8 $ T.unlines
-      [ "# Written by leksah: the leksah-cmd commands its notes ask an agent to"
-      , "# run (they only tell the IDE what the agent is doing)."
-      , "# (`agent send` too: how a forked agent reports back to the one that"
-      , "# started it — a prompt there would stall that loop.)"
-      , "prefix_rule(pattern = [\"leksah-cmd\", \"agent\", [\"describe\", \"register\", \"done\", \"send\"]], decision = \"allow\")" ]
+    atomicWrite rules . BL.fromStrict . TE.encodeUtf8 $ codexRulesText
     mcp <- mcpScript
     mcpMsg <- codexCli ["mcp", "add", "leksah", "--", mcp] >>= \case
       Right _  -> return "the leksah MCP server is registered (codex mcp add leksah)"
@@ -341,6 +330,37 @@ installInto script top = do
       , ""
       , "Codex runs new hooks only once you trust them: start codex, type /hooks,"
       , "and trust the leksah ones (" <> T.pack script <> ")." ]
+
+-- | Codex's hooks.json with leksah's hook groups merged in, running hook
+-- script @script@ (the user's own entries stay).
+codexHooksWith :: FilePath -> KM.KeyMap Value -> KM.KeyMap Value
+codexHooksWith script top = KM.insert "hooks" (Object merged) top
+  where
+    existing = case KM.lookup "hooks" top of
+      Just (Object o) -> o
+      _               -> mempty
+    groupFor ev = object
+      [ "hooks" .= [ object
+          [ "type" .= ("command" :: Text)
+          , "command" .= (T.pack script <> " " <> ev)
+          , "timeout" .= (if ev == "SessionEnd" then 3 else 5 :: Int) ] ] ]
+    merged = foldr (\ev acc ->
+               let k = Key.fromText ev
+                   others = case KM.lookup k acc of
+                     Just (Array gs) -> filter (not . ourGroup script) (toList gs)
+                     _               -> []
+               in KM.insert k (toJSON (others <> [groupFor ev])) acc)
+             existing codexHookEvents
+
+-- | leksah's rules file for Codex (@rules\/leksah.rules@): the leksah-cmd
+-- commands its notes ask an agent to run, allowed.
+codexRulesText :: Text
+codexRulesText = T.unlines
+  [ "# Written by leksah: the leksah-cmd commands its notes ask an agent to"
+  , "# run (they only tell the IDE what the agent is doing)."
+  , "# (`agent send` too: how a forked agent reports back to the one that"
+  , "# started it — a prompt there would stall that loop.)"
+  , "prefix_rule(pattern = [\"leksah-cmd\", \"agent\", [\"describe\", \"register\", \"done\", \"send\"]], decision = \"allow\")" ]
 
 -- | Take leksah's hooks, MCP server and rules out of Codex again.
 codexUninstall :: IO Text
@@ -460,11 +480,22 @@ rolloutTurns path = (`catch` \(_ :: SomeException) -> return []) $ do
     let back = min size (512 * 1024)
     hSeek h SeekFromEnd (negate back)
     BS.lines <$> BS.hGet h (fromIntegral back)
-  return [ t | l <- ls, "\"event_msg\"" `BS.isInfixOf` l
-             , Just t <- [decodeStrict' l >>= parseMaybe turnP]
-             , not (T.null (T.strip (snd t))) ]
+  return (rolloutTurnsOf ls)
+
+-- | 'rolloutTurns' of a rollout's lines (its tail, read here or on a shared
+-- host: "IDE.Web.RemoteAgents").
+rolloutTurnsOf :: [BS.ByteString] -> [(Bool, Text)]
+rolloutTurnsOf ls = filter (not . T.null . T.strip . snd) $
+  -- (Codex 0.146 writes the conversation as @user_message@ \/ @agent_message@
+  -- events; 0.170 does not, and its turns are the @response_item@ messages —
+  -- which 0.146 writes too, so they are read only when there are no events.)
+  case [ t | l <- ls, "\"event_msg\"" `BS.isInfixOf` l
+           , Just t <- [decodeStrict' l >>= parseMaybe eventP] ] of
+    [] -> [ t | l <- ls, "\"response_item\"" `BS.isInfixOf` l
+              , Just t <- [decodeStrict' l >>= parseMaybe itemP] ]
+    ts -> ts
   where
-    turnP = withObject "line" $ \o -> do
+    eventP = withObject "line" $ \o -> do
       p  <- o .:? "payload"
       case p of
         Just (Object po) -> do
@@ -475,6 +506,22 @@ rolloutTurns path = (`catch` \(_ :: SomeException) -> return []) $ do
             (Just "agent_message", Just m)           -> return (False, m)
             _ -> fail "not a turn"
         _ -> fail "no payload"
+    -- A message the user typed, or the agent said (not the developer
+    -- messages, nor the context Codex wraps in tags and sends as the user's).
+    itemP = withObject "line" $ \o -> do
+      p  <- o .:? "payload"
+      case p of
+        Just (Object po) | Just (String "message") <- KM.lookup "type" po
+                         , Just (String role) <- KM.lookup "role" po
+                         , role `elem` ["user", "assistant"]
+                         , Just (Array cs) <- KM.lookup "content" po -> do
+          let txt = T.intercalate "\n" [ x | Object c <- toList cs
+                                          , Just (String ty) <- [KM.lookup "type" c]
+                                          , ty `elem` ["input_text", "output_text"]
+                                          , Just (String x) <- [KM.lookup "text" c] ]
+          if role == "user" && "<" `T.isPrefixOf` T.stripStart txt then fail "context"
+            else return (role == "user", txt)
+        _ -> fail "not a message"
     parseField po k = return (KM.lookup k po >>= \case String t -> Just t; _ -> Nothing)
 
 -- | The first thing typed into a rollout's session — its label until it says
@@ -482,19 +529,16 @@ rolloutTurns path = (`catch` \(_ :: SomeException) -> return []) $ do
 -- line alone carries Codex's whole system prompt).
 rolloutFirstPrompt :: FilePath -> IO (Maybe Text)
 rolloutFirstPrompt path = (`catch` \(_ :: SomeException) -> return Nothing) $
-  withFile path ReadMode $ \h -> go h (60 :: Int)
+  withFile path ReadMode $ \h -> do
+    ls <- takeLines h (60 :: Int)
+    return $ case [ t | (True, t) <- rolloutTurnsOf ls ] of
+      (t : _) -> Just (T.strip (T.takeWhile (/= '\n') t))
+      []      -> Nothing
   where
-    go _ 0 = return Nothing
-    go h n = hIsEOF h >>= \case
-      True  -> return Nothing
-      False -> do
-        l <- BS.hGetLine h
-        if not ("\"user_message\"" `BS.isInfixOf` l) then go h (n - 1) else
-          case decodeStrict' l >>= parseMaybe (withObject "l" (.:? "payload")) of
-            Just (Just (Object po)) | Just (String m) <- KM.lookup "message" po
-                                    , not (T.null (T.strip m)) ->
-              return (Just (T.strip (T.takeWhile (/= '\n') m)))
-            _ -> go h (n - 1)
+    takeLines _ 0 = return []
+    takeLines h n = hIsEOF h >>= \case
+      True  -> return []
+      False -> (:) <$> BS.hGetLine h <*> takeLines h (n - 1)
 
 --------------------------------------------------------------------------------
 -- Tool calls

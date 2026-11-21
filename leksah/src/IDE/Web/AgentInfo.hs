@@ -35,6 +35,7 @@ module IDE.Web.AgentInfo
   , setAgentRole
   , titleForClaude
   , sessionCli
+  , moveAgentIn
   , cliTranscriptOf
   , agentsHeld
   , setAgentSuspended
@@ -109,7 +110,7 @@ import IDE.Web.Claude
 import IDE.Web.Codex (codexTranscriptOf, isCodexSession)
 import IDE.Web.Agy (agyTranscriptOf, isAgySession)
 import IDE.Web.AgentCli (AgentCli(..), cliTag)
-import IDE.Web.RemoteAgents (remoteActivity, remoteInfoBytes, remoteStartingSessions)
+import IDE.Web.RemoteAgents (remoteActivity, remoteInfoBytes, remotePaneOf, remoteStartingSessions)
 import IDE.Web.ClaudeStatus
        (ClaudeStatus(..), ClaudeStatusRow(..), TitleSource(..), chooseTitle, claudeStatusNow)
 import IDE.Web.GitInfo (gitCurrentBranch, prForBranch)
@@ -170,6 +171,10 @@ data AgentInfo = AgentInfo
                                --   session (a hook's @sessionTitle@): when the
                                --   session's title is something else, the user
                                --   named it (@/rename@), and leksah leaves it be
+  , aiCli     :: Maybe Text    -- ^ the CLI it runs in when not Claude Code
+                               --   ('IDE.Web.AgentCli.cliTag': @codex@, @agy@) —
+                               --   written for agents started on a shared host,
+                               --   whose CLI no index here records
   } deriving (Eq, Show)
 
 -- | An agent taken down with its host: when leksah found out, and the host it
@@ -195,7 +200,7 @@ instance ToJSON AgentInfo where
     , "suspended" .= aiSuspended i, "manager" .= aiManager i
     , "ranOn" .= aiRanOn i, "interrupted" .= aiInterrupted i
     , "titleSent" .= aiTitleSent i, "titleProvisional" .= aiTitleProvisional i
-    , "inherited" .= aiInherited i, "commandAt" .= aiCommandAt i ]
+    , "inherited" .= aiInherited i, "commandAt" .= aiCommandAt i, "cli" .= aiCli i ]
 
 instance FromJSON AgentInfo where
   parseJSON = withObject "AgentInfo" $ \o -> AgentInfo
@@ -207,6 +212,7 @@ instance FromJSON AgentInfo where
     <*> o .:? "bio" <*> o .:? "bioAt" <*> o .:? "suspended"
     <*> (fromMaybe False <$> o .:? "manager")
     <*> o .:? "ranOn" <*> o .:? "interrupted" <*> o .:? "titleSent"
+    <*> o .:? "cli"
 
 -- | One row of the Agents pane: an agent, and the agents it forked.
 data AgentNode = AgentNode
@@ -531,8 +537,8 @@ recordAgentFork parent child dir mprompt mfrom = do
 -- swap — "IDE.Web.SharedStore"), where every leksah showing the machine reads
 -- it.  @rdir@ is host-local.  Best effort: the agent runs either way.
 recordRemoteFork :: Text -> Maybe Text -> Text -> FilePath -> Maybe Text -> Maybe Text
-                 -> Bool -> IO ()
-recordRemoteFork host parent child rdir mprompt mrole manager = do
+                 -> Bool -> AgentCli -> IO ()
+recordRemoteFork host parent child rdir mprompt mrole manager cli = do
   now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime
   void . (`catch` \(_ :: SomeException) -> return (Left "")) $
     remoteModifyJSON host "agents.json" ([] :: [AgentInfo]) $ \is -> do
@@ -543,7 +549,8 @@ recordRemoteFork host parent child rdir mprompt mrole manager = do
                  , aiTitleProvisional = Just (isJust mprompt)
                  , aiRole   = mrole
                  , aiManager = manager
-                 , aiBorn   = Just now }
+                 , aiBorn   = Just now
+                 , aiCli    = if cli == CliClaude then Nothing else Just (cliTag cli) }
           m' = M.insertWith (\_ o -> o) child i' m
       return (if m' == m then is else M.elems m', ())
 
@@ -666,7 +673,8 @@ migrateContinued = do
       , aiRole    = aiRole n <|> aiRole o
       , aiBio     = aiBio n <|> aiBio o
       , aiBioAt   = aiBioAt n <|> aiBioAt o
-      , aiManager = aiManager n || aiManager o }
+      , aiManager = aiManager n || aiManager o
+      , aiCli     = aiCli n <|> aiCli o }
 
 -- | Move what leksah knows about session @old@ to @new@ at once (the hook's
 -- path, see 'IDE.Web.Agent.agentHook'), re-pointing its children.  With
@@ -674,7 +682,12 @@ migrateContinued = do
 -- WHO it is moves (parent, role, manager, birth, directory); its title,
 -- description, bio and done summary described the conversation it cleared.
 moveAgentRecord :: Bool -> Text -> Text -> IO ()
-moveAgentRecord keepStory old new = withInfos $ \m ->
+moveAgentRecord keepStory old new = withInfos $ \m -> (moveAgentIn keepStory old new m, ())
+
+-- | 'moveAgentRecord' on a store's contents (this machine's, or a shared
+-- host's: 'IDE.Web.RemoteCli').
+moveAgentIn :: Bool -> Text -> Text -> Map Text AgentInfo -> Map Text AgentInfo
+moveAgentIn keepStory old new m =
   let reparent i = i { aiParent = (\p -> if p == old then new else p) <$> aiParent i }
       forget i = i { aiTitle = Nothing, aiTitleProvisional = Nothing
                    , aiDesc = Nothing, aiWhen = Nothing
@@ -686,10 +699,11 @@ moveAgentRecord keepStory old new = withInfos $ \m ->
                    in M.insert new (maybe o' (\n -> n { aiParent = aiParent n <|> aiParent o'
                                                      , aiRole = aiRole n <|> aiRole o'
                                                      , aiManager = aiManager n || aiManager o'
-                                                     , aiBorn = aiBorn o' <|> aiBorn n })
+                                                     , aiBorn = aiBorn o' <|> aiBorn n
+                                                     , aiCli = aiCli n <|> aiCli o' })
                                            (M.lookup new m))
                                 (M.delete old m)
-  in (M.map reparent moved, ())
+  in M.map reparent moved
 
 -- | An agent saying it has finished (@agent done@), with what it would like
 -- the user — and the agent that started it — to know.
@@ -816,13 +830,14 @@ blank sid dir = AgentInfo
   , aiDesc = Nothing, aiWhen = Nothing, aiBorn = Nothing
   , aiDone = Nothing, aiDoneAt = Nothing, aiRole = Nothing
   , aiBio = Nothing, aiBioAt = Nothing, aiSuspended = Nothing, aiManager = False
-  , aiRanOn = Nothing, aiInterrupted = Nothing, aiTitleSent = Nothing }
+  , aiRanOn = Nothing, aiInterrupted = Nothing, aiTitleSent = Nothing, aiCli = Nothing }
 
 --------------------------------------------------------------------------------
 -- liveness: which agents were running, and which of them were interrupted
 
 -- | Can leksah reach session @sid@'s pane (to answer its prompt)?  A @ps@
--- walk, so remembered for 30s per session.
+-- walk, so remembered for 30s per session.  A session on a shared host is
+-- reached through its host's tmux server ('remotePaneOf').
 paneReachable :: Text -> IO Bool
 paneReachable sid = do
   now <- posixNow
@@ -830,7 +845,8 @@ paneReachable sid = do
   case cached of
     Just (t, ok) | now - t < 30 -> return ok
     _ -> do
-      ok <- isJust <$> (paneForSession sid `catch` \(_ :: SomeException) -> return Nothing)
+      local <- isJust <$> (paneForSession sid `catch` \(_ :: SomeException) -> return Nothing)
+      ok <- if local then return True else isJust <$> remotePaneOf sid
       atomicModifyIORef' reachRef (\m -> (M.insert sid (now, ok) m, ()))
       return ok
 
@@ -1311,8 +1327,13 @@ computeAgentForest = (`catch` \(_ :: SomeException) -> return []) $ do
         activity = case if working then e >>= seTaskSummary else Nothing of
           Nothing -> activity1
           Just ts -> Just (maybe ts ((ts <> " · ") <>) activity1)
+        -- (what leksah recorded it asking; else what its live record says —
+        -- the events are this run's, so a leksah restarted under a waiting
+        -- agent has none: a Codex or agy record says it either way)
         pending = if anLive n && anState n == "waiting"
-                    then fst <$> (e >>= sePermission) else Nothing
+                    then (fst <$> (e >>= sePermission))
+                         <|> T.stripPrefix "Waiting for approval: " (anDetail n)
+                    else Nothing
     -- Approve / Deny only where they can work: a pane leksah can reach (not
     -- a `claude` in iTerm, say).  Looked up only for a session that waits on
     -- an approval, and remembered a while.

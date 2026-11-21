@@ -9,6 +9,7 @@
 -- nodes), so starting an agent reads the same everywhere.
 module IDE.Web.Widget.AgentMenu
   ( availableClis
+  , availableClisFor
   , agentMenuEntries
   , agentMenuEntriesD
   , newSessionEntries
@@ -22,7 +23,8 @@ import qualified Data.Text as T
 
 import Reflex (Dynamic, Reflex, ffor)
 
-import IDE.Utils.RemotePath (isRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
+import IDE.Web.RemoteCli (remoteAvailableClis)
 import IDE.Web.AgentCli (AgentCli(..), allClis, cliLabel)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentGlyph (cliGlyph)
@@ -32,6 +34,14 @@ import IDE.Web.Codex (codexAvailable)
 import IDE.Web.RecentSessions (RecentSession(..), recentSessions)
 import IDE.Web.SplitOpenRequest (SplitTarget(..))
 import IDE.Web.Widget.Menu (MenuEntry(..))
+
+-- | The agent CLIs that can start in @dir@, in menu order: here, the ones on
+-- PATH; in a directory on a shared host, the ones that host has (as last
+-- found — 'remoteAvailableClis' answers at once).
+availableClisFor :: FilePath -> IO [AgentCli]
+availableClisFor dir = case parseRemotePath dir of
+  Nothing     -> availableClis
+  Just (h, _) -> remoteAvailableClis h
 
 -- | The agent CLIs on PATH, in menu order.
 availableClis :: IO [AgentCli]
@@ -60,9 +70,9 @@ agentMenuEntriesD wrap suffix clis dirD =
     firstOr []      = MenuEntry [] "" (Nothing, wrap (return ()))
 
 -- | "New Claude Session", "New Codex Session", "New Antigravity Session" (as
--- many as are on PATH, each with its badge; @suffix@: " Here", say).  ⌥-click
--- opens one in a split of the active pane — on this machine: a directory on
--- another one runs Claude there, and the other CLIs not at all yet.
+-- many as are on PATH — on a shared host, as it has — each with its badge;
+-- @suffix@: " Here", say).  ⌥-click opens one in a split of the active pane,
+-- for a directory on this machine.
 newSessionEntries :: (IO () -> a) -> Text -> [AgentCli] -> FilePath
                   -> [MenuEntry (Maybe SplitTarget, a)]
 newSessionEntries wrap suffix clis dir =
@@ -95,11 +105,9 @@ continueRecentEntry wrap suffix clis dir =
       , rsAge r ]
     clip k t = if T.length t > k then T.stripEnd (T.take (k - 1) t) <> "…" else t
 
--- | The CLIs that can start in @dir@: on another machine only Claude can
--- (Codex and agy sessions don't run remotely yet).
+-- | The CLIs the caller found for the directory ('availableClisFor').
 clisFor :: FilePath -> [AgentCli] -> [AgentCli]
-clisFor dir clis | isRemotePath dir = filter (== CliClaude) clis
-                 | otherwise        = clis
+clisFor _ clis = clis
 
 -- | A split target, for a directory on this machine (a split runs locally).
 splitTarget :: FilePath -> SplitTarget -> Maybe SplitTarget

@@ -111,18 +111,22 @@ import System.FilePath ((</>), dropTrailingPathSeparator, normalise)
 import System.IO
        (withFile, IOMode(ReadMode), hSeek, SeekMode(SeekFromEnd), hFileSize)
 
-import IDE.Utils.RemotePath (parseRemotePath, renderRemotePath)
+import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
+import IDE.Web.RemoteCli
+       (remoteCliInstall, remoteLeaveBriefing, remoteCliStarted, remoteHookRecords,
+        remoteWriteRecord, remoteDropRecords, remoteIndexAdd, remoteIndexHas, remoteAgyTranscript)
+import IDE.Web.SharedStore (remoteModifyJSON)
 import IDE.Web.AgentInfo
        (AgentInfo(..), AgentNode(..), agentForest, agentInfoOf, agentManager,
         agentParentOf, agentRefreshPrompt, agentTitles, markAgentDone,
         moveAgentRecord, recordAgentFork, recordRemoteFork, remoteAgentRecord,
         setRemoteSuspended, applyLoggedCommand, setAgentManager, setAgentRole,
         setAgentSuspended, acknowledgeInterrupted, stripTags, titleForClaude,
-        sessionCli, cliTranscriptOf)
+        sessionCli, cliTranscriptOf, moveAgentIn)
 import IDE.Web.AgentHost (RanOn)
 import IDE.Web.WorktreeRegistry (ensureSessionWorktree)
 import IDE.Web.AgentNames
-       (adoptContinuation, agentContinuations, agentNameFor, agentNames, renameAgent,
+       (adoptContinuation, adoptContinuationIn, NameRec(..), agentContinuations, agentNameFor, agentNames, renameAgent,
         remoteNameOf, resolveAgentName, touchAgentNames)
 import IDE.Web.AgentMail (addPending, claimDelivery, commandKey, logCommand, maxMailAge, releaseDelivery)
 import IDE.App (appNote, getGlobalApp)
@@ -154,7 +158,7 @@ import IDE.Web.Agy
         agyClaimLaunch, agyRememberLaunch, agyLiveRecords, agyRecordFor, agySessionDir,
         agyStarted, agyTranscriptOf, agyClaudeShaped, agyStateStatus, agyPendingTool,
         isAgySession, isAgyTranscript, agyTurns)
-import IDE.Web.AgentCli (AgentCli(..), cliFromTag, cliProgram)
+import IDE.Web.AgentCli (AgentCli(..), cliFromTag, cliLabel, cliProgram)
 import IDE.Web.NewLwRequest (requestNewLw)
 import IDE.Web.ReplTmux
        (freshSessionName, liveRunPanes, newAgentWindow, newRemoteAgentWindow, pasteTo,
@@ -164,7 +168,7 @@ import IDE.Web.TmuxServer
 import IDE.Web.RemoteTermRequest (requestRemoteTerm)
 import IDE.Web.RemoteAgents
        (remoteAgentName, remoteHostOf, remoteLiveSessions, remotePaneOf, remoteStartingPane,
-        remoteTranscriptTail)
+        remoteTranscriptTail, remoteTranscriptTailOn)
 
 -- | Where the child's pane goes.
 data ForkPlace
@@ -251,9 +255,11 @@ forkAgent fr1 = do
 forkAgentAs :: Maybe AgentRole -> ForkRequest -> IO (Either Text (Text, Text))
 forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                   return (Left ("agent fork failed: " <> T.pack (show e)))) $
-    (case cli of CliClaude -> claudeAvailable
-                 CliCodex  -> codexAvailable
-                 CliAgy    -> agyAvailable) >>= \case
+    -- (an agent on a shared host runs that host's CLI: it is looked for there)
+    (if maybe False isRemotePath (frDir fr) then return True else case cli of
+       CliClaude -> claudeAvailable
+       CliCodex  -> codexAvailable
+       CliAgy    -> agyAvailable) >>= \case
       False -> return (Left ("the " <> T.pack (cliProgram cli) <> " CLI is not on leksah's PATH"))
       True  -> do
         -- (the parent may run on a shared host: its directory is then an
@@ -313,7 +319,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
             Left err -> return (Left ("could not name the agent on " <> host <> ": " <> err))
             Right name -> do
               recordRemoteFork host parent child rdir (frPrompt fr)
-                               (roleName <$> mrole) (frManager fr)
+                               (roleName <$> mrole) (frManager fr) cli
               let spec = AgentSpec { asDir     = renderRemotePath host rdir
                                    , asSession = child
                                    , asFrom    = from
@@ -322,7 +328,7 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                                    , asRoleNote = roleNote <$> mrole
                                    , asResume  = False
                                    , asManager = frManager fr
-                                   , asCli     = CliClaude }
+                                   , asCli     = cli }
               fmap (const (child, name)) <$> startRemoteAgent host name rdir spec
 
     -- Beside the parent when we can find its pane; its own tab otherwise.
@@ -545,20 +551,44 @@ agentStatus sid = allLiveSessions >>= \live -> case M.lookup sid live of
 -- host's leksah tmux server, with the run key a leksah there would give it,
 -- then this leksah's tab on that session brought up with the agent's window
 -- current.  Used by a fork onto the host and by resuming an agent there.
+--
+-- A Codex or agy agent needs leksah's hooks installed on the host first
+-- ('remoteCliInstall'), and is briefed from a note left there: with a leksah
+-- running on the host, its hook handler briefs it (as here); without one,
+-- leksah-cmd prints the note at SessionStart.
 startRemoteAgent :: Text -> Text -> FilePath -> AgentSpec -> IO (Either Text ())
-startRemoteAgent host name rdir spec = do
-  (_, _, line) <- claudeCommandLine (ClaudeAgent spec)
-  let key = T.pack rdir <> "#claude#" <> asSession spec
-  newRemoteAgentWindow host name rdir key line >>= \case
-    Nothing -> return (Left ("could not start a window on " <> host))
-    Just (s, w, pane) -> do
-      -- Its own tab, on its own window, brought to the front — as a local
-      -- launch gets ('runClaudeCmd'); not the session's tab, which would show
-      -- whichever agent's window that tab was last on.
-      requestNewLw (s, w)
-      -- (once the tab's viewer session exists — however long its ssh attach takes)
-      _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
-      return (Right ())
+startRemoteAgent host name rdir spec = prepare >>= \case
+    Left err -> return (Left err)
+    Right () -> do
+     (_, _, line) <- claudeCommandLine (ClaudeAgent spec)
+     let key = T.pack rdir <> "#claude#" <> asSession spec
+     newRemoteAgentWindow host name rdir key line >>= \case
+       Nothing -> return (Left ("could not start a window on " <> host))
+       Just (s, w, pane) -> do
+         -- Its own tab, on its own window, brought to the front — as a local
+         -- launch gets ('runClaudeCmd'); not the session's tab, which would show
+         -- whichever agent's window that tab was last on.
+         requestNewLw (s, w)
+         -- (once the tab's viewer session exists — however long its ssh attach takes)
+         _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
+         return (Right ())
+  where
+    prepare
+      | asCli spec == CliClaude = return (Right ())
+      | otherwise = remoteCliInstall host (asCli spec) >>= \case
+          Left err -> return (Left ("could not set up " <> cliLabel (asCli spec)
+                                    <> " on " <> host <> ": " <> err))
+          Right () -> do
+            -- (what 'briefing' says for a local one, from the launch's own
+            -- facts: the host's stores may have no leksah to read them)
+            unless (asResume spec) . remoteLeaveBriefing host (asSession spec) $
+              T.intercalate "\n\n" $
+                [ nameNote name | not (T.null name) ]
+                <> [ agentNote p (asSession spec) | Just p <- [asParent spec] ]
+                <> maybe [] (: []) (asRoleNote spec)
+                <> [ managerNote | asManager spec ]
+                <> [ worktreeNote ]
+            return (Right ())
 
 -- | 'runClaudeCmd' for a project on another machine (registered with
 -- 'setRemoteClaudeLauncher'): a Workspace-tree "New Claude Session" etc. on an
@@ -569,35 +599,39 @@ startRemoteAgent host name rdir spec = do
 -- Log pane — the menu item has no one else to tell.
 runRemoteClaudeCmd :: Text -> FilePath -> ClaudeCmd -> IO ()
 runRemoteClaudeCmd host rdir cmd = report =<< case cmd of
-    ClaudeNew _      -> fresh Nothing
-    ClaudePrompt _ p -> fresh (Just p)
-    ClaudeAgent s | asCli s /= CliClaude -> unsupported
-                  | otherwise -> launch s
-    CliNew CliClaude _ -> fresh Nothing
-    -- (an agent that host's store knows: resumed as itself, named; any
-    -- other session there — never 'agentResume''s LOCAL fallback)
-    ClaudeResume _ i -> remoteAgentRecord i >>= \case
-      Just (h, _) | h == host -> fmap (const ()) <$> agentResume i
-      _                       -> unnamed
-    CliResume CliClaude _ i -> remoteAgentRecord i >>= \case
-      Just (h, _) | h == host -> fmap (const ()) <$> agentResume i
-      _                       -> unnamed
-    CliNew _ _       -> unsupported
-    CliResume _ _ _  -> unsupported
-    _                -> unnamed
+    ClaudeNew _       -> fresh CliClaude Nothing
+    ClaudePrompt _ p  -> fresh CliClaude (Just p)
+    ClaudeAgent s     -> launch s
+    CliNew cli _      -> fresh cli Nothing
+    ClaudeResume _ i  -> resume CliClaude i
+    CliResume cli _ i -> resume cli i
+    _                 -> unnamed
   where
-    fresh mprompt = do
+    fresh cli mprompt = do
       sid <- newAgentSessionId
       launch AgentSpec { asDir = renderRemotePath host rdir, asSession = sid
                        , asFrom = Nothing, asPrompt = mprompt, asParent = Nothing
                        , asRoleNote = Nothing, asResume = False
-                       , asManager = False, asCli = CliClaude }
+                       , asManager = False, asCli = cli }
     launch spec = remoteAgentName host (asSession spec) >>= \case
       Left err -> return (Left ("could not name the agent on " <> host <> ": " <> err))
       Right name -> do
         recordRemoteFork host (asParent spec) (asSession spec) rdir (asPrompt spec)
-                         Nothing (asManager spec)
+                         Nothing (asManager spec) (asCli spec)
         startRemoteAgent host name rdir spec
+    -- (an agent that host's store knows: resumed as itself, named; any
+    -- other session there — never 'agentResume''s LOCAL fallback.  A Codex
+    -- or agy one leksah did not start is named there now: its launch needs
+    -- the name, and its hooks the setting up.)
+    resume cli i = remoteAgentRecord i >>= \case
+      Just (h, _) | h == host -> fmap (const ()) <$> agentResume i
+      _ | cli == CliClaude -> unnamed
+        | otherwise -> remoteAgentName host i >>= \case
+            Left err -> return (Left ("could not name the agent on " <> host <> ": " <> err))
+            Right name -> startRemoteAgent host name rdir AgentSpec
+              { asDir = renderRemotePath host rdir, asSession = i, asFrom = Nothing
+              , asPrompt = Nothing, asParent = Nothing, asRoleNote = Nothing
+              , asResume = True, asManager = False, asCli = cli }
     unnamed = do
       (_, key, line) <- claudeCommandLine cmd
       -- (the run key a leksah on the host would give it: host-local dir)
@@ -609,9 +643,13 @@ runRemoteClaudeCmd host rdir cmd = report =<< case cmd of
           requestNewLw (s, w)   -- (its own tab: see 'startRemoteAgent')
           _ <- forkIO $ selectWindowAsViewerSoon (SshServer host) (T.unpack (rawTmuxId pane))
           return (Right ())
-    unsupported = return (Left "Codex and Antigravity sessions can't run on another machine yet")
-    report = either (\e -> getGlobalApp >>= mapM_ (`appNote` ("Claude on " <> host <> ": " <> e)))
+    report = either (\e -> getGlobalApp >>= mapM_ (`appNote` (cliLabel cliOf <> " on " <> host <> ": " <> e)))
                     (const (return ()))
+    cliOf = case cmd of
+      ClaudeAgent s     -> asCli s
+      CliNew c _        -> c
+      CliResume c _ _   -> c
+      _                 -> CliClaude
 
 -- | Every live session: this machine's, and those on the hosts whose leksah
 -- tmux server this leksah shares ("IDE.Web.RemoteAgents" — their 'clHost' set).
@@ -734,9 +772,25 @@ agentSendE sid submit txt = agentPane sid >>= \case
     -- Codex takes keys that arrive in a burst for a paste, and an Enter at the
     -- end of one for a newline in it: so hand it a real (bracketed) paste, and
     -- press Enter a moment later.
-    codex <- maybe False ((== "codex") . clAgent) . M.lookup sid <$> claudeLiveBySession
-    ok <- if codex || T.any (== '\n') txt then pasteTo pane txt
-          else sendKeysTo pane ["-l", T.unpack txt]
+    agent <- maybe "claude" clAgent . M.lookup sid <$> allLiveSessions
+    let codex = agent == "codex"
+    -- Out of tmux's copy mode first (someone scrolled the pane back): keys
+    -- sent while it is on move its cursor instead of reaching the agent.
+    -- (Refused, harmlessly, when the pane is in no mode.)
+    _ <- sendKeysTo pane ["-X", "cancel"]
+    ok <- if
+      -- agy takes Ctrl+J for a newline in its composer.  A paste would do
+      -- only while it has bracketed paste on, which it does not always ask
+      -- the terminal for (seen on a shared host): an unbracketed newline
+      -- submits what came before it.
+      | agent == "agy" && T.any (== '\n') txt ->
+          and <$> mapM (\(i, l) -> do
+                          nl <- if i == (0 :: Int) then return True else sendKeysTo pane ["C-j"]
+                          ln <- if T.null l then return True else sendKeysTo pane ["-l", T.unpack l]
+                          return (nl && ln))
+                       (zip [0 ..] (T.splitOn "\n" txt))
+      | codex || T.any (== '\n') txt -> pasteTo pane txt
+      | otherwise -> sendKeysTo pane ["-l", T.unpack txt]
     if not ok then return (Left "tmux would not deliver the text\n") else do
       when (codex && submit) $ threadDelay 300000
       submitted <- if submit then sendKeysTo pane ["Enter"] else return True
@@ -947,7 +1001,8 @@ agentResume sid = remoteAgentRecord sid >>= \case
                    { asDir = renderRemotePath host (aiDir i), asSession = sid
                    , asFrom = Nothing, asPrompt = Nothing, asParent = aiParent i
                    , asRoleNote = roleNote <$> mrole, asResume = True, asManager = aiManager i
-                   , asCli = CliClaude }
+                   -- (its CLI, as its record on the host says)
+                   , asCli = fromMaybe CliClaude (aiCli i >>= cliFromTag) }
             return (("Resuming " <> name <> " on " <> host <> ".\n") <$ r)
   _ -> agentResumeHere sid
 
@@ -1305,6 +1360,16 @@ remoteAgentEvent host history line = case decodeStrict' line of
             t   = case KM.lookup "t" o of Just (Number n) -> realToFrac n; _ -> 0
             fresh = not history && not (T.null host)
         case kind of
+          -- A Codex or agy hook no leksah on the host answered: this leksah
+          -- keeps the session's record there ('remoteCliHook').
+          "hook" | fresh, Just (Bool True) <- KM.lookup "offline" o
+                 , Just (Array as) <- KM.lookup "args" o
+                 , (String c : _) <- toList as, Just cli <- cliFromTag c, cli /= CliClaude -> do
+            let args = [ x | String x <- toList as ]
+                mpid = case KM.lookup "cliPid" o of
+                  Just (Number n) -> Just (round n)
+                  _               -> Nothing
+            remoteCliHook host cli ev payload args mpid
           "hook" | fresh, Just (String s) <- sessionOf payload, ev /= "SessionStart" -> do
             let h = parseHookIn raw
             recordHookEvent ev s h
@@ -1364,6 +1429,180 @@ remoteAgentEvent host history line = case decodeStrict' line of
   _ -> return ()
   where sessionOf (Object p) = KM.lookup "session_id" p
         sessionOf _          = Nothing
+
+-- | A Codex or agy hook (or agy's title report) that no leksah answered on
+-- shared host @host@ — @args@ the hook's (CLI, launch token, …), @mpid@ the
+-- CLI process leksah-cmd found there.  This leksah keeps the session's live
+-- record on the host for it ("IDE.Web.RemoteCli"), as the host's own leksah
+-- would ('agyHook', 'codexHook'): which conversation the process runs, and
+-- whether it is idle, working or waiting; and when the launch token gives
+-- way to the real id, the agent's name and record move over in the host's
+-- stores ('remoteHandOver').  What it is doing (tools, edits) is recorded
+-- here, as for any remote agent.
+remoteCliHook :: Text -> AgentCli -> Text -> Value -> [Text] -> Maybe Int -> IO ()
+remoteCliHook host cli ev payload args mpid = (`catch` \(_ :: SomeException) -> return ()) $ do
+  let token = mfilter (not . T.null) (listToMaybe (drop 1 args))
+      str k = case payload of
+        Object o | Just (String t) <- KM.lookup k o, not (T.null t) -> Just t
+        _ -> Nothing
+      cwd = maybe "" T.unpack (str "cwd")
+      h = parseHookIn (TE.decodeUtf8 (BL.toStrict (encode payload)))
+  case cli of
+    CliAgy -> case ev of
+      "Title" -> forM_ mpid $ \pid -> do
+        let status = str "agent_state" >>= agyStateStatus
+        mine <- M.lookup pid <$> hostRecords host cli
+        case str "conversation_id" of
+          Just c | fmap hlSession mine /= Just c -> do
+            tr <- remoteAgyTranscript host c
+            remoteConversation host cli pid token c cwd Nothing tr (fromMaybe "idle" status)
+          _ | Nothing <- mine -> do
+            -- (before its first prompt: under its launch token, or a fresh
+            -- one for an agy typed into a terminal there)
+            tok <- maybe newAgentSessionId return token
+            putHostRecord host cli (HookLive pid tok cwd (fromMaybe "idle" status) Nothing Nothing)
+          _ -> return ()
+        forM_ status $ \st -> do
+          r <- M.lookup pid <$> hostRecords host cli
+          forM_ r $ \rec -> when (hlStatus rec /= st) $ do
+            -- (what it waits to have approved: the call agy wrote to its
+            -- transcript before it asked — the transcript's tail fetched
+            -- from the host, as 'agyPendingTool' reads one here)
+            what <- if st /= "waiting" then return Nothing else do
+              pending <- remoteTranscriptTailOn host (hlSession rec)
+                           >>= maybe (return Nothing) agyPendingTool
+              let t = maybe "approval" (uncurry approvalText) pending
+              recordPermission (hlSession rec) t
+              return (Just t)
+            when (st == "busy" && hlStatus rec == "idle") $ recordPromptSubmit (hlSession rec)
+            putHostRecord host cli rec { hlStatus = st, hlWaitingFor = what }
+            pokeClaudeStatus
+      "SessionStart" -> forM_ ((,) <$> mpid <*> str "conversationId") $ \(pid, c) -> do
+        tr <- remoteAgyTranscript host c
+        remoteConversation host cli pid token c cwd Nothing tr "busy"
+      "Stop" -> forM_ (str "conversationId") $ \c -> do
+        recordHookEvent "Stop" c (parseHookIn "{}")
+        setHostStatus host cli c "idle" Nothing
+      "PostToolUse" -> forM_ (str "conversationId") $ \c -> do
+        let callObj = case payload of
+              Object o | Just (Object x) <- KM.lookup "toolCall" o -> Just x
+              _ -> Nothing
+        forM_ callObj $ \x -> case KM.lookup "name" x of
+          Just (String n) -> do
+            let (tool, inp) = agyClaudeShaped n (case KM.lookup "args" x of Just (Object a) -> a; _ -> mempty)
+            recordHookEvent "PostToolUse" c HookIn { hiField = const Nothing, hiTool = tool
+                                                   , hiInput = inp, hiResponse = Nothing }
+          _ -> return ()
+      _ -> return ()
+    _ -> forM_ (str "session_id") $ \sid -> do
+      unless (ev == "SessionStart") $ do
+        recordHookEvent ev sid h
+        when (ev == "PostToolUse") $ recordEdit sid (editedFiles (hiTool h) (hiInput h) (hiResponse h))
+      case ev of
+        "SessionStart" -> forM_ mpid $ \pid ->
+          remoteConversation host cli pid token sid cwd (str "source")
+                             (maybe "" T.unpack (str "transcript_path")) "idle"
+        "UserPromptSubmit"  -> setHostStatus host cli sid "busy" Nothing
+        "PreToolUse"        -> setHostStatus host cli sid "busy" Nothing
+        "PostToolUse"       -> setHostStatus host cli sid "busy" Nothing
+        "PermissionRequest" -> setHostStatus host cli sid "waiting" (Just (approvalText (hiTool h) (hiInput h)))
+        "Stop"              -> setHostStatus host cli sid "idle" Nothing
+        "SessionEnd"        -> do
+          recs <- hostRecords host cli
+          let gone = [ p | (p, r) <- M.toList recs, hlSession r == sid ]
+          remoteDropRecords host cli gone
+          atomicModifyIORef' hostRecordsRef (\m -> (M.adjust (\(t, rs) -> (t, foldr M.delete rs gone)) (host, cli) m, ()))
+        _ -> return ()
+  unless (ev `elem` quietHookEvents) pokeClaudeStatus
+
+-- | Process @pid@ on @host@ now runs conversation @new@ (its transcript @tr@):
+-- its record says so (and no other process's does), the host's index has it,
+-- and the agent moves over from the launch token or, after a @/clear@, from
+-- the conversation the process ran before — as 'agyConversation' and
+-- 'codexHook' decide it here.  A conversation the host has seen before (a
+-- resume) takes nothing.
+remoteConversation :: Text -> AgentCli -> Int -> Maybe Text -> Text -> FilePath -> Maybe Text
+                   -> FilePath -> Text -> IO ()
+remoteConversation host cli pid token new cwd msource tr status = do
+  recs <- hostRecords host cli
+  let mine = M.lookup pid recs
+  unless (fmap hlSession mine == Just new) $ do
+    seen <- remoteIndexHas host cli new
+    let others = [ p | (p, r) <- M.toList recs, p /= pid, hlSession r == new ]
+    remoteDropRecords host cli others
+    atomicModifyIORef' hostRecordsRef (\m -> (M.adjust (\(t, rs) -> (t, foldr M.delete rs others)) (host, cli) m, ()))
+    putHostRecord host cli (HookLive pid new cwd status Nothing (if null tr then Nothing else Just tr))
+    remoteIndexAdd host cli new cwd tr
+    unless seen $ do
+      -- (the launch token, the first time: 'remoteHandOver' does nothing once
+      -- it has carried on)
+      viaToken <- case token of
+        Just t | t /= new -> do
+          started <- remoteCliStarted host cli t
+          if started then return False else remoteHandOver host t new True
+        _ -> return False
+      unless viaToken . forM_ (hlSession <$> mine) $ \o -> do
+        started <- remoteCliStarted host cli o
+        let source = fromMaybe "" msource
+        case cli of
+          CliCodex | source `elem` ["clear", "fork"] -> void (remoteHandOver host o new (source /= "clear"))
+                   | not started                     -> void (remoteHandOver host o new True)
+                   | otherwise                       -> return ()
+          _ -> void (remoteHandOver host o new (not started))
+    pokeClaudeStatus
+
+-- | Session @old@ on @host@ carried on as @new@: @new@ takes its name and its
+-- record in the host's stores ('adoptContinuationIn', 'moveAgentIn';
+-- @keepStory@ as 'moveAgentRecord').  'False' — and nothing done — when
+-- @old@ has carried on already.
+remoteHandOver :: Text -> Text -> Text -> Bool -> IO Bool
+remoteHandOver host old new keepStory = do
+  now <- realToFrac <$> getPOSIXTime
+  r <- remoteModifyJSON host "agent-names.json" M.empty $ \m ->
+    return $ if maybe False (isJust . nrContinuedIn) (M.lookup old m)
+      then (m, False)
+      else (fst (adoptContinuationIn now old new m), True)
+  case r of
+    Right True -> do
+      _ <- remoteModifyJSON host "agents.json" ([] :: [AgentInfo]) $ \is -> do
+        let m  = M.fromList [ (aiSession i, i) | i <- is ]
+            m' = moveAgentIn keepStory old new m
+        return (if m' == m then is else M.elems m', ())
+      return True
+    _ -> return False
+
+-- | Session @sid@ of @cli@ on @host@ is now @status@, waiting for @what@.
+setHostStatus :: Text -> AgentCli -> Text -> Text -> Maybe Text -> IO ()
+setHostStatus host cli sid status what = do
+  recs <- hostRecords host cli
+  forM_ [ r | r <- M.elems recs, hlSession r == sid ] $ \r ->
+    when (hlStatus r /= status || hlWaitingFor r /= what) $ do
+      putHostRecord host cli r { hlStatus = status, hlWaitingFor = what }
+      pokeClaudeStatus
+
+-- | The live records of @cli@ on @host@ that this leksah keeps, by pid: read
+-- from the host when not known, or not looked at for a while (its own
+-- leksah may have written them since).
+hostRecords :: Text -> AgentCli -> IO (Map Int HookLive)
+hostRecords host cli = do
+  now <- realToFrac <$> getPOSIXTime
+  M.lookup (host, cli) <$> readIORef hostRecordsRef >>= \case
+    Just (at, rs) | now - at < (30 :: Double) -> return rs
+    _ -> do
+      rs <- M.fromList . map (\r -> (hlPid r, r)) <$> remoteHookRecords host cli
+      atomicModifyIORef' hostRecordsRef (\m -> (M.insert (host, cli) (now, rs) m, ()))
+      return rs
+
+putHostRecord :: Text -> AgentCli -> HookLive -> IO ()
+putHostRecord host cli r = do
+  remoteWriteRecord host cli r
+  now <- realToFrac <$> getPOSIXTime
+  atomicModifyIORef' hostRecordsRef $ \m ->
+    (M.alter (Just . maybe (now, M.singleton (hlPid r) r) (\(t, rs) -> (t, M.insert (hlPid r) r rs))) (host, cli) m, ())
+
+{-# NOINLINE hostRecordsRef #-}
+hostRecordsRef :: IORef (Map (Text, AgentCli) (Double, Map Int HookLive))
+hostRecordsRef = unsafePerformIO (newIORef M.empty)
 
 -- | One hook's JSON, parsed once.
 data HookIn = HookIn
@@ -1813,8 +2052,9 @@ agentAnswerApproval sid yes mexpected = agentPane sid >>= \case
     screen <- tmuxOnIds [pane] "" $ \srv raw ->
                 tmuxStdoutOn srv ["capture-pane", "-p", "-t", raw pane]
     recorded <- fmap fst . sePermission <$> eventsFor sid
-    codex <- maybe False ((== "codex") . clAgent) . M.lookup sid <$> claudeLiveBySession
-    let flat = T.unwords (T.words screen)
+    agent <- maybe "claude" clAgent . M.lookup sid <$> allLiveSessions
+    let codex = agent == "codex"
+        flat = T.unwords (T.words screen)
         -- Claude Code: "1. Yes" … "Esc to cancel".  Codex: "1. Yes, proceed
         -- (y)" … "Press enter to confirm or esc to cancel".  Antigravity:
         -- "1. Yes, run command" … "esc to cancel" (1 approves, as Claude's).
@@ -1826,8 +2066,15 @@ agentAnswerApproval sid yes mexpected = agentPane sid >>= \case
     else if not matches then return
       "The approval on screen is not the one shown — look at its pane before answering.\n"
     else do
-        -- (Codex's own key for "Yes, proceed" is y; Esc is "No" in both.)
-        ok <- sendKeysTo pane [if yes then (if codex then "y" else "1") else "Escape"]
+        -- (Codex's own key for "Yes, proceed" is y; Esc is "No" in all.  agy
+        -- opens its prompt on option 1, "Yes": Enter takes it — its 1 key is
+        -- not the same everywhere (agy 1.5.12 opens a note to the agent with
+        -- it, and waits).)
+        ok <- if yes && agent == "agy" && not ("> 1." `T.isInfixOf` flat)
+          then return False
+          else sendKeysTo pane [ if not yes then "Escape"
+                                 else if codex then "y"
+                                 else if agent == "agy" then "Enter" else "1" ]
         name <- agentNameFor sid
         return $ if not ok then "tmux would not deliver the answer.\n"
                  else (if yes then "Approved for " else "Denied for ") <> name <> ".\n"

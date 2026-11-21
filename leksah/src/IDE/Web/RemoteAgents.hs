@@ -32,6 +32,7 @@ module IDE.Web.RemoteAgents
   , remotePaneOf
   , remoteHostOf
   , remoteTranscriptTail
+  , remoteTranscriptTailOn
   , remoteAgentName
   , remoteStartingPane
   , remoteStartingSessions
@@ -65,7 +66,7 @@ import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory (createDirectoryIfMissing, getFileSize, getHomeDirectory, renameFile)
 import System.Exit (ExitCode(..))
-import System.FilePath ((</>))
+import System.FilePath ((</>), takeDirectory)
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 
@@ -76,8 +77,12 @@ import IDE.Web.AgentNames
        (NameRec(..), nameSessions, namesHeldElsewhere, noteRemoteName, setRemoteNames)
 import IDE.Web.Claude
        (ClaudeLive(..), TranscriptGist(..), gistOfTail, latestActivityOf,
-        parseSessionFile, pidAncestors)
+        parseSessionFile, pidAncestors, hookLiveSession, turnsGist)
 import IDE.Web.SharedStore (remoteModifyJSON)
+import IDE.Web.AgentCli (AgentCli(..))
+import IDE.Web.Agy (agyTurnsOf, isAgyProgram)
+import IDE.Web.Codex (isCodexProgram, rolloutTurnsOf)
+import IDE.Web.HookSessions (HookLive(..), hookRecordFromJson)
 import IDE.Web.AgentMail (catchSync, retryPending)
 import IDE.Web.TmuxServer (remoteSocketArgs, remoteTmux)
 
@@ -233,19 +238,34 @@ remoteHostOf sid = do
 -- transcript readers take as they take any other.  'Nothing' when the session
 -- is on no shared host, or its transcript cannot be read.
 remoteTranscriptTail :: Text -> IO (Maybe FilePath)
-remoteTranscriptTail sid = remoteHostOf sid >>= \case
-  Nothing   -> return Nothing
-  Just host -> (`catch` \(_ :: SomeException) -> return Nothing) $ do
+remoteTranscriptTail sid = remoteHostOf sid >>= maybe (return Nothing) (`remoteTranscriptTailOn` sid)
+
+-- | 'remoteTranscriptTail' of a session known to be on @host@ (one this
+-- leksah has only just recorded there: the snapshot may not show it yet).
+remoteTranscriptTailOn :: Text -> Text -> IO (Maybe FilePath)
+remoteTranscriptTailOn host sid = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+    -- (Claude Code's transcript by its id; a Codex or agy one where the
+    -- host's index of that CLI's sessions says it is.  The first line names
+    -- which.)
     (code, out, _) <- runSsh host
-      "for x in \"$HOME\"/.claude/projects/*/\"$0\".jsonl; do [ -f \"$x\" ] && exec tail -c 524288 \"$x\"; done; exit 3"
+      (T.concat
+        [ "for x in \"$HOME\"/.claude/projects/*/\"$0\".jsonl; do [ -f \"$x\" ] && { echo claude; exec tail -c 524288 \"$x\"; }; done; "
+        , "for k in codex agy; do f=\"$HOME/.leksah/$k-index.json\"; [ -f \"$f\" ] || continue; "
+        , "x=$(sed -n \"s/.*\\\"$0\\\":{[^}]*\\\"transcript\\\":\\\"\\([^\\\"]*\\)\\\".*/\\1/p\" \"$f\" | head -1); "
+        , "[ -n \"$x\" ] && [ -f \"$x\" ] && { echo \"$k\"; exec tail -c 524288 \"$x\"; }; done; exit 3" ])
       [sid] mempty
     if code /= ExitSuccess then return Nothing else do
       home <- getHomeDirectory
-      let dir = home </> ".leksah" </> "remote-tails"
-          f   = dir </> (T.unpack sid <> ".jsonl")
-      createDirectoryIfMissing True dir
+      let (kind, body) = BC.break (== '\n') out
+          dir = home </> ".leksah" </> "remote-tails"
+          -- (named as that CLI names its transcripts: the readers go by it)
+          f = case kind of
+            "codex" -> dir </> ("rollout-" <> T.unpack sid <> ".jsonl")
+            "agy"   -> dir </> "brain" </> T.unpack sid </> "transcript_full.jsonl"
+            _       -> dir </> (T.unpack sid <> ".jsonl")
+      createDirectoryIfMissing True (takeDirectory f)
       -- (from the first whole line: tail cut the first one short)
-      BS.writeFile f (BS.drop 1 (BC.dropWhile (/= '\n') out))
+      BS.writeFile f (BS.drop 1 (BC.dropWhile (/= '\n') (BS.drop 1 body)))
       return (Just f)
 
 -- | Snapshot every shared host every few seconds, forever.
@@ -414,15 +434,30 @@ parseSnapshot host now p fs = HostSnapshot
   }
   where
     sessions = mapMaybe (\(t, _, b) -> if t == "S" then parseSessionFile (Just host) b else Nothing) fs
+    -- The Codex and agy sessions the records there say are running (kept by
+    -- the host's leksah, or by a leksah reading its event log —
+    -- "IDE.Web.RemoteCli"): only while their process still runs that CLI
+    -- (agy says nothing when it exits, and pids are reused).
+    hooked   = [ hookLiveSession (Just host) cli r
+               | (t, _, b) <- fs, Just cli <- [lookup t [("codex", CliCodex), ("agy", CliAgy)]]
+               , Just r <- [hookRecordFromJson b]
+               , maybe False (if cli == CliCodex then isCodexProgram else isAgyProgram)
+                   (M.lookup (hlPid r) comms) ]
+    comms    = M.fromList [ (pid, BC.unpack (BC.unwords cmd)) | (a : _ : cmd) <- psRows
+                                                         , Just pid <- [readMaybe (BC.unpack a)] ]
     psRows   = [ ws | (t, _, b) <- fs, t == "P", ws <- map BC.words (BC.lines b) ]
     parents  = M.fromList [ (pid, ppid) | (a : b' : _) <- psRows
                                         , Just pid <- [readMaybe (BC.unpack a)]
                                         , Just ppid <- [readMaybe (BC.unpack b')] ]
-    -- (the claude processes: "claude", or nix's ".claude-wrapped")
-    claudePids = [ pid | (a : _ : cmd) <- psRows, "claude" `BS.isInfixOf` BC.unwords cmd
+    -- (the agent processes: "claude", or nix's ".claude-wrapped"; codex; agy
+    -- — a leksah launch of one is "starting" until it registers)
+    claudePids = [ pid | (a : _ : cmd) <- psRows
+                       , let c = BC.unwords cmd
+                       , "claude" `BS.isInfixOf` c || isCodexProgram (BC.unpack c)
+                         || isAgyProgram (BC.unpack c)
                        , Just pid <- [readMaybe (BC.unpack a)] ]
     alive    = M.keysSet parents
-    live     = [ l | l <- sessions, clPid l `S.member` alive ]
+    live     = [ l | l <- sessions, clPid l `S.member` alive ] <> hooked
     -- A pane shows the session whose claude process descends from the pane's
     -- own process.
     owners   = M.fromList [ (a, clSession l) | l <- live
@@ -454,6 +489,9 @@ parseSnapshot host now p fs = HostSnapshot
       , Just sid <- [T.stripPrefix "#claude#" rest], isSessionId sid, not (T.null dir)
       , not (sid `S.member` liveIds)
       , Just pp <- [readMaybe (BC.unpack ppid)]
+      -- (not a pane that shows a live session already: a Codex or agy
+      -- launch's key names its launch token, which gave way to the real id)
+      , pp `M.notMember` owners
       , any (\c -> pp `elem` pidAncestors parents c) claudePids ]
     isSessionId t = T.length t == 36 && T.all (\c -> isHexDigit c || c == '-') t
     tails = M.fromList
@@ -469,14 +507,19 @@ parseSnapshot host now p fs = HostSnapshot
                           else Just (fresh sid st b) ] ]
     -- A changed tail: its gist and activity.  A tail that no longer reaches
     -- a title or anything said keeps the last ones known.
+    agentOf  = M.fromList [ (clSession l, clAgent l) | l <- live ]
     fresh sid st b =
       let ls = drop 1 (BC.lines b)          -- (the first line is cut short)
-          g  = gistOfTail ls
+          -- (each CLI writes its transcript its own way)
+          (g, act) = case M.lookup sid agentOf of
+            Just "codex" -> (turnsGist (rolloutTurnsOf ls), Nothing)
+            Just "agy"   -> (turnsGist (agyTurnsOf ls), Nothing)
+            _            -> (gistOfTail ls, latestActivityOf ls)
           g' = case M.lookup sid (hsTails p) of
                  Just (_, o, _) -> g { tgTitle    = maybe (tgTitle o) Just (tgTitle g)
                                      , tgLastSaid = maybe (tgLastSaid o) Just (tgLastSaid g) }
                  Nothing -> g
-      in (st, g', latestActivityOf ls)
+      in (st, g', act)
 
 -- | Split the script's output into @(tag, meta, body)@ frames: a header line
 -- @\@\@TAG META LENGTH@, then exactly LENGTH bytes.
@@ -503,6 +546,9 @@ snapshotScript = T.concat
   , "tmp=$(mktemp) || exit 1; trap 'rm -f \"$tmp\"' EXIT; "
   , "frame() { printf '@@%s %s %s\\n' \"$1\" \"$2\" \"$(wc -c < \"$3\" | tr -d ' ')\"; cat \"$3\"; }; "
   , "for f in \"$HOME\"/.claude/sessions/*.json; do [ -f \"$f\" ] && frame S - \"$f\"; done; "
+  -- (the Codex and agy live records: frames named after the CLI)
+  , "for k in codex agy; do for f in \"$HOME/.leksah/$k-sessions\"/*.json; do "
+  ,   "[ -f \"$f\" ] && frame \"$k\" - \"$f\"; done; done; "
   , "ps -Ao pid=,ppid=,comm= > \"$tmp\"; frame P - \"$tmp\"; "
   , "tx list-panes -a -f '#{==:#{@leksah_viewer},}' -F '#{pane_id} #{pane_pid} #{session_id} #{window_id} #{@leksah_run}' > \"$tmp\" 2>/dev/null; "
   , "frame T - \"$tmp\"; "
@@ -532,4 +578,14 @@ snapshotScript = T.concat
   ,     "if [ -n \"$k\" ]; then : > \"$tmp\"; frame X \"$sid=$stamp=same\" \"$tmp\"; "
   ,     "else tail -c 131072 \"$x\" > \"$tmp\"; frame X \"$sid=$stamp\" \"$tmp\"; fi; break; "
   ,   "done; "
-  , "done" ]
+  , "done; "
+  -- (and the Codex and agy sessions', named in their records)
+  , "for k in codex agy; do for f in \"$HOME/.leksah/$k-sessions\"/*.json; do [ -f \"$f\" ] || continue; "
+  ,   "sid=$(sed -n 's/.*\"sessionId\":\"\\([^\"]*\\)\".*/\\1/p' \"$f\" | head -1); "
+  ,   "x=$(sed -n 's/.*\"transcript\":\"\\([^\"]*\\)\".*/\\1/p' \"$f\" | head -1); "
+  ,   "[ -n \"$sid\" ] && [ -f \"$x\" ] || continue; "
+  ,   "stamp=$(stat -c '%s:%Y' \"$x\" 2>/dev/null || stat -f '%z:%m' \"$x\"); "
+  ,   "k2=; for a in \"$@\"; do [ \"$a\" = \"$sid=$stamp\" ] && k2=1; done; "
+  ,   "if [ -n \"$k2\" ]; then : > \"$tmp\"; frame X \"$sid=$stamp=same\" \"$tmp\"; "
+  ,   "else tail -c 131072 \"$x\" > \"$tmp\"; frame X \"$sid=$stamp\" \"$tmp\"; fi; "
+  , "done; done" ]

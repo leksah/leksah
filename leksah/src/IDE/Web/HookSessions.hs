@@ -21,6 +21,8 @@ module IDE.Web.HookSessions
   , hsKind
   , newHookStore
   , HookLive(..)
+  , hookRecordFromJson
+  , hookRecordJson
     -- * Live sessions
   , hookLiveRecords
   , hookRecordFor
@@ -148,9 +150,14 @@ readRecordsFromDisk st = (`catch` \(_ :: SomeException) -> return []) $ do
     concat <$> forM fs (\f -> maybe [] (: []) <$> readRecord (d </> f))
 
 readRecord :: FilePath -> IO (Maybe HookLive)
-readRecord f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
-  v <- decodeStrict' <$> BS.readFile f
-  return $ v >>= parseMaybe (withObject "record" $ \o -> do
+readRecord f = (`catch` \(_ :: SomeException) -> return Nothing) $
+  hookRecordFromJson <$> BS.readFile f
+
+-- | A live record's JSON (a file in @\<kind\>-sessions@, here or on a shared
+-- host) as a 'HookLive'.
+hookRecordFromJson :: BS.ByteString -> Maybe HookLive
+hookRecordFromJson bytes =
+  decodeStrict' bytes >>= parseMaybe (withObject "record" $ \o -> do
     p  <- o .:? "pid"
     s  <- o .:? "sessionId"
     cw <- o .:? "cwd"
@@ -167,16 +174,22 @@ readRecord f = (`catch` \(_ :: SomeException) -> return Nothing) $ do
       _ -> fail "no pid/session")
   where mfilterT = (>>= \t -> if T.null t then Nothing else Just t)
 
+-- | A live record as its file says it (@kind@: @codex@, @agy@; @now@ POSIX
+-- seconds) — written here by 'writeRecord', on a shared host by
+-- "IDE.Web.RemoteCli".
+hookRecordJson :: Text -> Double -> HookLive -> BL.ByteString
+hookRecordJson kind now r = encode $ object
+  [ "pid" .= hlPid r, "sessionId" .= hlSession r, "cwd" .= hlDir r
+  , "status" .= hlStatus r, "waitingFor" .= hlWaitingFor r
+  , "transcript" .= hlTranscript r, "kind" .= kind
+  , "updatedAt" .= now ]
+
 writeRecord :: HookStore -> HookLive -> IO ()
 writeRecord st r = do
   d <- liveDir st
   createDirectoryIfMissing True d
   now <- realToFrac . utcTimeToPOSIXSeconds <$> getCurrentTime :: IO Double
-  atomicWrite (d </> (show (hlPid r) <> ".json")) . encode $ object
-    [ "pid" .= hlPid r, "sessionId" .= hlSession r, "cwd" .= hlDir r
-    , "status" .= hlStatus r, "waitingFor" .= hlWaitingFor r
-    , "transcript" .= hlTranscript r, "kind" .= hsKind st
-    , "updatedAt" .= now ]
+  atomicWrite (d </> (show (hlPid r) <> ".json")) (hookRecordJson (hsKind st) now r)
   invalidate (hsRecords st)
 
 -- | The live record for session @sid@, if one is open.
