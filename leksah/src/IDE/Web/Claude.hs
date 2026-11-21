@@ -1085,12 +1085,13 @@ codexCommandLine s = do
   unless (started || isJust remote) $ codexRememberLaunch (asSession s) d
   -- (on a shared host: its leksah-cmd on the agent's PATH, as for Claude)
   envPrefix <- maybe (return "") (fmap fst . remoteAgentFlags . fst) remote
-  let line = envPrefix <> T.unwords (
+  let line = T.unwords (
         [ "env", "LEKSAH_AGENT_TOKEN=" <> asSession s, "codex" ]
         <> [ x | started, x <- ["resume", asSession s] ]
         <> maybe [] ((:[]) . shq) (asPrompt s) )
       key = T.pack d <> "#claude#" <> asSession s
-  return (d, key, maybe line (\p -> p <> " " <> line) mbPrefix)
+  -- (the PATH first, then the project's prefix — as for Claude)
+  return (d, key, envPrefix <> maybe line (\p -> p <> " " <> line) mbPrefix)
 
 -- | The command line for an Antigravity (agy) agent.  Like Codex, agy cannot
 -- be told its conversation id, so 'asSession' is a TOKEN standing in for it
@@ -1126,12 +1127,13 @@ agyCommandLine s = do
   -- agent's PATH)
   settings <- if isJust remote then return remoteAgySettingsArg else shq <$> agyLaunchSettings
   envPrefix <- maybe (return "") (fmap fst . remoteAgentFlags . fst) remote
-  let line = envPrefix <> T.unwords (
+  let line = T.unwords (
         [ "env", "LEKSAH_AGENT_TOKEN=" <> asSession s, "agy", "--settings", settings ]
         <> [ "--conversation=" <> asSession s | started ]
         <> maybe [] (\p -> ["-i", shq p]) (asPrompt s) )
       key = T.pack d <> "#claude#" <> asSession s
-  return (d, key, maybe line (\p -> p <> " " <> line) mbPrefix)
+  -- (the PATH first, then the project's prefix — as for Claude)
+  return (d, key, envPrefix <> maybe line (\p -> p <> " " <> line) mbPrefix)
 
 -- | Codex processes in leksah's terminals that no record covers yet: record
 -- each straight away, so it shows up like any other agent.  Codex's TUI
@@ -1882,7 +1884,7 @@ noGist = TranscriptGist Nothing Nothing False Nothing
 -- transcript): what the agent last said.  They have no titles.
 turnsGistOf :: (FilePath -> IO [(Bool, Text)]) -> FilePath -> IO TranscriptGist
 turnsGistOf turns path = (`catch` \(_ :: SomeException) -> return noGist) $
-  turnsGist <$> turns path
+  turns path >>= \ts -> return $! turnsGist ts
 
 -- | The gist of a conversation read as turns (@(fromUser, text)@, oldest
 -- first): what the agent last said.

@@ -111,7 +111,7 @@ import System.FilePath ((</>), dropTrailingPathSeparator, normalise)
 import System.IO
        (withFile, IOMode(ReadMode), hSeek, SeekMode(SeekFromEnd), hFileSize)
 
-import IDE.Utils.RemotePath (isRemotePath, parseRemotePath, renderRemotePath)
+import IDE.Utils.RemotePath (parseRemotePath, renderRemotePath)
 import IDE.Web.RemoteCli
        (remoteCliInstall, remoteLeaveBriefing, remoteCliStarted, remoteHookRecords,
         remoteWriteRecord, remoteDropRecords, remoteIndexAdd, remoteIndexHas, remoteAgyTranscript)
@@ -254,14 +254,7 @@ forkAgent fr1 = do
 
 forkAgentAs :: Maybe AgentRole -> ForkRequest -> IO (Either Text (Text, Text))
 forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
-                  return (Left ("agent fork failed: " <> T.pack (show e)))) $
-    -- (an agent on a shared host runs that host's CLI: it is looked for there)
-    (if maybe False isRemotePath (frDir fr) then return True else case cli of
-       CliClaude -> claudeAvailable
-       CliCodex  -> codexAvailable
-       CliAgy    -> agyAvailable) >>= \case
-      False -> return (Left ("the " <> T.pack (cliProgram cli) <> " CLI is not on leksah's PATH"))
-      True  -> do
+                  return (Left ("agent fork failed: " <> T.pack (show e)))) $ do
         -- (the parent may run on a shared host: its directory is then an
         -- ssh:// path, so a fork of its conversation is started THERE)
         live <- allLiveSessions
@@ -276,6 +269,11 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
   where
     cli = fromMaybe CliClaude (frCli fr)
     orElse a b = maybe b Just a
+    -- (here only: an agent on a shared host runs that host's CLI)
+    localAvailable = case cli of
+      CliClaude -> claudeAvailable
+      CliCodex  -> codexAvailable
+      CliAgy    -> agyAvailable
 
     go live parent parentDir = do
       -- Fork the parent's conversation unless asked not to (or there is none).
@@ -289,7 +287,9 @@ forkAgentAs mrole fr = (`catch` \(e :: SomeException) ->
                "a forked conversation has to stay in its own directory (session "
                <> f <> " is in " <> T.pack pd <> "): drop --dir, or use --fresh \
                \to start a context-free agent in " <> T.pack dir
-         | otherwise -> do
+         | otherwise -> localAvailable >>= \case
+            False -> return (Left ("the " <> T.pack (cliProgram cli) <> " CLI is not on leksah's PATH"))
+            True -> do
              child <- newAgentSessionId
              let spec = AgentSpec { asDir     = dir
                                   , asSession = child
@@ -578,10 +578,17 @@ startRemoteAgent host name rdir spec = prepare >>= \case
       | otherwise = remoteCliInstall host (asCli spec) >>= \case
           Left err -> return (Left ("could not set up " <> cliLabel (asCli spec)
                                     <> " on " <> host <> ": " <> err))
-          Right () -> do
+          Right fresh -> do
+            -- (Codex runs hooks it has not seen only once they are trusted:
+            -- it asks in the agent's pane — "Hooks need review" — or, older
+            -- ones, at /hooks.  Said once, as the hooks first go in.)
+            when (fresh && asCli spec == CliCodex) . (getGlobalApp >>=) . mapM_ $ \app ->
+              appNote app ("Codex on " <> host <> " runs leksah's hooks only once you trust them: "
+                           <> "answer its \"Hooks need review\" prompt (or /hooks) in the agent's pane.")
             -- (what 'briefing' says for a local one, from the launch's own
-            -- facts: the host's stores may have no leksah to read them)
-            unless (asResume spec) . remoteLeaveBriefing host (asSession spec) $
+            -- facts: the host's stores may have no leksah to read them.  A
+            -- resume too: its token is its id, and Codex re-briefs then.)
+            remoteLeaveBriefing host (asSession spec) $
               T.intercalate "\n\n" $
                 [ nameNote name | not (T.null name) ]
                 <> [ agentNote p (asSession spec) | Just p <- [asParent spec] ]
@@ -786,11 +793,12 @@ agentSendE sid submit txt = agentPane sid >>= \case
       | agent == "agy" && T.any (== '\n') txt ->
           and <$> mapM (\(i, l) -> do
                           nl <- if i == (0 :: Int) then return True else sendKeysTo pane ["C-j"]
-                          ln <- if T.null l then return True else sendKeysTo pane ["-l", T.unpack l]
+                          ln <- if T.null l then return True else sendKeysTo pane ["-l", "--", T.unpack l]
                           return (nl && ln))
                        (zip [0 ..] (T.splitOn "\n" txt))
       | codex || T.any (== '\n') txt -> pasteTo pane txt
-      | otherwise -> sendKeysTo pane ["-l", T.unpack txt]
+      -- (after "--": text that starts with a dash is still text)
+      | otherwise -> sendKeysTo pane ["-l", "--", T.unpack txt]
     if not ok then return (Left "tmux would not deliver the text\n") else do
       when (codex && submit) $ threadDelay 300000
       submitted <- if submit then sendKeysTo pane ["Enter"] else return True
@@ -997,12 +1005,19 @@ agentResume sid = remoteAgentRecord sid >>= \case
             mrole <- case aiRole i of
               Nothing -> return Nothing
               Just ro -> either (const Nothing) Just <$> findRemoteAgentRole host (aiDir i) ro
+            -- (its CLI, as its record on the host says — else as the host's
+            -- indexes of Codex and agy sessions do: one its own leksah
+            -- started is recorded without it)
+            cli <- case aiCli i >>= cliFromTag of
+              Just c  -> return c
+              Nothing -> remoteIndexHas host CliCodex sid >>= \case
+                True  -> return CliCodex
+                False -> (\a -> if a then CliAgy else CliClaude) <$> remoteIndexHas host CliAgy sid
             r <- startRemoteAgent host name (aiDir i) AgentSpec
                    { asDir = renderRemotePath host (aiDir i), asSession = sid
                    , asFrom = Nothing, asPrompt = Nothing, asParent = aiParent i
                    , asRoleNote = roleNote <$> mrole, asResume = True, asManager = aiManager i
-                   -- (its CLI, as its record on the host says)
-                   , asCli = fromMaybe CliClaude (aiCli i >>= cliFromTag) }
+                   , asCli = cli }
             return (("Resuming " <> name <> " on " <> host <> ".\n") <$ r)
   _ -> agentResumeHere sid
 
@@ -1369,7 +1384,12 @@ remoteAgentEvent host history line = case decodeStrict' line of
                 mpid = case KM.lookup "cliPid" o of
                   Just (Number n) -> Just (round n)
                   _               -> Nothing
-            remoteCliHook host cli ev payload args mpid
+                -- (`codex exec`, `agy -p` …: not agents — as 'codexHook' and
+                -- 'agyHook' leave them out here)
+                interactive = case KM.lookup "cliArgs" o of
+                  Just (String a) -> (if cli == CliCodex then codexInteractive else agyInteractive) (T.unpack a)
+                  _               -> True
+            when interactive $ remoteCliHook host cli ev payload args mpid
           "hook" | fresh, Just (String s) <- sessionOf payload, ev /= "SessionStart" -> do
             let h = parseHookIn raw
             recordHookEvent ev s h

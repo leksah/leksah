@@ -35,7 +35,7 @@ module IDE.Web.RemoteCli
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, catch)
-import Control.Monad (unless, void, when)
+import Control.Monad (forM_, unless, void, when)
 import Data.Aeson (Value(..), (.=), (.:?), decodeStrict', encode, object, withObject)
 import Data.Aeson.Types (parseMaybe)
 import qualified Data.Aeson.Key as Key
@@ -67,15 +67,21 @@ import IDE.Web.HookSessions (HookLive(..), hookRecordFromJson, hookRecordJson)
 -- the host's leksah-cmd), the CLI's hook config merged as the local install
 -- merges it ('codexHooksWith', 'agyHooksWith', 'agySettingsWith'), the rules
 -- \/ allow-list, the MCP server — without needing a leksah running there.
--- Done once per host and CLI in this run.  'Left' why it could not be.
-remoteCliInstall :: Text -> AgentCli -> IO (Either Text ())
-remoteCliInstall _ CliClaude = return (Right ())
+-- Done once per host and CLI in this run: 'Right' 'True' the first time.
+-- Not where the user took leksah's hooks out ('IDE.Web.Codex.codexUninstall'
+-- leaves a marker, there as here).  'Left' why it could not be.
+remoteCliInstall :: Text -> AgentCli -> IO (Either Text Bool)
+remoteCliInstall _ CliClaude = return (Right False)
 remoteCliInstall host cli = do
   done <- S.member (host, cli) <$> readIORef installedRef
-  if done then return (Right ()) else (`catch` \(e :: SomeException) -> return (Left (T.pack (show e)))) $ do
+  if done then return (Right False) else (`catch` \(e :: SomeException) -> return (Left (T.pack (show e)))) $ do
     home <- remoteHomeDir host
+    (_, marked, _) <- runSsh host "[ -f \"$HOME/.leksah/$0-uninstalled\" ] && echo yes; exit 0" [cliTag cli] mempty
     exe <- hostLeksahCmd host
     case exe of
+      _ | BC.strip marked == "yes" -> return . Left $
+        "leksah's " <> cliTag cli <> " hooks were taken out on " <> host <> " (leksah-cmd "
+        <> cliTag cli <> " uninstall); `leksah-cmd " <> cliTag cli <> " install` there brings them back"
       Nothing -> return . Left $
         "there is no leksah-cmd on " <> host <> " for its hooks to run (build leksah there once)"
       Just cmd -> do
@@ -102,7 +108,7 @@ remoteCliInstall host cli = do
           Left err -> return (Left err)
           Right () -> do
             atomicModifyIORef' installedRef (\s -> (S.insert (host, cli) s, ()))
-            return (Right ())
+            return (Right True)
 
 {-# NOINLINE installedRef #-}
 installedRef :: IORef (S.Set (Text, AgentCli))
@@ -198,16 +204,16 @@ remoteDropRecords host cli pids = (`catch` \(_ :: SomeException) -> return ()) $
 
 -- | Add session @sid@ to @host@'s index of @cli@ sessions (with its
 -- directory and transcript; a known transcript is not forgotten for none).
+-- A compare-and-swap under the file's lock, as the host's own leksah and
+-- every other one showing the host may add to it meanwhile.
 remoteIndexAdd :: Text -> AgentCli -> Text -> FilePath -> FilePath -> IO ()
-remoteIndexAdd host cli sid cwd transcript = (`catch` \(_ :: SomeException) -> return ()) $ do
-  home <- remoteHomeDir host
-  m <- readIndex host cli
-  let tr = if null transcript then maybe "" fst (M.lookup sid m) else transcript
-      m' = M.insert sid (tr, cwd) m
-  unless (m' == m) $
-    writeHostFile host (home </> ".leksah" </> (T.unpack (cliTag cli) <> "-index.json")) False
-      . BL.toStrict . encode . object $
-        [ Key.fromText k .= object [ "transcript" .= t, "cwd" .= c ] | (k, (t, c)) <- M.toList m' ]
+remoteIndexAdd host cli sid cwd transcript = (`catch` \(_ :: SomeException) -> return ()) $
+  modifyHostFile host (T.unpack (cliTag cli) <> "-index.json") $ \bytes ->
+    let m = parseIndex bytes
+        tr = if null transcript then maybe "" fst (M.lookup sid m) else transcript
+        m' = M.insert sid (tr, cwd) m
+    in if m' == m then Nothing else Just . BL.toStrict . encode . object $
+         [ Key.fromText k .= object [ "transcript" .= t, "cwd" .= c ] | (k, (t, c)) <- M.toList m' ]
 
 -- | Has @host@'s index of @cli@ sessions got @sid@?
 remoteIndexHas :: Text -> AgentCli -> Text -> IO Bool
@@ -217,7 +223,10 @@ remoteIndexHas host cli sid = (`catch` \(_ :: SomeException) -> return False) $
 readIndex :: Text -> AgentCli -> IO (Map Text (FilePath, FilePath))
 readIndex host cli = do
   (_, out, _) <- runSsh host "cat \"$HOME/.leksah/$0-index.json\" 2>/dev/null; exit 0" [cliTag cli] mempty
-  return . M.fromList $ case decodeStrict' out of
+  return (parseIndex out)
+
+parseIndex :: BC.ByteString -> Map Text (FilePath, FilePath)
+parseIndex out = M.fromList $ case decodeStrict' out of
     Just (Object o) ->
       [ (Key.toText k, (T.unpack tr, T.unpack cw))
       | (k, e) <- KM.toList o
@@ -261,6 +270,33 @@ modifyHostJson host path private f = do
            <> " is not a JSON object leksah can read; leksah leaves it alone"
   let new = f old
   unless (new == old) $ writeHostFile host path private (BL.toStrict (encode (Object new)))
+
+-- | Change @~\/.leksah\/NAME@ on @host@: @f@ of what it says (empty when there
+-- is no file) — 'Nothing' to leave it — written back only if the file is
+-- still what was read (its checksum, compared under its lock), else read and
+-- tried again, up to three times.
+modifyHostFile :: Text -> FilePath -> (BC.ByteString -> Maybe BC.ByteString) -> IO ()
+modifyHostFile host name f = go (3 :: Int)
+  where
+    go n = do
+      (_, out, _) <- runSsh host
+        (T.concat [ "f=\"$HOME/.leksah/$0\"; if [ -f \"$f\" ]; then "
+                  , "cksum < \"$f\" | cut -d' ' -f1,2; cat \"$f\"; else echo; fi" ])
+        [T.pack name] mempty
+      let (sumWas, rest) = BC.break (== '\n') out
+      forM_ (f (BC.drop 1 rest)) $ \new -> do
+        (code, _, _) <- runSsh host writeScript [T.pack name, TE.decodeUtf8With lenientDecode sumWas] new
+        case code of
+          ExitFailure 3 | n > 1 -> go (n - 1)
+          _ -> return ()
+    -- $0 the name, $1 the checksum it was read at ("" = no file); stdin the
+    -- new contents.  Exit 3: it changed meanwhile.
+    writeScript = T.concat
+      [ "d=\"$HOME/.leksah\"; f=\"$d/$0\"; mkdir -p \"$d\" || exit 1; "
+      , "t=\"$d/.$0.tmp.$$\"; cat > \"$t\" || exit 1; "
+      , "w() { if [ -f \"$f\" ]; then now=$(cksum < \"$f\" | cut -d' ' -f1,2); else now=; fi; "
+      ,       "if [ \"$now\" != \"$1\" ]; then rm -f \"$t\"; exit 3; fi; mv \"$t\" \"$f\"; }; "
+      , "if command -v flock >/dev/null 2>&1; then exec 9>\"$f.lock\"; flock 9; fi; w \"$@\"" ]
 
 hostShell :: Text -> Text -> IO (Either Text ())
 hostShell host script = do

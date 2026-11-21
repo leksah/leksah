@@ -704,27 +704,29 @@ cliHookLogged cli ev rest input answered = (`catch` \(_ :: SomeException) -> ret
   if answered
     then when (ev /= "Title") $ appendEventLog "hook" (T.pack ev) input
     else do
-      pid <- cliProcessOf cli (listToMaybe (drop 2 rest) >>= readMaybe)
+      cliProc <- cliProcessOf cli (listToMaybe (drop 2 rest) >>= readMaybe)
       appendEventLogWith ([ "offline" .= True, "args" .= map T.pack rest ]
-                          <> [ "cliPid" .= p | Just p <- [pid] ])
+                          <> concat [ [ "cliPid" .= p, "cliArgs" .= T.pack a ] | Just (p, a) <- [cliProc] ])
                          "hook" (T.pack ev) input
       when (ev == "SessionStart") $ cliBriefing cli (listToMaybe (drop 1 rest))
 
--- | The CLI process a hook runs under: @hint@ (the hook script's @$PPID@)
--- when that is the CLI, else the nearest ancestor of this process that is.
-cliProcessOf :: String -> Maybe Int -> IO (Maybe Int)
+-- | The CLI process a hook runs under, and its command line: @hint@ (the
+-- hook script's @$PPID@) when that is the CLI, else the nearest ancestor of
+-- this process that is.  (The command line says whether it is an agent at
+-- all — not @codex exec@, @agy -p@.)
+cliProcessOf :: String -> Maybe Int -> IO (Maybe (Int, String))
 cliProcessOf cli hint = (`catch` \(_ :: SomeException) -> return Nothing) $ do
   out <- readProcess "ps" ["-Ao", "pid=,ppid=,args="] ""
   me <- fromIntegral <$> getProcessID
-  let procs = [ (p, (q, a)) | l <- lines out, (pT : qT : a : _) <- [words l]
-                            , Just p <- [readMaybe pT], Just q <- [readMaybe qT] ]
-      isCli a = let b = takeFileName a in case cli of
+  let procs = [ (p, (q, unwords as)) | l <- lines out, (pT : qT : as@(_ : _)) <- [words l]
+                                     , Just p <- [readMaybe pT], Just q <- [readMaybe qT] ]
+      isCli a = let b = takeFileName (takeWhile (/= ' ') a) in case cli of
         "codex" -> "codex" `isPrefixOf` b || ".codex" `isPrefixOf` b
         _       -> b `elem` ["agy", "antigravity"] || ".agy" `isPrefixOf` b
-      up :: Int -> Int -> Maybe Int
+      up :: Int -> Int -> Maybe (Int, String)
       up 0 _ = Nothing
       up n p = case lookup p procs of
-        Just (q, a) | isCli a   -> Just p
+        Just (q, a) | isCli a   -> Just (p, a)
                     | q > 1     -> up (n - 1) q
         _ -> Nothing
   return (maybe Nothing (up 1) hint `orElse` up 16 me)
