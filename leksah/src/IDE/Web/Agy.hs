@@ -69,18 +69,22 @@ module IDE.Web.Agy
   , agyInstalled
   , agyEnsureInstalled
   , agyWriteScripts
+  , agyScripts
+  , agyHooksWith
+  , agySettingsWith
     -- * Hook payloads
   , agyClaudeShaped
   , agyStateStatus
     -- * Transcripts
   , isAgyTranscript
   , agyTurns
+  , agyTurnsOf
   , agyFirstPrompt
   , agyPendingTool
   ) where
 
 import Control.Exception (SomeException, catch)
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Data.Aeson
        (Object, Value(..), (.=), (.:?), decodeStrict', encode, object, withObject)
 import Data.Aeson.Types (parseMaybe)
@@ -273,37 +277,40 @@ agyWriteScripts = findExecutable "leksah-cmd" >>= \case
   Just exe -> do
     d <- leksahDir
     createDirectoryIfMissing True d
-    hs <- hookScript
-    ts <- titleScript
-    ms <- mcpScript
-    let cmd = shq (T.pack exe)
-    -- The token a leksah launch set (see 'IDE.Web.Claude.agyCommandLine')
-    -- rides along, so leksah can tie the session to the agent it started.
-    writeScript hs $ T.unlines
+    forM_ (agyScripts exe) $ \(name, body) -> do
+      let path = d </> name
+      atomicWrite path (BL.fromStrict (TE.encodeUtf8 body))
+      perms <- getPermissions path
+      setPermissions path (setOwnerExecutable True perms)
+    return True
+
+-- | leksah's wrapper scripts for agy — their names in @~\/.leksah@, and what
+-- they say — running leksah-cmd @exe@.  (Written here by 'agyWriteScripts';
+-- on a shared host by "IDE.Web.RemoteCli", with that host's leksah-cmd.)
+-- The token a leksah launch set ('IDE.Web.Claude.agyCommandLine') rides along,
+-- so leksah can tie the session to the agent it started; @$PPID@ is the agy
+-- process itself (agy runs these directly — verified): who is reporting.
+agyScripts :: FilePath -> [(FilePath, Text)]
+agyScripts exe =
+  [ ("agy-hook", T.unlines
       [ "#!/bin/sh"
       , "# Written by leksah: Antigravity (agy) hooks report to the running leksah."
       , "# It must never fail: agy can stop the agent over a failing hook."
-      , cmd <> " agent hook \"$1\" agy \"${LEKSAH_AGENT_TOKEN:-}\" 2>/dev/null"
-      , "exit 0" ]
-    writeScript ts $ T.unlines
+      , cmd <> " agent hook \"$1\" agy \"${LEKSAH_AGENT_TOKEN:-}\" \"$PPID\" 2>/dev/null"
+      , "exit 0" ])
+  , ("agy-title", T.unlines
       [ "#!/bin/sh"
       , "# Written by leksah: Antigravity's title command.  agy hands it the session's"
       , "# state at every change; leksah records it and answers with the title."
-      , "# ($PPID is the agy process itself: it names who is reporting.)"
       , "t=$(" <> cmd <> " agent hook Title agy \"${LEKSAH_AGENT_TOKEN:-}\" \"$PPID\" 2>/dev/null)"
       , "if [ -n \"$t\" ]; then printf '%s\\n' \"$t\"; else echo Antigravity; fi"
-      , "exit 0" ]
-    writeScript ms $ T.unlines
+      , "exit 0" ])
+  , ("agy-mcp", T.unlines
       [ "#!/bin/sh"
       , "# Written by leksah: its MCP server (IDE tools) for Antigravity sessions."
-      , "exec " <> cmd <> " mcp" ]
-    return True
+      , "exec " <> cmd <> " mcp" ]) ]
   where
-    writeScript p body = do
-      atomicWrite p (BL.fromStrict (TE.encodeUtf8 body))
-      perms <- getPermissions p
-      setPermissions p (setOwnerExecutable True perms)
-    shq t = "'" <> T.replace "'" "'\\''" t <> "'"
+    cmd = "'" <> T.replace "'" "'\\''" (T.pack exe) <> "'"
 
 hooksJson, settingsJson, mcpJson :: IO FilePath
 hooksJson    = (</> "hooks.json") <$> agyConfigDir
@@ -372,23 +379,8 @@ agyInstall = (`catch` \(e :: SomeException) -> return ("agy install failed: " <>
         clearUninstalled
         script <- hookScript
         title  <- titleScript
-        let handler ev = object [ "type" .= ("command" :: Text)
-                                , "command" .= (T.pack script <> " " <> ev)
-                                , "timeout" .= (5 :: Int) ]
-            entry ev | ev == "PostToolUse" =
-                         object [ "matcher" .= ("*" :: Text), "hooks" .= [handler ev] ]
-                     | otherwise = handler ev
-            ours = Object (KM.fromList [ (Key.fromText ev, toJSONList [entry ev]) | ev <- hookEvents ])
-        writeObject hp (KM.insert hooksKey ours h)
-        -- The title command: leksah's, unless the user has their own.
-        let (s1, titleMsg) = case KM.lookup "title" s of
-              Just t | not (isOurTitle title t) ->
-                (s, "kept your own title command (leksah's launches pass theirs "
-                    <> "with --settings; others won't show what they are doing)")
-              _ -> ( KM.insert "title" (object [ "type" .= ("command" :: Text)
-                                              , "command" .= title ]) s
-                   , "set the title command (" <> T.pack title <> ")" )
-            s2 = KM.insert "permissions" (Object (addAllow (permissionsOf s1))) s1
+        writeObject hp (agyHooksWith script h)
+        let (s2, titleMsg) = agySettingsWith title s
         writeObject sp s2
         mcp <- mcpScript
         registered <- mcpRegistered
@@ -401,13 +393,41 @@ agyInstall = (`catch` \(e :: SomeException) -> return ("agy install failed: " <>
           , titleMsg <> ","
           , "allowed `leksah-cmd agent describe|register|done|send` (" <> T.pack sp <> "),"
           , "and " <> mcpMsg <> "." ]
+
+-- | agy's hooks.json with leksah's hook set in it, running hook script
+-- @script@ (the user's own sets stay).
+agyHooksWith :: FilePath -> KM.KeyMap Value -> KM.KeyMap Value
+agyHooksWith script = KM.insert hooksKey ours
   where
-    toJSONList = Array . foldr (\x acc -> pure x <> acc) mempty
+    handler ev = object [ "type" .= ("command" :: Text)
+                        , "command" .= (T.pack script <> " " <> ev)
+                        , "timeout" .= (5 :: Int) ]
+    entry ev | ev == "PostToolUse" = object [ "matcher" .= ("*" :: Text), "hooks" .= [handler ev] ]
+             | otherwise           = handler ev
+    ours = Object (KM.fromList [ (Key.fromText ev, toJSONList [entry ev]) | ev <- hookEvents ])
+
+-- | agy's settings.json with leksah's title command @title@ (unless the user
+-- has one of their own) and its allow-list, and what was done about the
+-- title.
+agySettingsWith :: FilePath -> KM.KeyMap Value -> (KM.KeyMap Value, Text)
+agySettingsWith title s =
+  let (s1, msg) = case KM.lookup "title" s of
+        Just t | not (isOurTitle title t) ->
+          (s, "kept your own title command (leksah's launches pass theirs "
+              <> "with --settings; others won't show what they are doing)")
+        _ -> ( KM.insert "title" (object [ "type" .= ("command" :: Text)
+                                        , "command" .= title ]) s
+             , "set the title command (" <> T.pack title <> ")" )
+  in (KM.insert "permissions" (Object (addAllow (permissionsOf s1))) s1, msg)
+  where
     addAllow perms =
       let have = case KM.lookup "allow" perms of
             Just (Array xs) -> [ t | String t <- toList xs ]
             _               -> []
       in KM.insert "allow" (toJSONList (map String (have <> filter (`notElem` have) allowRules))) perms
+
+toJSONList :: [Value] -> Value
+toJSONList = Array . foldr (\x acc -> pure x <> acc) mempty
 
 permissionsOf :: KM.KeyMap Value -> KM.KeyMap Value
 permissionsOf s = case KM.lookup "permissions" s of
@@ -566,10 +586,14 @@ isAgyTranscript p = ("/brain/" `isInfixOf` p) && takeFileName p `elem` ["transcr
 -- @(fromUser, text)@: what was typed (@USER_INPUT@ steps, inside their
 -- @\<USER_REQUEST\>@) and what the agent said (@PLANNER_RESPONSE@ content).
 agyTurns :: FilePath -> IO [(Bool, Text)]
-agyTurns path = (`catch` \(_ :: SomeException) -> return []) $ do
-  ls <- tailLines path
-  return [ t | l <- ls, Just t <- [decodeStrict' l >>= parseMaybe turnP]
-             , not (T.null (T.strip (snd t))) ]
+agyTurns path = (`catch` \(_ :: SomeException) -> return []) $ agyTurnsOf <$> tailLines path
+
+-- | 'agyTurns' of a transcript's lines (its tail, read here or on a shared
+-- host: "IDE.Web.RemoteAgents").
+agyTurnsOf :: [BS.ByteString] -> [(Bool, Text)]
+agyTurnsOf ls =
+  [ t | l <- ls, Just t <- [decodeStrict' l >>= parseMaybe turnP]
+      , not (T.null (T.strip (snd t))) ]
   where
     turnP = withObject "step" $ \o -> do
       ty <- o .:? "type"

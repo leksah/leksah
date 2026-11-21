@@ -188,6 +188,7 @@ library
         IDE.Web.RecentSessions
         IDE.Web.Widget.AgentMenu
         IDE.Web.HookSessions
+        IDE.Web.RemoteCli
         IDE.Web.AISession
         IDE.Web.Agent
         IDE.Web.AgentEvents

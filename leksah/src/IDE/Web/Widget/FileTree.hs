@@ -72,7 +72,7 @@ import IDE.Web.Claude
         ClaudeCmd(..), runClaudeCmd, claudeRunning, activateMruClaude,
         copySessionId, revealSession, deleteSession)
 import IDE.Web.AgentFace (agentFaceSvg)
-import IDE.Web.Widget.AgentMenu (availableClis, agentMenuEntries)
+import IDE.Web.Widget.AgentMenu (availableClisFor, agentMenuEntries)
 import IDE.Web.AgentGlyph (cliGlyph)
 import IDE.Web.AgentCli (AgentCli(..))
 import IDE.Web.AgentNames (agentNames)
@@ -262,7 +262,7 @@ fileTree' treeName srcDirs ignoreDirs showHiddenD showIgnoredD highlightD reveal
   -- A synthetic "Agents" node at the top of every directory that has saved
   -- Claude Code sessions (self-hiding otherwise; only when the CLI is on PATH).
   -- Suppressed at a dir already covered by a project/package row's Claude node.
-  clis <- liftIO availableClis
+  clis <- liftIO (availableClisFor dir)
   let avail = CliClaude `elem` clis
   when (claudeHere && not (null clis)) $ agentsNode treeName dir
   postBuild <- getPostBuild
@@ -482,7 +482,7 @@ agentsNodeKids treeName dir extraD mkids = do
   -- Cold, that pegged eight cores for minutes after every ghci reload (the
   -- byte-offset cache was a CAF, so :reload wiped it).  Don't reintroduce it.
   let doScan = void . forkIO $ do
-        ok <- not . null <$> availableClis
+        ok <- not . null <$> availableClisFor dir
         (if ok then claudeSessionsFor dir else return []) >>= fireSess
         (if ok then claudeRunning dir     else return False) >>= fireRun
   performEvent_ $ liftIO doScan <$ pb
@@ -512,7 +512,7 @@ agentsNodeKids treeName dir extraD mkids = do
   -- green dot while a claude terminal is open here but no live state is
   -- readable (older CLI).
   let badgeD = zipDynWith nodeBadge runD liveD
-  clis <- liftIO availableClis
+  clis <- liftIO (availableClisFor dir)
   void . dyn $ ffor hasD $ \has -> when has . void $
     treeItem "agents" False
       (do (rowEl, dmenuE) <- treeSelect' treeName (rootMenu clis) $ do

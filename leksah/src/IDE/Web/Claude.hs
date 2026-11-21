@@ -24,6 +24,9 @@ module IDE.Web.Claude
   , csTitle
   , claudeSessionsFor
   , humanAge
+  , hookLiveSession
+  , turnsGist
+  , remoteAgentFlags
   , claudeSessionNames
   , ClaudeLive(..)
   , claudeLiveSessions
@@ -154,6 +157,7 @@ import IDE.Web.Agy
         agyStarted, agyLaunchSettings, agyTranscriptOf, agyFirstPrompt, agyTurns,
         isAgyTranscript)
 import IDE.Web.AgentCli (AgentCli(..), cliTag)
+import IDE.Web.RemoteCli (remoteCliStarted, remoteAgySettingsArg)
 import IDE.Reactive (readCell)
 import IDE.Web.Instance (tmuxServerSocket)
 import IDE.Web.DemoAgents (demoShowAgent)
@@ -312,15 +316,18 @@ continuedFrom l = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 claudeSessionFiles :: IO [ClaudeLive]
 claudeSessionFiles = do
   own   <- claudeOwnSessionFiles
-  codex <- map (fromHook CliCodex) <$> codexLiveRecords
-  agy   <- map (fromHook CliAgy) <$> agyLiveRecords
+  codex <- map (hookLiveSession Nothing CliCodex) <$> codexLiveRecords
+  agy   <- map (hookLiveSession Nothing CliAgy) <$> agyLiveRecords
   return (own <> codex <> agy)
-  where
-    fromHook cli r = ClaudeLive
-      { clPid = hlPid r, clSession = hlSession r, clDir = hlDir r, clName = Nothing
-      , clDerivedName = Nothing
-      , clStatus = Just (hlStatus r), clWaitingFor = hlWaitingFor r
-      , clJob = Nothing, clKind = Nothing, clHost = Nothing, clAgent = cliTag cli }
+
+-- | A hook-kept live record ("IDE.Web.HookSessions") as a live session of
+-- CLI @cli@, on @host@ ('Nothing': this machine).
+hookLiveSession :: Maybe Text -> AgentCli -> HookLive -> ClaudeLive
+hookLiveSession host cli r = ClaudeLive
+  { clPid = hlPid r, clSession = hlSession r, clDir = hlDir r, clName = Nothing
+  , clDerivedName = Nothing
+  , clStatus = Just (hlStatus r), clWaitingFor = hlWaitingFor r
+  , clJob = Nothing, clKind = Nothing, clHost = host, clAgent = cliTag cli }
 
 claudeOwnSessionFiles :: IO [ClaudeLive]
 claudeOwnSessionFiles = (`catch` \(_ :: SomeException) -> return []) $ do
@@ -1063,6 +1070,7 @@ claudeCommandLine cmd = do
 codexCommandLine :: AgentSpec -> IO (FilePath, Text, Text)
 codexCommandLine s = do
   let d = dropTrailingPathSeparator (asDir s)
+      remote = parseRemotePath d
   mbPrefix <- mfilter (not . T.null) <$> cmdPrefixForDir d
   unless (isRemotePath d) $ do
     _ <- codexWriteScripts
@@ -1070,14 +1078,20 @@ codexCommandLine s = do
       getGlobalApp >>= mapM_ (\app -> appNote app msg))
   -- Resuming an agent that never reached its first prompt has nothing to
   -- resume (its id is still the launch token): start Codex afresh under it.
-  started <- if asResume s then codexStarted (asSession s) else return False
-  unless started $ codexRememberLaunch (asSession s) d
-  let line = T.unwords $
+  -- (On a shared host, its index says — "IDE.Web.RemoteCli".)
+  started <- if not (asResume s) then return False else case remote of
+    Nothing     -> codexStarted (asSession s)
+    Just (h, _) -> remoteCliStarted h CliCodex (asSession s)
+  unless (started || isJust remote) $ codexRememberLaunch (asSession s) d
+  -- (on a shared host: its leksah-cmd on the agent's PATH, as for Claude)
+  envPrefix <- maybe (return "") (fmap fst . remoteAgentFlags . fst) remote
+  let line = T.unwords (
         [ "env", "LEKSAH_AGENT_TOKEN=" <> asSession s, "codex" ]
         <> [ x | started, x <- ["resume", asSession s] ]
-        <> maybe [] ((:[]) . shq) (asPrompt s)
+        <> maybe [] ((:[]) . shq) (asPrompt s) )
       key = T.pack d <> "#claude#" <> asSession s
-  return (d, key, maybe line (\p -> p <> " " <> line) mbPrefix)
+  -- (the PATH first, then the project's prefix — as for Claude)
+  return (d, key, envPrefix <> maybe line (\p -> p <> " " <> line) mbPrefix)
 
 -- | The command line for an Antigravity (agy) agent.  Like Codex, agy cannot
 -- be told its conversation id, so 'asSession' is a TOKEN standing in for it
@@ -1103,15 +1117,23 @@ agyCommandLine s = do
       getGlobalApp >>= mapM_ (\app -> appNote app msg))
   -- Resuming an agent that never reached its first prompt has nothing to
   -- resume (its id is still the launch token): start agy afresh under it.
-  started <- if asResume s then agyStarted (asSession s) else return False
-  unless started $ agyRememberLaunch (asSession s) d
-  settings <- agyLaunchSettings
-  let line = T.unwords $
-        [ "env", "LEKSAH_AGENT_TOKEN=" <> asSession s, "agy", "--settings", shq settings ]
+  -- (On a shared host, its index says — "IDE.Web.RemoteCli".)
+  let remote = parseRemotePath d
+  started <- if not (asResume s) then return False else case remote of
+    Nothing     -> agyStarted (asSession s)
+    Just (h, _) -> remoteCliStarted h CliAgy (asSession s)
+  unless (started || isJust remote) $ agyRememberLaunch (asSession s) d
+  -- (on a shared host: the title command there, and its leksah-cmd on the
+  -- agent's PATH)
+  settings <- if isJust remote then return remoteAgySettingsArg else shq <$> agyLaunchSettings
+  envPrefix <- maybe (return "") (fmap fst . remoteAgentFlags . fst) remote
+  let line = T.unwords (
+        [ "env", "LEKSAH_AGENT_TOKEN=" <> asSession s, "agy", "--settings", settings ]
         <> [ "--conversation=" <> asSession s | started ]
-        <> maybe [] (\p -> ["-i", shq p]) (asPrompt s)
+        <> maybe [] (\p -> ["-i", shq p]) (asPrompt s) )
       key = T.pack d <> "#claude#" <> asSession s
-  return (d, key, maybe line (\p -> p <> " " <> line) mbPrefix)
+  -- (the PATH first, then the project's prefix — as for Claude)
+  return (d, key, envPrefix <> maybe line (\p -> p <> " " <> line) mbPrefix)
 
 -- | Codex processes in leksah's terminals that no record covers yet: record
 -- each straight away, so it shows up like any other agent.  Codex's TUI
@@ -1862,8 +1884,13 @@ noGist = TranscriptGist Nothing Nothing False Nothing
 -- transcript): what the agent last said.  They have no titles.
 turnsGistOf :: (FilePath -> IO [(Bool, Text)]) -> FilePath -> IO TranscriptGist
 turnsGistOf turns path = (`catch` \(_ :: SomeException) -> return noGist) $
-  turns path >>= \ts -> return $! forceGist noGist
-    { tgLastSaid = listToMaybe (mapMaybe proseLine (reverse [ t | (False, t) <- ts ])) }
+  turns path >>= \ts -> return $! turnsGist ts
+
+-- | The gist of a conversation read as turns (@(fromUser, text)@, oldest
+-- first): what the agent last said.
+turnsGist :: [(Bool, Text)] -> TranscriptGist
+turnsGist ts = forceGist noGist
+  { tgLastSaid = listToMaybe (mapMaybe proseLine (reverse [ t | (False, t) <- ts ])) }
 
 -- | The 'TranscriptGist' of a transcript (a Claude Code @.jsonl@, a Codex
 -- rollout or an agy transcript), from its last 256KB: both lines are appended every turn, so the

@@ -26,12 +26,13 @@ module Main (main) where
 import Control.Concurrent
        (forkIO, newEmptyMVar, putMVar, readMVar, takeMVar, threadDelay)
 import Control.Exception (IOException, SomeException, catch, finally, try)
-import Control.Monad (forM_, unless, when, void)
+import Control.Monad (forM_, mfilter, unless, when, void)
 
 import Data.Aeson
        (Value(..), Result(..), object, (.=), encode, decodeStrict, eitherDecodeStrict,
         fromJSON, toJSON)
 import qualified Data.Aeson.Key as Key (fromText, toText)
+import Data.Aeson.Key (Key)
 import qualified Data.Aeson.KeyMap as KM (KeyMap, insert, lookup, toList)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8 (getLine)
@@ -230,11 +231,16 @@ main = getArgs >>= \case
   -- IDE.Web.Codex.  The extra words ride along after the payload.)
   ("agent":"hook":ev:rest) -> (`catch` \(_ :: SomeException) -> return ()) $ do
     input <- BS.getContents
+    -- (Codex's and agy's hooks add their CLI, the launch token and the
+    -- process that ran them: see IDE.Web.Codex / IDE.Web.Agy.)
+    let cli = case rest of
+          (c : _) | c `elem` ["codex", "agy"] -> Just c
+          _                                   -> Nothing
     -- First onto this machine's event log, which any leksah showing the
     -- machine reads — one running elsewhere, or this one after a restart.
-    -- (Not an agy title-command report: several come with every change of
-    -- state, and only the live leksah has a use for them.)
-    when (ev /= "Title") $ appendEventLog "hook" (T.pack ev) input
+    -- (Codex's and agy's go on it below, once it is known whether a leksah
+    -- answered.)
+    when (isNothing cli) $ appendEventLog "hook" (T.pack ev) input
     -- 1.5s at most: with the leksah plugin installed, EVERY Claude session on
     -- the machine runs this hook, and the synchronous ones (SessionStart,
     -- UserPromptSubmit, Stop…) wait for it.  leksah answers in a few ms; a
@@ -245,6 +251,7 @@ main = getArgs >>= \case
     case r of
       Just (Just t) | not (T.null (T.strip t)) -> T.putStr t
       _                                        -> return ()
+    forM_ cli $ \c -> cliHookLogged c ev rest input (case r of Just (Just _) -> True; _ -> False)
 
   -- statusline: Claude Code's statusLine command for the sessions leksah
   -- launches (see claudeHooksFlag).  Never fails, never prints an error into
@@ -682,8 +689,69 @@ ownClaudeSession = (`catch` \(_ :: SomeException) -> return Nothing) $ do
 -- every line is one small @write@ and concurrent hooks cannot interleave.
 -- Rotated (to @.1@) past 4MB.  Never fails.  (A command line must match what
 -- the library writes for the same purpose: @IDE.Web.AgentMail.logCommand@.)
+-- | A Codex or agy hook (or agy's title command) onto the event log, after
+-- the leksah here had its chance to answer.  Codex and agy keep no record
+-- of their running sessions — leksah keeps one for them — so when no leksah
+-- answered, the line carries what a leksah ELSEWHERE needs to keep it from
+-- this log ("IDE.Web.RemoteAgents" reads a shared host's): @offline@, the
+-- hook's arguments (the CLI and the launch token) and the CLI's process
+-- (@cliPid@).  A title report is logged only then: several come with every
+-- change of state, and a leksah that answered has used it.  A SessionStart
+-- no leksah answered is briefed from the note the launch left for it
+-- ('cliBriefing').
+cliHookLogged :: String -> String -> [String] -> BS.ByteString -> Bool -> IO ()
+cliHookLogged cli ev rest input answered = (`catch` \(_ :: SomeException) -> return ()) $
+  if answered
+    then when (ev /= "Title") $ appendEventLog "hook" (T.pack ev) input
+    else do
+      cliProc <- cliProcessOf cli (listToMaybe (drop 2 rest) >>= readMaybe)
+      appendEventLogWith ([ "offline" .= True, "args" .= map T.pack rest ]
+                          <> concat [ [ "cliPid" .= p, "cliArgs" .= T.pack a ] | Just (p, a) <- [cliProc] ])
+                         "hook" (T.pack ev) input
+      when (ev == "SessionStart") $ cliBriefing cli (listToMaybe (drop 1 rest))
+
+-- | The CLI process a hook runs under, and its command line: @hint@ (the
+-- hook script's @$PPID@) when that is the CLI, else the nearest ancestor of
+-- this process that is.  (The command line says whether it is an agent at
+-- all — not @codex exec@, @agy -p@.)
+cliProcessOf :: String -> Maybe Int -> IO (Maybe (Int, String))
+cliProcessOf cli hint = (`catch` \(_ :: SomeException) -> return Nothing) $ do
+  out <- readProcess "ps" ["-Ao", "pid=,ppid=,args="] ""
+  me <- fromIntegral <$> getProcessID
+  let procs = [ (p, (q, unwords as)) | l <- lines out, (pT : qT : as@(_ : _)) <- [words l]
+                                     , Just p <- [readMaybe pT], Just q <- [readMaybe qT] ]
+      isCli a = let b = takeFileName (takeWhile (/= ' ') a) in case cli of
+        "codex" -> "codex" `isPrefixOf` b || ".codex" `isPrefixOf` b
+        _       -> b `elem` ["agy", "antigravity"] || ".agy" `isPrefixOf` b
+      up :: Int -> Int -> Maybe (Int, String)
+      up 0 _ = Nothing
+      up n p = case lookup p procs of
+        Just (q, a) | isCli a   -> Just (p, a)
+                    | q > 1     -> up (n - 1) q
+        _ -> Nothing
+  return (maybe Nothing (up 1) hint `orElse` up 16 me)
+  where orElse a b = maybe b Just a
+
+-- | The briefing a launch left for its session (@~\/.leksah\/briefings\/TOKEN.txt@
+-- — what a leksah answering SessionStart would have said: the agent's name,
+-- who started it), printed as the CLI takes SessionStart's output: plain
+-- text for Codex, @injectSteps@ for agy.  Kept, for a later @/clear@.
+cliBriefing :: String -> Maybe String -> IO ()
+cliBriefing cli mtoken = forM_ (mfilter (not . null) mtoken) $ \token -> do
+  home <- getHomeDirectory
+  let f = home </> ".leksah" </> "briefings" </> (token <> ".txt")
+  ex <- doesFileExist f
+  when (ex && all (\c -> isHexDigit c || c == '-') token) $ do
+    note <- T.readFile f
+    if cli == "codex" then T.putStr note
+      else BL8.putStrLn . encode $ object
+        [ "injectSteps" .= [ object [ "systemMessage" .= object [ "systemMessage" .= note ] ] ] ]
+
 appendEventLog :: Text -> Text -> BS.ByteString -> IO ()
-appendEventLog kind ev payload = (`catch` \(_ :: SomeException) -> return ()) $ do
+appendEventLog = appendEventLogWith []
+
+appendEventLogWith :: [(Key, Value)] -> Text -> Text -> BS.ByteString -> IO ()
+appendEventLogWith extra kind ev payload = (`catch` \(_ :: SomeException) -> return ()) $ do
   home <- getHomeDirectory
   let dir = home </> ".leksah"
       f   = dir </> "agent-events.jsonl"
@@ -696,8 +764,8 @@ appendEventLog kind ev payload = (`catch` \(_ :: SomeException) -> return ()) $ 
                 (if kind == "command" then id else shrink)
             (decodeStrict payload :: Maybe Value)
       line = BL.toStrict (encode (object
-               [ "t" .= (realToFrac t :: Double), "kind" .= kind, "event" .= ev
-               , "payload" .= v ])) <> "\n"
+               ([ "t" .= (realToFrac t :: Double), "kind" .= kind, "event" .= ev
+                , "payload" .= v ] <> extra))) <> "\n"
   BS.appendFile f line
   where
     shrink (String x) | T.length x > 300 = String (T.take 300 x)
