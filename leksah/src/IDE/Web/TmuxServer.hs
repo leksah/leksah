@@ -280,8 +280,10 @@ viewerAttachScript = concat
   -- its last client went, not from when it attached — a viewer attached for
   -- days whose connection blips is not abandoned.  (A session's hook
   -- replaces the global one, so it refits the shared windows too:
-  -- 'fitWindowScript'.)
-  , "hk=\"run-shell -b 'T=\\$(cat \\\"\\$HOME/.leksah/fit-window.tmux\\\" 2>/dev/null); \\\"\\${T:-tmux}\\\" set-option -t \\\"=$v:\\\" @leksah_claim \\\"\\$(date +%s)\\\" 2>/dev/null; sh \\\"\\$HOME/.leksah/fit-window.sh\\\"'\"; tx set-hook -t \"=$v:\" client-detached \"$hk\"; "
+  -- 'fitWindowScript'.  Quiet and successful whatever happens — a missing
+  -- script included: run-shell would show the error in view-mode on the
+  -- pane, which then takes its keys.)
+  , "hk=\"run-shell -b 'T=\\$(cat \\\"\\$HOME/.leksah/fit-window.tmux\\\" 2>/dev/null); \\\"\\${T:-tmux}\\\" set-option -t \\\"=$v:\\\" @leksah_claim \\\"\\$(date +%s)\\\" 2>/dev/null; sh \\\"\\$HOME/.leksah/fit-window.sh\\\" >/dev/null 2>&1; true'\"; tx set-hook -t \"=$v:\" client-detached \"$hk\"; "
   , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
   , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
 

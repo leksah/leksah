@@ -28955,85 +28955,133 @@
     };
   }
   var CC_GAP = 150;
+  var CC_WAIT = 75;
+  var CC_TRIES = 8;
   var ccRule = /^─{20,}/;
   function ccScreenState(term) {
     const b = term.buffer.active;
     if (b.type !== "alternate") return null;
     const rows = [];
-    for (let y = Math.max(0, term.rows - 10); y < term.rows; y++) {
+    for (let y = Math.max(0, term.rows - 12); y < term.rows; y++) {
       const l = b.getLine(b.baseY + y);
       rows.push(l ? l.translateToString(true).trim() : "");
     }
     let bar = null, transcript = false, prompt = false;
     rows.forEach((t2, i2) => {
-      if (t2.startsWith("\u2315")) bar = t2.slice(1).replace(/\s{2,}.*$/, "").trim();
+      if (t2.startsWith("\u2315") && t2.endsWith("esc to cancel"))
+        bar = t2.slice(1).replace(/\s{2,}\S.*$/, "").trim();
       else if (t2.startsWith("Showing detailed transcript")) transcript = true;
-      else if (t2.startsWith("\u276F") && i2 > 0 && ccRule.test(rows[i2 - 1])) prompt = true;
+      else if (t2.startsWith("\u276F") && i2 > 0 && ccRule.test(rows[i2 - 1]) && rows.slice(i2 + 1, i2 + 8).some((r) => ccRule.test(r))) prompt = true;
     });
     if (bar !== null) return { mode: "typing", query: bar === "Search transcript\u2026" ? "" : bar };
     if (transcript) return { mode: "transcript" };
     if (prompt) return { mode: "prompt" };
     return null;
   }
+  var ccChars = (t2) => Array.from(t2);
+  var ccNorm = (t2) => t2.replace(/\s+/g, " ").trim();
   function ccState(ts) {
-    const cc = ts.cc;
-    if (cc && (cc.busy || Date.now() - cc.at < 1e3)) return cc;
+    if (ts.cc && ts.cc.busy) return ts.cc;
     const st = ccScreenState(ts.term);
-    ts.cc = st ? { ...st, at: 0, busy: false } : null;
+    if (st && st.mode === "typing" && ts.ccTyped !== void 0) {
+      const shown = st.query.replace(/…$/, "");
+      if (ccNorm(ts.ccTyped) === ccNorm(st.query) || st.query.endsWith("\u2026") && ccNorm(ts.ccTyped).startsWith(ccNorm(shown))) st.query = ts.ccTyped;
+    }
+    ts.cc = st ? { ...st, busy: false, queue: ts.cc && ts.cc.queue } : null;
     return ts.cc;
   }
   function ccType(ts, steps, next) {
     const cc = ts.cc;
     cc.busy = true;
-    cc.queue = (cc.queue || Promise.resolve()).then(async () => {
-      for (const k of steps) {
-        if (k) ts.term.input(k, true);
+    Object.assign(cc, next);
+    const run = async () => {
+      for (const [key, mode] of steps) {
+        let ok = false;
+        for (let t2 = 0; t2 < CC_TRIES && !ok; t2++) {
+          const st = ccScreenState(ts.term);
+          ok = !!st && st.mode === mode;
+          if (!ok) await new Promise((r) => setTimeout(r, CC_WAIT));
+        }
+        if (!ok) return false;
+        ts.term.input(key, true);
         await new Promise((r) => setTimeout(r, CC_GAP));
       }
-    });
-    Object.assign(cc, next, { at: Date.now() });
-    const q = cc.queue;
-    q.then(() => {
-      if (cc.queue === q) {
-        cc.busy = false;
-        cc.at = Date.now();
-      }
+      return true;
+    };
+    const q = (cc.queue || Promise.resolve(true)).then((okSoFar) => okSoFar ? run() : false).catch(() => false);
+    cc.queue = q;
+    q.then((ok) => {
+      if (cc.queue !== q) return;
+      cc.busy = false;
+      cc.queue = null;
+      if (!ok) ts.cc = null;
     });
   }
   function ccRetype(from, to) {
+    const f = ccChars(from), t2 = ccChars(to);
     let i2 = 0;
-    while (i2 < from.length && i2 < to.length && from[i2] === to[i2]) i2++;
-    return "\x7F".repeat([...from.slice(i2)].length) + to.slice(i2);
+    while (i2 < f.length && i2 < t2.length && f[i2] === t2[i2]) i2++;
+    return "\x7F".repeat(f.length - i2) + t2.slice(i2).join("");
+  }
+  var ccOpened = null;
+  function ccNoteOpened(ts, what) {
+    if (!ccOpened || ccOpened.ts !== ts) ccOpened = { ts, what };
   }
   function ccFindSet(ts, text) {
     const cc = ccState(ts);
     if (!cc) return false;
+    if (text === ts.ccText) return true;
+    ts.ccText = text;
     if (cc.mode === "typing") {
       const k = ccRetype(cc.query, text);
-      if (k) ccType(ts, [k], { mode: "typing", query: text });
+      if (k) {
+        ts.ccTyped = text;
+        ccType(ts, [[k, "typing"]], { mode: "typing", query: text });
+      }
     } else if (text) {
-      ccType(ts, cc.mode === "prompt" ? ["", "/", text] : ["/", text], { mode: "typing", query: text });
+      ts.ccTyped = text;
+      if (cc.mode === "prompt") {
+        ccNoteOpened(ts, "transcript");
+        ccType(ts, [["", "prompt"], ["/", "transcript"], [text, "typing"]], { mode: "typing", query: text });
+      } else {
+        ccNoteOpened(ts, "bar");
+        ccType(ts, [["/", "transcript"], [text, "typing"]], { mode: "typing", query: text });
+      }
     }
     return true;
   }
   function ccFindStep(ts, forward, text) {
     const cc = ccState(ts);
     if (!cc) return false;
+    const back = forward ? [] : [["N", "transcript"]];
     if (cc.mode === "typing") {
-      ccType(ts, forward ? ["\r"] : ["\r", "N"], { mode: "transcript" });
+      ccType(ts, [["\r", "typing"], ...back], { mode: "transcript" });
     } else if (cc.mode === "transcript") {
-      ccType(ts, [forward ? "n" : "N"], { mode: "transcript" });
+      ccType(ts, [[forward ? "n" : "N", "transcript"]], { mode: "transcript" });
     } else if (text) {
-      ccType(ts, ["", "/", text, "\r"], { mode: "transcript" });
+      ts.ccText = ts.ccTyped = text;
+      ccNoteOpened(ts, "transcript");
+      ccType(
+        ts,
+        [["", "prompt"], ["/", "transcript"], [text, "typing"], ["\r", "typing"], ...back],
+        { mode: "transcript" }
+      );
     }
     return true;
   }
-  function ccFindClose(ts) {
+  function ccFindClose() {
+    const o = ccOpened;
+    ccOpened = null;
+    if (!o) return;
+    const ts = o.ts;
+    ts.ccTyped = void 0;
     const cc = ccState(ts);
-    if (!cc) return false;
-    if (cc.mode === "typing") ccType(ts, ["\x1B", "\x1B"], { mode: "prompt" });
-    else if (cc.mode === "transcript") ccType(ts, ["\x1B"], { mode: "prompt" });
-    return true;
+    if (!cc) return;
+    const steps = [];
+    if (cc.mode === "typing") steps.push(["\x1B", "typing"]);
+    if (o.what === "transcript" && cc.mode !== "prompt") steps.push(["\x1B", "transcript"]);
+    if (steps.length)
+      ccType(ts, steps, { mode: o.what === "transcript" ? "prompt" : "transcript" });
   }
   document.addEventListener("focusin", (e) => onFocusPane(e.target), true);
   document.addEventListener("mousedown", (e) => onFocusPane(e.target), true);
@@ -29285,7 +29333,7 @@
     } else domStep(-1);
   }
   function findClose() {
-    if (!cmActiveView() && !monacoActiveView() && activeTermSearch) ccFindClose(activeTermSearch);
+    ccFindClose();
   }
   function replaceNext2() {
     const mv = monacoActiveView();
