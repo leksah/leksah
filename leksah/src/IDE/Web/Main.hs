@@ -1112,7 +1112,7 @@ newIDE showMenubar macTitlebar developLeksah runJs = do
       liftIO $ do
         installFitScript
         void $ tmuxRunOn LocalServer
-          [ "set-hook", "-g", "client-detached", "run-shell -b 'sh ~/.leksah/fit-window.sh'" ] ""
+          [ "set-hook", "-g", "client-detached", "run-shell -b 'sh ~/.leksah/fit-window.sh >/dev/null 2>&1; true'" ] ""
         -- What a leksah on another machine needs to launch an agent here
         -- with this one's hooks and leksah-cmd ('remoteAgentFlags').
         void $ forkIO prepareAgentLaunchFiles

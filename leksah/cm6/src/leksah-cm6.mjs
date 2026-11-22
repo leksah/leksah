@@ -774,94 +774,160 @@ function termSearchOptions(flags) {
 // highlights sit on rows Claude Code redraws.  So the find bar drives Claude
 // Code's search instead, by typing its keys into the pane: ctrl+o (the
 // transcript view), / (its search bar, empty each time it opens), the query
-// (searched as it is typed; case-insensitive, literal), Enter (keep the
-// search), n / N (next / previous match), Esc (cancel the search bar; again:
-// leave the transcript).  Claude Code draws its matches itself.
+// (searched as it is typed), Enter (keep the search), n / N (next / previous
+// match), Esc (cancel the search bar; again: leave the transcript).  Claude
+// Code draws its matches itself.  Its search is case-insensitive and literal,
+// so the find bar's Case / Words / Regex toggles do not apply there.
 //
-// Which state the pane is in is read off its screen — so it stays right when
-// someone types those keys in the pane themselves — except just after this
-// code has typed something, when the screen has not caught up yet (a key
-// sent too soon after another is dropped: steps are CC_GAP apart).
-const CC_GAP = 150
-// (the rule above the prompt box ends with the session's title, if it has one)
+// Every key is typed only once the pane's screen shows the state it is meant
+// for — the prompt box for ctrl+o, the transcript for / and n / N, the search
+// bar for the query and Enter — waiting a little for the screen to catch up
+// (a key sent too soon after another is dropped, and a remote pane answers
+// late).  If it never does, the rest is not typed: a key landing anywhere
+// else (a dropped ctrl+o leaves "/query" in the prompt, and Enter would send
+// it; a shell prompt that merely looks similar) does damage.  So the screen
+// is the authority; what this code expects is used only to plan keys while
+// earlier ones are still being typed.
+const CC_GAP = 150       // between keys
+const CC_WAIT = 75       // between looks at the screen, while waiting for a state
+const CC_TRIES = 8
+// (the rule above Claude Code's prompt box ends with the session's title, if any)
 const ccRule = /^─{20,}/
 function ccScreenState(term) {
   const b = term.buffer.active
   if (b.type !== "alternate") return null
   const rows = []
-  for (let y = Math.max(0, term.rows - 10); y < term.rows; y++) {
+  for (let y = Math.max(0, term.rows - 12); y < term.rows; y++) {
     const l = b.getLine(b.baseY + y)
     rows.push(l ? l.translateToString(true).trim() : "")
   }
   let bar = null, transcript = false, prompt = false
   rows.forEach((t, i) => {
-    if (t.startsWith("⌕")) bar = t.slice(1).replace(/\s{2,}.*$/, "").trim()
+    if (t.startsWith("⌕") && t.endsWith("esc to cancel"))
+      bar = t.slice(1).replace(/\s{2,}\S.*$/, "").trim()
     else if (t.startsWith("Showing detailed transcript")) transcript = true
-    else if (t.startsWith("❯") && i > 0 && ccRule.test(rows[i - 1])) prompt = true
+    // the prompt box: a rule, the ❯ line (and any it wraps onto), a rule
+    else if (t.startsWith("❯") && i > 0 && ccRule.test(rows[i - 1]) &&
+             rows.slice(i + 1, i + 8).some(r => ccRule.test(r))) prompt = true
   })
   if (bar !== null) return { mode: "typing", query: bar === "Search transcript…" ? "" : bar }
   if (transcript) return { mode: "transcript" }
   if (prompt) return { mode: "prompt" }
   return null
 }
-// The pane's state: what this code last left it in, for a moment after it
-// typed; otherwise what the screen shows.  null: not Claude Code's UI.
+const ccChars = t => Array.from(t)
+const ccNorm = t => t.replace(/\s+/g, " ").trim()
+// The pane's state: while keys are still being typed, what they will leave it
+// in; otherwise what its screen shows (its search bar's query as this code
+// typed it, when the screen agrees — the screen loses runs of spaces and
+// truncates a long query).  null: not Claude Code's UI.
 function ccState(ts) {
-  const cc = ts.cc
-  if (cc && (cc.busy || Date.now() - cc.at < 1000)) return cc
+  if (ts.cc && ts.cc.busy) return ts.cc
   const st = ccScreenState(ts.term)
-  ts.cc = st ? { ...st, at: 0, busy: false } : null
+  if (st && st.mode === "typing" && ts.ccTyped !== undefined) {
+    const shown = st.query.replace(/…$/, "")
+    if (ccNorm(ts.ccTyped) === ccNorm(st.query) ||
+        (st.query.endsWith("…") && ccNorm(ts.ccTyped).startsWith(ccNorm(shown)))) st.query = ts.ccTyped
+  }
+  ts.cc = st ? { ...st, busy: false, queue: ts.cc && ts.cc.queue } : null
   return ts.cc
 }
-// Type `steps` (strings) into the pane, CC_GAP apart, then leave the state
-// as `next`.  Queued behind any steps still being typed.
+// Type `steps` — [key, the screen state it is for] — CC_GAP apart, behind any
+// still being typed, expecting to leave the pane in `next`.  A step whose
+// state does not show up stops the rest (and the expectation is dropped).
 function ccType(ts, steps, next) {
   const cc = ts.cc
   cc.busy = true
-  cc.queue = (cc.queue || Promise.resolve()).then(async () => {
-    for (const k of steps) {
-      if (k) ts.term.input(k, true)
+  Object.assign(cc, next)
+  const run = async () => {
+    for (const [key, mode] of steps) {
+      let ok = false
+      for (let t = 0; t < CC_TRIES && !ok; t++) {
+        const st = ccScreenState(ts.term)
+        ok = !!st && st.mode === mode
+        if (!ok) await new Promise(r => setTimeout(r, CC_WAIT))
+      }
+      if (!ok) return false
+      ts.term.input(key, true)
       await new Promise(r => setTimeout(r, CC_GAP))
     }
+    return true
+  }
+  const q = (cc.queue || Promise.resolve(true)).then(okSoFar => okSoFar ? run() : false)
+                                              .catch(() => false)
+  cc.queue = q
+  q.then(ok => {
+    if (cc.queue !== q) return           // more queued behind this
+    cc.busy = false; cc.queue = null
+    if (!ok) ts.cc = null                // read the screen afresh next time
   })
-  Object.assign(cc, next, { at: Date.now() })
-  const q = cc.queue
-  q.then(() => { if (cc.queue === q) { cc.busy = false; cc.at = Date.now() } })
 }
-// Edit the search bar's query from `from` to `to` (backspaces, then the rest).
+// The keys that edit the search bar's query from `from` to `to`.
 function ccRetype(from, to) {
+  const f = ccChars(from), t = ccChars(to)
   let i = 0
-  while (i < from.length && i < to.length && from[i] === to[i]) i++
-  return "\x7f".repeat([...from.slice(i)].length) + to.slice(i)
+  while (i < f.length && i < t.length && f[i] === t[i]) i++
+  return "\x7f".repeat(f.length - i) + t.slice(i).join("")
+}
+// The pane the find bar opened a search in, and how much it opened ("bar":
+// the search bar in a transcript someone opened themselves; "transcript":
+// the transcript view too) — what hiding the find bar closes.
+let ccOpened = null
+function ccNoteOpened(ts, what) {
+  if (!ccOpened || ccOpened.ts !== ts) ccOpened = { ts, what }
 }
 function ccFindSet(ts, text) {
   const cc = ccState(ts); if (!cc) return false
+  // (a Case / Words / Regex toggle sets the same query again: nothing to type)
+  if (text === ts.ccText) return true
+  ts.ccText = text
   if (cc.mode === "typing") {
     const k = ccRetype(cc.query, text)
-    if (k) ccType(ts, [k], { mode: "typing", query: text })
+    if (k) { ts.ccTyped = text; ccType(ts, [[k, "typing"]], { mode: "typing", query: text }) }
   } else if (text) {
-    ccType(ts, cc.mode === "prompt" ? ["\x0f", "/", text] : ["/", text], { mode: "typing", query: text })
+    ts.ccTyped = text
+    if (cc.mode === "prompt") {
+      ccNoteOpened(ts, "transcript")
+      ccType(ts, [["\x0f", "prompt"], ["/", "transcript"], [text, "typing"]], { mode: "typing", query: text })
+    } else {
+      ccNoteOpened(ts, "bar")
+      ccType(ts, [["/", "transcript"], [text, "typing"]], { mode: "typing", query: text })
+    }
   }
   return true
 }
 function ccFindStep(ts, forward, text) {
   const cc = ccState(ts); if (!cc) return false
+  const back = forward ? [] : [["N", "transcript"]]
   if (cc.mode === "typing") {
-    // keep the search (Enter lands on the match the bar shows); back one more for previous
-    ccType(ts, forward ? ["\r"] : ["\r", "N"], { mode: "transcript" })
+    // keep the search (Enter lands on the match the bar shows); N for the one before
+    ccType(ts, [["\r", "typing"], ...back], { mode: "transcript" })
   } else if (cc.mode === "transcript") {
-    ccType(ts, [forward ? "n" : "N"], { mode: "transcript" })
+    ccType(ts, [[forward ? "n" : "N", "transcript"]], { mode: "transcript" })
   } else if (text) {
-    // the bar was reopened with its old query: search again
-    ccType(ts, ["\x0f", "/", text, "\r"], { mode: "transcript" })
+    // the find bar was reopened with its old query: search again
+    ts.ccText = ts.ccTyped = text
+    ccNoteOpened(ts, "transcript")
+    ccType(ts, [["\x0f", "prompt"], ["/", "transcript"], [text, "typing"], ["\r", "typing"], ...back],
+           { mode: "transcript" })
   }
   return true
 }
-function ccFindClose(ts) {
-  const cc = ccState(ts); if (!cc) return false
-  if (cc.mode === "typing") ccType(ts, ["\x1b", "\x1b"], { mode: "prompt" })
-  else if (cc.mode === "transcript") ccType(ts, ["\x1b"], { mode: "prompt" })
-  return true
+// Hiding the find bar: close what it opened in that pane — the search bar,
+// and the transcript view if it opened that too — and nothing else.
+function ccFindClose() {
+  const o = ccOpened; ccOpened = null
+  if (!o) return
+  const ts = o.ts
+  // (ccText stays: the find bar keeps its query, and a toggle after reopening
+  // it is no reason to search; Enter is — ccFindStep)
+  ts.ccTyped = undefined
+  const cc = ccState(ts); if (!cc) return
+  const steps = []
+  if (cc.mode === "typing") steps.push(["\x1b", "typing"])
+  if (o.what === "transcript" && cc.mode !== "prompt") steps.push(["\x1b", "transcript"])
+  if (steps.length)
+    ccType(ts, steps, { mode: o.what === "transcript" ? "prompt" : "transcript" })
 }
 
 document.addEventListener("focusin", e => onFocusPane(e.target), true)
@@ -1085,9 +1151,7 @@ function findPrev() {
   else domStep(-1)
 }
 // The find bar was hidden: end a search running in the pane's own program.
-function findClose() {
-  if (!cmActiveView() && !monacoActiveView() && activeTermSearch) ccFindClose(activeTermSearch)
-}
+function findClose() { ccFindClose() }
 function replaceNext() {
   const mv = monacoActiveView()
   if (mv) { window.LeksahMonaco.replaceNext(mv); return }
