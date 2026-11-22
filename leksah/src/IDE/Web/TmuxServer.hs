@@ -281,7 +281,7 @@ viewerAttachScript = concat
   -- days whose connection blips is not abandoned.  (A session's hook
   -- replaces the global one, so it refits the shared windows too:
   -- 'fitWindowScript'.)
-  , "hk=\"run-shell -b 'T=\\$(cat \\\"\\$HOME/.leksah/fit-window.tmux\\\" 2>/dev/null); \\\"\\${T:-tmux}\\\" set-option -t \\\"=$v:\\\" @leksah_claim \\\"\\$(date +%s)\\\"; sh \\\"\\$HOME/.leksah/fit-window.sh\\\"'\"; tx set-hook -t \"=$v:\" client-detached \"$hk\"; "
+  , "hk=\"run-shell -b 'T=\\$(cat \\\"\\$HOME/.leksah/fit-window.tmux\\\" 2>/dev/null); \\\"\\${T:-tmux}\\\" set-option -t \\\"=$v:\\\" @leksah_claim \\\"\\$(date +%s)\\\" 2>/dev/null; sh \\\"\\$HOME/.leksah/fit-window.sh\\\"'\"; tx set-hook -t \"=$v:\" client-detached \"$hk\"; "
   , "if [ -n \"$S\" ]; then exec \"$T\" -L \"$S\" -C attach-session -t \"=$v\"; "
   , "else exec \"$T\" -C attach-session -t \"=$v\"; fi" ]
 
@@ -301,6 +301,10 @@ fitWindowScript = unlines
   , "# session has no client).  $1: a window id; none: every window."
   , "# (The tmux to run: the one leksah found on this machine, which may be a"
   , "# nix-built one off PATH - see fit-window.tmux.)"
+  , "# Quiet and always successful: tmux's run-shell shows a command's output,"
+  , "# or its non-zero exit status, in view-mode on the pane, where it takes the"
+  , "# keys typed there."
+  , "exec >/dev/null 2>&1"
   , "T=$(cat \"$HOME/.leksah/fit-window.tmux\" 2>/dev/null); [ -n \"$T\" ] || T=tmux"
   , "tmux() { command \"$T\" \"$@\"; }"
   , "fit() {"
@@ -320,11 +324,12 @@ fitWindowScript = unlines
   , "  done <<OPTS"
   , "$opts"
   , "OPTS"
-  , "  [ -n \"$mw\" ] && tmux resize-window -t \"$w\" -x \"$mw\" -y \"$mh\""
+  , "  if [ -n \"$mw\" ]; then tmux resize-window -t \"$w\" -x \"$mw\" -y \"$mh\"; fi"
   , "}"
   , "if [ -n \"$1\" ]; then fit \"$1\"; else"
   , "  for w in $(tmux list-windows -a -F '#{window_id}' | sort -u); do fit \"$w\"; done"
-  , "fi" ]
+  , "fi"
+  , "exit 0" ]
 
 -- | Write 'fitWindowScript' to this machine's @~\/.leksah@ (when it differs).
 installFitScript :: IO ()
