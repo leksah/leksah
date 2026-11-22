@@ -28931,7 +28931,25 @@
       if (!SA || !term) return;
       const search2 = new SA();
       term.loadAddon(search2);
-      if (el) el._leksahTermSearch = { term, search: search2 };
+      const dropLineCache = () => {
+        const cache = search2._lineCache && search2._lineCache.value;
+        if (cache && typeof cache._destroyLinesCache === "function") cache._destroyLinesCache();
+      };
+      let last2 = null, timer = 0;
+      const refind = () => {
+        timer = 0;
+        if (!last2 || term.buffer.active.type !== "alternate") return;
+        search2.findNext(last2.text, { ...last2.opts, incremental: true }, { noScroll: true });
+      };
+      term.onWriteParsed(() => {
+        dropLineCache();
+        if (last2 && !timer && term.buffer.active.type === "alternate") timer = setTimeout(refind, 80);
+      });
+      const find2 = (forward, text, opts) => {
+        last2 = text ? { text, opts } : null;
+        return forward ? search2.findNext(text, opts) : search2.findPrevious(text, opts);
+      };
+      if (el) el._leksahTermSearch = { term, search: search2, find: find2 };
     } catch (e) {
     }
   }
@@ -29178,7 +29196,7 @@
     }
     const v = cmActiveView();
     if (v) cmStep(v, 1);
-    else if (activeTermSearch) activeTermSearch.search.findNext(lastFind.searchText, termSearchOptions(lastFind.flags));
+    else if (activeTermSearch) activeTermSearch.find(true, lastFind.searchText, termSearchOptions(lastFind.flags));
     else domStep(1);
   }
   function findPrev() {
@@ -29189,7 +29207,7 @@
     }
     const v = cmActiveView();
     if (v) cmStep(v, -1);
-    else if (activeTermSearch) activeTermSearch.search.findPrevious(lastFind.searchText, termSearchOptions(lastFind.flags));
+    else if (activeTermSearch) activeTermSearch.find(false, lastFind.searchText, termSearchOptions(lastFind.flags));
     else domStep(-1);
   }
   function replaceNext2() {
