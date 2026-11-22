@@ -189,6 +189,9 @@ findbarWidget activePaneD visibleD = do
     onChange (() <$ updated replaceD)
     performEvent_ $ ffor (whenJS stepE) $ \_ -> runOp "findNext"
     performEvent_ $ ffor (whenJS prevE) $ \_ -> runOp "findPrev"
+    -- Hiding the bar ends a search that runs in the pane's own program
+    -- (Claude Code's transcript search — findClose in the cm6 bundle).
+    performEvent_ $ ffor (ffilter not (updated visibleD)) $ \_ -> runOp "findClose"
     performEvent_ $ ffor (tagPromptlyDyn curD (whenCM replE))    $ \q -> runSet q >> runOp "replaceNext"
     performEvent_ $ ffor (tagPromptlyDyn curD (whenCM replAllE)) $ \q -> runSet q >> runOp "replaceAll"
     -- List/tree panes: emit commands for the active pane to act on (Haskell).

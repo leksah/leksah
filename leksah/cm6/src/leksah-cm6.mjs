@@ -782,6 +782,101 @@ function termSearchOptions(flags) {
     },
   }
 }
+// --- Claude Code's own transcript search, for a pane showing its fullscreen UI ---
+// There the transcript lives in Claude Code, not in the terminal — the screen
+// holds only what is in view, so xterm's search cannot see the rest, and its
+// highlights sit on rows Claude Code redraws.  So the find bar drives Claude
+// Code's search instead, by typing its keys into the pane: ctrl+o (the
+// transcript view), / (its search bar, empty each time it opens), the query
+// (searched as it is typed; case-insensitive, literal), Enter (keep the
+// search), n / N (next / previous match), Esc (cancel the search bar; again:
+// leave the transcript).  Claude Code draws its matches itself.
+//
+// Which state the pane is in is read off its screen — so it stays right when
+// someone types those keys in the pane themselves — except just after this
+// code has typed something, when the screen has not caught up yet (a key
+// sent too soon after another is dropped: steps are CC_GAP apart).
+const CC_GAP = 150
+const ccRule = /^─{20,}$/
+function ccScreenState(term) {
+  const b = term.buffer.active
+  if (b.type !== "alternate") return null
+  const rows = []
+  for (let y = Math.max(0, term.rows - 10); y < term.rows; y++) {
+    const l = b.getLine(b.baseY + y)
+    rows.push(l ? l.translateToString(true).trim() : "")
+  }
+  let bar = null, transcript = false, prompt = false
+  rows.forEach((t, i) => {
+    if (t.startsWith("⌕")) bar = t.slice(1).replace(/\s{2,}.*$/, "").trim()
+    else if (t.startsWith("Showing detailed transcript")) transcript = true
+    else if (t.startsWith("❯") && i > 0 && ccRule.test(rows[i - 1])) prompt = true
+  })
+  if (bar !== null) return { mode: "typing", query: bar === "Search transcript…" ? "" : bar }
+  if (transcript) return { mode: "transcript" }
+  if (prompt) return { mode: "prompt" }
+  return null
+}
+// The pane's state: what this code last left it in, for a moment after it
+// typed; otherwise what the screen shows.  null: not Claude Code's UI.
+function ccState(ts) {
+  const cc = ts.cc
+  if (cc && (cc.busy || Date.now() - cc.at < 1000)) return cc
+  const st = ccScreenState(ts.term)
+  ts.cc = st ? { ...st, at: 0, busy: false } : null
+  return ts.cc
+}
+// Type `steps` (strings) into the pane, CC_GAP apart, then leave the state
+// as `next`.  Queued behind any steps still being typed.
+function ccType(ts, steps, next) {
+  const cc = ts.cc
+  cc.busy = true
+  cc.queue = (cc.queue || Promise.resolve()).then(async () => {
+    for (const k of steps) {
+      if (k) ts.term.input(k, true)
+      await new Promise(r => setTimeout(r, CC_GAP))
+    }
+  })
+  Object.assign(cc, next, { at: Date.now() })
+  const q = cc.queue
+  q.then(() => { if (cc.queue === q) { cc.busy = false; cc.at = Date.now() } })
+}
+// Edit the search bar's query from `from` to `to` (backspaces, then the rest).
+function ccRetype(from, to) {
+  let i = 0
+  while (i < from.length && i < to.length && from[i] === to[i]) i++
+  return "\x7f".repeat([...from.slice(i)].length) + to.slice(i)
+}
+function ccFindSet(ts, text) {
+  const cc = ccState(ts); if (!cc) return false
+  if (cc.mode === "typing") {
+    const k = ccRetype(cc.query, text)
+    if (k) ccType(ts, [k], { mode: "typing", query: text })
+  } else if (text) {
+    ccType(ts, cc.mode === "prompt" ? ["\x0f", "/", text] : ["/", text], { mode: "typing", query: text })
+  }
+  return true
+}
+function ccFindStep(ts, forward, text) {
+  const cc = ccState(ts); if (!cc) return false
+  if (cc.mode === "typing") {
+    // keep the search (Enter lands on the match the bar shows); back one more for previous
+    ccType(ts, forward ? ["\r"] : ["\r", "N"], { mode: "transcript" })
+  } else if (cc.mode === "transcript") {
+    ccType(ts, [forward ? "n" : "N"], { mode: "transcript" })
+  } else if (text) {
+    // the bar was reopened with its old query: search again
+    ccType(ts, ["\x0f", "/", text, "\r"], { mode: "transcript" })
+  }
+  return true
+}
+function ccFindClose(ts) {
+  const cc = ccState(ts); if (!cc) return false
+  if (cc.mode === "typing") ccType(ts, ["\x1b", "\x1b"], { mode: "prompt" })
+  else if (cc.mode === "transcript") ccType(ts, ["\x1b"], { mode: "prompt" })
+  return true
+}
+
 document.addEventListener("focusin", e => onFocusPane(e.target), true)
 document.addEventListener("mousedown", e => onFocusPane(e.target), true)
 
@@ -977,7 +1072,7 @@ function findSet(searchText, replace, flags) {
   if (mv) { window.LeksahMonaco.findSet(mv, searchText, replace, flags); return }
   const v = cmActiveView()
   if (v) cmFindSet(v, searchText, replace, flags)
-  else if (activeTermSearch) { /* searched on findNext/findPrev */ }
+  else if (activeTermSearch) { ccFindSet(activeTermSearch, searchText) /* others: searched on findNext/findPrev */ }
   else domFindSet(searchText, flags)
 }
 function findNext() {
@@ -985,7 +1080,10 @@ function findNext() {
   if (mv) { window.LeksahMonaco.findNext(mv); return }
   const v = cmActiveView()
   if (v) cmStep(v, 1)
-  else if (activeTermSearch) activeTermSearch.find(true, lastFind.searchText, termSearchOptions(lastFind.flags))
+  else if (activeTermSearch) {
+    if (!ccFindStep(activeTermSearch, true, lastFind.searchText))
+      activeTermSearch.find(true, lastFind.searchText, termSearchOptions(lastFind.flags))
+  }
   else domStep(1)
 }
 function findPrev() {
@@ -993,8 +1091,15 @@ function findPrev() {
   if (mv) { window.LeksahMonaco.findPrev(mv); return }
   const v = cmActiveView()
   if (v) cmStep(v, -1)
-  else if (activeTermSearch) activeTermSearch.find(false, lastFind.searchText, termSearchOptions(lastFind.flags))
+  else if (activeTermSearch) {
+    if (!ccFindStep(activeTermSearch, false, lastFind.searchText))
+      activeTermSearch.find(false, lastFind.searchText, termSearchOptions(lastFind.flags))
+  }
   else domStep(-1)
+}
+// The find bar was hidden: end a search running in the pane's own program.
+function findClose() {
+  if (!cmActiveView() && !monacoActiveView() && activeTermSearch) ccFindClose(activeTermSearch)
 }
 function replaceNext() {
   const mv = monacoActiveView()
@@ -1013,7 +1118,7 @@ window.LeksahCM = {
   showSideBySide, showInline, hideDiff, showDiff, destroyDiff,
   activeView: null, onActivePane: null,
   setTheme,
-  findSet, findNext, findPrev, replaceNext, replaceAll,
+  findSet, findNext, findPrev, findClose, replaceNext, replaceAll,
   loadTerminalSearch,
   setHoverHandler, resolveHover,
   setCompletionHandler, resolveComplete,
