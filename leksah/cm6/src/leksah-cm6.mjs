@@ -731,7 +731,44 @@ function loadTerminalSearch(term, el) {
     if (!SA || !term) return
     const search = new SA()
     term.loadAddon(search)
-    if (el) el._leksahTermSearch = { term, search }
+    // On the alternate screen (Claude Code's fullscreen UI, vim, less…) a
+    // match's highlight is the background of the cells it was found in, and
+    // the program redraws those rows in place — scrolling its own view, or a
+    // spinner ticking — so the colour stays on rows that now say something
+    // else.  The addon re-finds its matches only once output has been quiet
+    // for 200ms, which a busy program never is.  So on the alternate screen
+    // the same search runs again (incrementally: the current match stays
+    // current if it is still there) at most every 80ms while output arrives.
+    // (The normal screen's highlights follow its scrollback, so the addon's
+    // own refresh is enough there.)
+    //
+    // Either way the search must read the text as it is now: the addon keeps
+    // each line's text in a cache it drops only on a line feed, a cursor move
+    // or a resize — not when a program rewrites lines in place and puts the
+    // cursor back where it was (a fullscreen UI's redraw, a progress bar), so
+    // every search after that finds the old text.  Dropped after each write
+    // here.  (Private: the addon has no API for it.  Unchanged as of
+    // @xterm/addon-search 0.17.0-beta.333; guarded, so a later version without
+    // it only loses this.)
+    const dropLineCache = () => {
+      const cache = search._lineCache && search._lineCache.value
+      if (cache && typeof cache._destroyLinesCache === "function") cache._destroyLinesCache()
+    }
+    let last = null, timer = 0
+    const refind = () => {
+      timer = 0
+      if (!last || term.buffer.active.type !== "alternate") return
+      search.findNext(last.text, { ...last.opts, incremental: true }, { noScroll: true })
+    }
+    term.onWriteParsed(() => {
+      dropLineCache()
+      if (last && !timer && term.buffer.active.type === "alternate") timer = setTimeout(refind, 80)
+    })
+    const find = (forward, text, opts) => {
+      last = text ? { text, opts } : null
+      return forward ? search.findNext(text, opts) : search.findPrevious(text, opts)
+    }
+    if (el) el._leksahTermSearch = { term, search, find }
   } catch (e) { /* terminal find unavailable */ }
 }
 function termSearchOptions(flags) {
@@ -948,7 +985,7 @@ function findNext() {
   if (mv) { window.LeksahMonaco.findNext(mv); return }
   const v = cmActiveView()
   if (v) cmStep(v, 1)
-  else if (activeTermSearch) activeTermSearch.search.findNext(lastFind.searchText, termSearchOptions(lastFind.flags))
+  else if (activeTermSearch) activeTermSearch.find(true, lastFind.searchText, termSearchOptions(lastFind.flags))
   else domStep(1)
 }
 function findPrev() {
@@ -956,7 +993,7 @@ function findPrev() {
   if (mv) { window.LeksahMonaco.findPrev(mv); return }
   const v = cmActiveView()
   if (v) cmStep(v, -1)
-  else if (activeTermSearch) activeTermSearch.search.findPrevious(lastFind.searchText, termSearchOptions(lastFind.flags))
+  else if (activeTermSearch) activeTermSearch.find(false, lastFind.searchText, termSearchOptions(lastFind.flags))
   else domStep(-1)
 }
 function replaceNext() {
