@@ -50,6 +50,7 @@ module IDE.Web.TmuxCC
     -- * Commands and events
   , ccCommand
   , ccSend
+  , ccSendBlocks
   , ccCommandTagged
   , ccEvents
   , ccEventsBatch
@@ -76,6 +77,7 @@ import IDE.Web.TmuxServer (viewerId)
 import Control.Concurrent.STM
        (TChan, atomically, newTChanIO, readTChan, tryReadTChan, writeTChan)
 import Control.Exception (SomeException, catch, try)
+import Control.Applicative ((<|>))
 import Control.Monad (forM_, unless, void, when)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -154,11 +156,20 @@ type ReplyVar = MVar (Either Text [Text])
 -- ('PendingTag' → 'EvReply', the 'ccCommandTagged' path).
 data Pending = PendingVar ReplyVar | PendingTag Text
 
+-- | A submitted command's place in the reply queue: how many reply blocks
+-- tmux has still to send for it, the first error among those already in,
+-- and where its reply goes.  Most commands get exactly one block, but a
+-- command that runs others (@if-shell@) gets one for itself and then one
+-- per command it runs, each client-flagged and otherwise indistinguishable
+-- (verified against tmux 3.8) — counting them is the only way the replies
+-- after it still answer the right commands ('ccSendBlocks').
+data Waiting = Waiting !Int !(Maybe Text) Pending
+
 data CC = CC
   { ccIn      :: Handle
   , ccProc    :: ProcessHandle
   , ccChan    :: TChan TmuxEvent
-  , ccPending :: MVar [Pending]    -- ^ FIFO queue (append on send, pop on reply)
+  , ccPending :: MVar [Waiting]    -- ^ FIFO queue (append on send, pop on reply)
   , ccLock    :: MVar ()           -- ^ held around (enqueue, write command)
   , ccClosed  :: IORef Bool
   , ccErr     :: IORef Text        -- ^ accumulated child stderr (ssh/tmux errors)
@@ -296,12 +307,17 @@ reader cc hout = loop `catch` \(e :: SomeException) -> do
     deliver forUs result
       | not forUs = return ()
       | otherwise = do
-        mv <- modifyMVar (ccPending cc) $ \case
-            []       -> return ([], Nothing)
-            (v:rest) -> return (rest, Just v)
-        case mv of
-          Just (PendingVar v)  -> void $ tryPutMVar v result
-          Just (PendingTag t)  -> emit (EvReply t result)
+        next <- modifyMVar (ccPending cc) $ \case
+            [] -> return ([], Nothing)
+            (Waiting n err p : rest)
+              -- (one of a command's several blocks: wait for the rest)
+              | n > 1     -> return (Waiting (n - 1) (err <|> either Just (const Nothing) result) p : rest,
+                                     Just Nothing)
+              | otherwise -> return (rest, Just (Just (p, maybe result Left err)))
+        case next of
+          Just Nothing -> return ()
+          Just (Just (PendingVar v, r)) -> void $ tryPutMVar v r
+          Just (Just (PendingTag t, r)) -> emit (EvReply t r)
           -- A client-flagged reply with no pending command means the
           -- correlation is off — later replies would answer the wrong
           -- callers.  Loud, because it should never happen.
@@ -317,7 +333,7 @@ reader cc hout = loop `catch` \(e :: SomeException) -> do
         writeIORef (ccClosed cc) True
         reapInBackground (ccProc cc)
         vs <- modifyMVar (ccPending cc) $ \vs -> return ([], vs)
-        forM_ vs $ \case
+        forM_ vs $ \(Waiting _ _ p) -> case p of
             PendingVar v -> void $ tryPutMVar v (Left "tmux control client exited")
             PendingTag t -> emit (EvReply t (Left "tmux control client exited"))
         case exited of
@@ -497,14 +513,15 @@ coalesceOutputs [] = []
 
 -- | Submit a command line: enqueue its reply slot and write it (correlation
 -- is by order, so both happen under the lock).  'False' if the client is
--- dead / the write failed.
-ccSubmit :: CC -> Pending -> Text -> IO Bool
-ccSubmit cc pending cmd = do
+-- dead / the write failed.  @blocks@: how many reply blocks the command gets
+-- ('Waiting'; 1 unless it runs other commands).
+ccSubmit :: CC -> Int -> Pending -> Text -> IO Bool
+ccSubmit cc blocks pending cmd = do
     dead <- readIORef (ccClosed cc)
     if dead then return False else
         withMVar (ccLock cc) $ \() -> do
             r <- try $ do
-                modifyMVar_ (ccPending cc) $ \vs -> return (vs ++ [pending])
+                modifyMVar_ (ccPending cc) $ \vs -> return (vs ++ [Waiting (max 1 blocks) Nothing pending])
                 BSC.hPutStrLn (ccIn cc) (TE.encodeUtf8 cmd)
                 IO.hFlush (ccIn cc)
             case r of
@@ -528,7 +545,7 @@ ccSubmit cc pending cmd = do
 ccCommand :: CC -> Text -> IO (Either Text [Text])
 ccCommand cc cmd = do
     v  <- newEmptyMVar
-    ok <- ccSubmit cc (PendingVar v) cmd
+    ok <- ccSubmit cc 1 (PendingVar v) cmd
     if not ok then return (Left "tmux control client exited") else
         timeout 15000000 (takeMVar v) >>= \case
             Just r  -> return r
@@ -540,7 +557,7 @@ ccCommand cc cmd = do
 -- tag, IN STREAM ORDER on the event channel — use when the reply's position
 -- relative to @%output@ matters (the capture-based jump-ahead resync).
 ccCommandTagged :: CC -> Text -> Text -> IO ()
-ccCommandTagged cc tag cmd = void $ ccSubmit cc (PendingTag tag) cmd
+ccCommandTagged cc tag cmd = void $ ccSubmit cc 1 (PendingTag tag) cmd
 
 -- | Fire-and-forget command: submitted (and ordered) like 'ccCommand', but
 -- the caller doesn't wait for the reply — for keystrokes and other
@@ -548,9 +565,16 @@ ccCommandTagged cc tag cmd = void $ ccSubmit cc (PendingTag tag) cmd
 -- the processing of any output burst in progress.  Errors are still
 -- reported ('ccWarn') when the reply eventually arrives.
 ccSend :: CC -> Text -> IO ()
-ccSend cc cmd = do
+ccSend cc = ccSendBlocks cc 1
+
+-- | 'ccSend' for a command that runs others (@if-shell@), which tmux answers
+-- with @blocks@ reply blocks: one for itself, one per command it runs.  Its
+-- branches must run the same number of commands, or the count is wrong for
+-- one of them and every later reply answers the wrong command.
+ccSendBlocks :: CC -> Int -> Text -> IO ()
+ccSendBlocks cc blocks cmd = do
     v  <- newEmptyMVar
-    ok <- ccSubmit cc (PendingVar v) cmd
+    ok <- ccSubmit cc blocks (PendingVar v) cmd
     when ok . void . forkIO $ takeMVar v >>= \case
         Left err | err /= "tmux control client exited" ->
             ccWarn ("async command failed: " <> T.unpack cmd
@@ -622,7 +646,8 @@ ccResizeWindow cc win w h = do
     let size = T.pack (show w) <> "x" <> T.pack (show h)
     ccSend cc $ "set-option -F -w -t " <> win <> " @leksah_size_" <> viewer
                 <> " \"" <> size <> " #{client_session}\""
-    ccSend cc $ "if-shell -F -t " <> win <> " \"#{session_grouped}\""
+    -- (one command in each branch: two reply blocks, 'ccSendBlocks')
+    ccSendBlocks cc 2 $ "if-shell -F -t " <> win <> " \"#{session_grouped}\""
                 <> " \"run-shell -b 'sh ~/.leksah/fit-window.sh " <> win <> "'\""
                 <> " \"resize-window -t " <> win
                 <> " -x " <> T.pack (show w) <> " -y " <> T.pack (show h) <> "\""
@@ -634,10 +659,14 @@ ccResizeWindow cc win w h = do
 ccClearWindowSize :: CC -> WindowId -> IO ()
 ccClearWindowSize cc win = do
     viewer <- viewerId
-    ccSend cc $ "if-shell -F -t " <> win <> " \"#{session_grouped}\""
+    -- (two commands in each branch — three reply blocks, 'ccSendBlocks';
+    -- an ungrouped window drops this leksah's recorded size too, which
+    -- 'ccResizeWindow' sets whichever kind it is)
+    ccSendBlocks cc 3 $ "if-shell -F -t " <> win <> " \"#{session_grouped}\""
                 <> " \"set-option -w -t " <> win <> " -u @leksah_size_" <> viewer
                 <> " ; run-shell -b 'sh ~/.leksah/fit-window.sh " <> win <> "'\""
-                <> " \"set-option -w -t " <> win <> " -u window-size\""
+                <> " \"set-option -w -t " <> win <> " -u window-size"
+                <> " ; set-option -w -t " <> win <> " -u @leksah_size_" <> viewer <> "\""
 
 -- | Is the client still running?
 ccAlive :: CC -> IO Bool
