@@ -83,7 +83,7 @@ import IDE.Web.AgentInfo
 import IDE.Web.Claude (ClaudeCmd(..), claudeRemoveBackground, runClaudeCmd)
 import IDE.Web.AgentCli (AgentCli(..), cliFromTag, cliLabel, cliTag)
 import IDE.Web.AgentGlyph (cliGlyph)
-import IDE.Web.Widget.AgentMenu (availableClis)
+import IDE.Web.Widget.AgentMenu (availableClis, availableClisFor)
 import IDE.Web.Widget.ContextMenu (clickMenu)
 import IDE.Web.Widget.Menu (MenuEntry(..), menuModsE)
 import IDE.Web.Theme
@@ -268,7 +268,11 @@ agentsWidget ctx mruNamesD = do
         performEvent_ $ ffor startE $ \c -> liftIO . void . forkIO $
           activeProjectDir >>= \case
             Nothing -> toast "Open a project first: a new agent starts in the active project"
-            Just d  -> runClaudeCmd (CliNew c d) >> refresh
+            -- (the kind chosen if the project's machine has it — a project
+            -- on a shared host has what that host has — else its first)
+            Just d  -> availableClisFor d >>= \cs -> case [ x | x <- cs, x == c ] <> cs of
+              (c' : _) -> runClaudeCmd (CliNew c' d) >> refresh
+              []       -> toast "No agent CLI found for the active project"
         performEvent_ $ liftIO (requestKeymapCommand CommandShowTeam)
           <$ leftmost [teamE, () <$ ffilter (== MoreTeam) moreE]
         let h' = leftmost [h, () <$ ffilter (== MoreRefresh) moreE]
@@ -521,8 +525,6 @@ activeProjectDir = getGlobalApp >>= \case
   Nothing  -> return Nothing
   Just app -> fmap prDir . activeProject <$> readCell (wsCell (appWorkspace app))
 
--- | A compact glyph button in a row (⟳ refresh / ✕ forget), matching the
--- Terminals tree's management glyphs.
 -- | A header button (@cls@: its other classes).
 actionBtn :: MonadWidget t m => Text -> Text -> Text -> m (Event t ())
 actionBtn cls glyph tip = do
@@ -564,8 +566,9 @@ agentLinksJs = T.unlines
     -- (agents-head-fold).  Worked out from the parts' widths — the hidden
     -- forms are kept measurable (see 'agentsCss') — so it does not flicker,
     -- and looked at again whenever any part, or the row, changes size.
-    -- (The header may not be built yet: tried again a few times.)
-  , "    (function fitWhenThere(tries){"
+    -- (The header may not be built yet: tried again a few times.  Only the
+    -- Agents pane has it — the Team pane arms the links too.)
+  , "    if (root.classList.contains('agents-pane')) (function fitWhenThere(tries){"
   , "      var row = root.querySelector('.agents-head-row'),"
   , "          label = root.querySelector('.agents-head-label'),"
   , "          wide = root.querySelector('.agents-head-wide'),"
@@ -580,7 +583,10 @@ agentLinksJs = T.unlines
   , "        var folds = Array.prototype.slice.call(row.querySelectorAll('.agents-fold-hide'));"
   , "        var fixed = 0, n = 0, acts = 0, na = 0;"
   , "        Array.prototype.forEach.call(row.children, function(k){"
-  , "          if (k === label || k === more || folds.indexOf(k) >= 0 || !k.offsetWidth) return;"
+    -- (an open drop-down — the ⋯ menu, the kinds of agent — is not part of
+    -- the row it hangs from)
+  , "          if (k === label || k === more || folds.indexOf(k) >= 0 || !k.offsetWidth"
+  , "              || (k.classList && k.classList.contains('context-menu'))) return;"
   , "          fixed += k.offsetWidth; n++;"
   , "        });"
   , "        folds.forEach(function(k){ if (k.offsetWidth) { acts += k.offsetWidth; na++; } });"

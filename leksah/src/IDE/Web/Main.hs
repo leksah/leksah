@@ -5657,9 +5657,14 @@ themeSwitchJs = T.unlines
 -- | Keep context menus on-screen.  The menu is positioned at the raw click
 -- coordinates (see 'IDE.Web.Widget.ContextMenu'), so one opened near the bottom
 -- or right edge overflows the window.  A MutationObserver spots each
--- @.context-menu@ as it is inserted and, after layout (rAF, so its items are
--- measured), nudges it back inside the viewport — shifting it up/left by its
--- overflow rather than letting it spill off.
+-- @.context-menu@ as it is inserted and nudges it back inside the viewport —
+-- shifting it up/left by its overflow rather than letting it spill off — after
+-- layout, and again whenever its size changes: its entries are built a frame
+-- or more after the menu itself ('IDE.Web.Widget.Menu.menuModsE'), so the
+-- first look can see an empty one.  A submenu's flyout opens to the right of
+-- its row; when that would spill off it opens to the left instead, and it is
+-- moved up as far as it would spill below — looked at when it is hovered, and
+-- again when its entries arrive (they are looked for when the menu opens).
 contextMenuClampJs :: Text
 contextMenuClampJs = T.unlines
   [ "(function(){"
@@ -5696,8 +5701,35 @@ contextMenuClampJs = T.unlines
   , "    if (!n || n.nodeType !== 1) return;"
   , "    var el = (n.classList && n.classList.contains('context-menu')) ? n"
   , "           : (n.querySelector && n.querySelector('.context-menu'));"
-  , "    if (el) requestAnimationFrame(function(){ clamp(el); });"
+  , "    if (!el) return;"
+  , "    requestAnimationFrame(function(){ clamp(el); });"
+  , "    try { new ResizeObserver(function(){ clamp(el); }).observe(el); } catch (e) {}"
   , "  }"
+  , "  function placeFlyout(li){"
+  , "    try {"
+  , "      var fly = li.querySelector(':scope > .menu'); if (!fly) return;"
+  , "      fly.style.left = ''; fly.style.right = ''; fly.style.top = '';"
+  , "      var r = window.leksahLocalRect(fly); if (!r.width) return;"
+  , "      var row = window.leksahLocalRect(li);"
+  , "      var vw = window.leksahLocal(window.innerWidth),"
+  , "          vh = window.leksahLocal(window.innerHeight);"
+  , "      if (r.left + r.width > vw - M && row.left - r.width >= M) {"
+  , "        fly.style.left = 'auto'; fly.style.right = '100%';"
+  , "      }"
+  , "      var over = r.top + r.height - (vh - M);"
+  , "      if (over > 0) fly.style.top = (-Math.min(over, r.top - M)) + 'px';"
+  , "    } catch (e) {}"
+  , "  }"
+  , "  document.addEventListener('mouseover', function(e){"
+  , "    var li = e.target && e.target.closest && e.target.closest('.context-menu li.has-submenu');"
+  , "    if (!li) return;"
+  , "    var fly = li.querySelector(':scope > .menu');"
+  , "    if (fly && !fly.__lkPlaced) {"
+  , "      fly.__lkPlaced = true;"
+  , "      try { new ResizeObserver(function(){ placeFlyout(li); }).observe(fly); } catch (e2) {}"
+  , "    }"
+  , "    requestAnimationFrame(function(){ placeFlyout(li); });"
+  , "  }, true);"
   , "  new MutationObserver(function(muts){"
   , "    for (var i=0;i<muts.length;i++)"
   , "      for (var j=0;j<muts[i].addedNodes.length;j++) check(muts[i].addedNodes[j]);"

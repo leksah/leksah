@@ -19,7 +19,7 @@ import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import System.Directory (getModificationTime)
 
 import IDE.Web.AgentCli (AgentCli(..))
-import IDE.Web.AgentNames (agentNames)
+import IDE.Web.AgentNames (agentContinuations, agentNames)
 import IDE.Web.Agy (agyFirstPrompt, agySessionsIn)
 import IDE.Web.AgentInfo (agentTitles)
 import IDE.Web.Claude
@@ -40,36 +40,42 @@ data RecentSession = RecentSession
   , rsName     :: Maybe Text  -- ^ the agent name leksah gave it, if any
   } deriving (Eq, Show)
 
--- | The @n@ most recent sessions that ran in @dir@ and are not running now,
--- newest first: Claude Code's saved transcripts there, and the Codex and
--- Antigravity sessions leksah's hooks saw there.  Running ones are left out
--- (they are in the tree already, and continuing one would only show it).  A
+-- | The @n@ most recent sessions of these CLIs that ran in @dir@ and are not
+-- running now, newest first: Claude Code's saved transcripts there, and the
+-- Codex and Antigravity sessions leksah's hooks saw there.  Running ones are
+-- left out (they are in the tree already, and continuing one would only show
+-- it), and so are ones that carried on under another id (a backgrounded
+-- session: resuming the old id would fork a conversation still running).  A
 -- conversation an agent left with @/clear@ stays: it can still be resumed.
-recentSessions :: Int -> FilePath -> IO [RecentSession]
-recentSessions n dir = (`catch` \(_ :: SomeException) -> return []) $ do
+recentSessions :: [AgentCli] -> Int -> FilePath -> IO [RecentSession]
+recentSessions clis n dir = (`catch` \(_ :: SomeException) -> return []) $ do
   live  <- claudeLiveBySession
+  conts <- agentContinuations
   names <- agentNames
   titles <- agentTitles
   now   <- getCurrentTime
-  let keep sid = sid `M.notMember` live
+  let keep sid = sid `M.notMember` live && sid `M.notMember` conts
       age t = humanAge (diffUTCTime now t)
-  claude <- claudeSessionsFor dir
+  claude <- if CliClaude `elem` clis then claudeSessionsFor dir else return []
   -- (only the newest n are labelled: a gist is a read of the transcript's tail)
   fromClaude <- forM (take n (sortOn (Down . csModified) [ s | s <- claude, keep (csId s) ])) $ \s -> do
     gist <- (Just <$> cachedTranscriptGist (csPath s))
               `catch` \(_ :: SomeException) -> return Nothing
     let lbl = labelFrom (M.lookup (csId s) titles) (gist >>= tgTitle) (csLabel s)
     return (RecentSession CliClaude (csId s) (csModified s) (csAge s) lbl (M.lookup (csId s) names))
-  hooked <- fmap concat . forM [ (CliCodex, codexSessionsIn, rolloutFirstPrompt)
-                               , (CliAgy, agySessionsIn, agyFirstPrompt) ] $
+  hooked <- fmap concat . forM [ x | x@(cli, _, _) <- [ (CliCodex, codexSessionsIn, rolloutFirstPrompt)
+                                                         , (CliAgy, agySessionsIn, agyFirstPrompt) ]
+                                  , cli `elem` clis ] $
     \(cli, sessionsIn, firstPrompt) -> do
       ss <- sessionsIn dir
-      fmap catMaybes . forM [ s | s@(sid, _) <- ss, keep sid ] $ \(sid, tr) ->
-        (`catch` \(_ :: SomeException) -> return Nothing) $ do
-          t <- getModificationTime tr
-          prompt <- fromMaybe "" <$> firstPrompt tr
-          return . Just $ RecentSession cli sid t (age t)
-            (labelFrom (M.lookup sid titles) Nothing prompt) (M.lookup sid names)
+      -- (only the newest n get their first prompt read: a read of each one)
+      dated <- fmap catMaybes . forM [ s | s@(sid, _) <- ss, keep sid ] $ \(sid, tr) ->
+        (`catch` \(_ :: SomeException) -> return Nothing) $
+          (\t -> Just (sid, tr, t)) <$> getModificationTime tr
+      forM (take n (sortOn (\(_, _, t) -> Down t) dated)) $ \(sid, tr, t) -> do
+        prompt <- fromMaybe "" <$> (firstPrompt tr `catch` \(_ :: SomeException) -> return Nothing)
+        return $ RecentSession cli sid t (age t)
+          (labelFrom (M.lookup sid titles) Nothing prompt) (M.lookup sid names)
   return . take n . sortOn (Down . rsModified) $ fromClaude <> hooked
   where
     oneLine = T.strip . T.takeWhile (/= '\n')
