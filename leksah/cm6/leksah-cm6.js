@@ -28966,6 +28966,87 @@
       }
     };
   }
+  var CC_GAP = 150;
+  var ccRule = /^─{20,}$/;
+  function ccScreenState(term) {
+    const b = term.buffer.active;
+    if (b.type !== "alternate") return null;
+    const rows = [];
+    for (let y = Math.max(0, term.rows - 10); y < term.rows; y++) {
+      const l = b.getLine(b.baseY + y);
+      rows.push(l ? l.translateToString(true).trim() : "");
+    }
+    let bar = null, transcript = false, prompt = false;
+    rows.forEach((t2, i2) => {
+      if (t2.startsWith("\u2315")) bar = t2.slice(1).replace(/\s{2,}.*$/, "").trim();
+      else if (t2.startsWith("Showing detailed transcript")) transcript = true;
+      else if (t2.startsWith("\u276F") && i2 > 0 && ccRule.test(rows[i2 - 1])) prompt = true;
+    });
+    if (bar !== null) return { mode: "typing", query: bar === "Search transcript\u2026" ? "" : bar };
+    if (transcript) return { mode: "transcript" };
+    if (prompt) return { mode: "prompt" };
+    return null;
+  }
+  function ccState(ts) {
+    const cc = ts.cc;
+    if (cc && (cc.busy || Date.now() - cc.at < 1e3)) return cc;
+    const st = ccScreenState(ts.term);
+    ts.cc = st ? { ...st, at: 0, busy: false } : null;
+    return ts.cc;
+  }
+  function ccType(ts, steps, next) {
+    const cc = ts.cc;
+    cc.busy = true;
+    cc.queue = (cc.queue || Promise.resolve()).then(async () => {
+      for (const k of steps) {
+        if (k) ts.term.input(k, true);
+        await new Promise((r) => setTimeout(r, CC_GAP));
+      }
+    });
+    Object.assign(cc, next, { at: Date.now() });
+    const q = cc.queue;
+    q.then(() => {
+      if (cc.queue === q) {
+        cc.busy = false;
+        cc.at = Date.now();
+      }
+    });
+  }
+  function ccRetype(from, to) {
+    let i2 = 0;
+    while (i2 < from.length && i2 < to.length && from[i2] === to[i2]) i2++;
+    return "\x7F".repeat([...from.slice(i2)].length) + to.slice(i2);
+  }
+  function ccFindSet(ts, text) {
+    const cc = ccState(ts);
+    if (!cc) return false;
+    if (cc.mode === "typing") {
+      const k = ccRetype(cc.query, text);
+      if (k) ccType(ts, [k], { mode: "typing", query: text });
+    } else if (text) {
+      ccType(ts, cc.mode === "prompt" ? ["", "/", text] : ["/", text], { mode: "typing", query: text });
+    }
+    return true;
+  }
+  function ccFindStep(ts, forward, text) {
+    const cc = ccState(ts);
+    if (!cc) return false;
+    if (cc.mode === "typing") {
+      ccType(ts, forward ? ["\r"] : ["\r", "N"], { mode: "transcript" });
+    } else if (cc.mode === "transcript") {
+      ccType(ts, [forward ? "n" : "N"], { mode: "transcript" });
+    } else if (text) {
+      ccType(ts, ["", "/", text, "\r"], { mode: "transcript" });
+    }
+    return true;
+  }
+  function ccFindClose(ts) {
+    const cc = ccState(ts);
+    if (!cc) return false;
+    if (cc.mode === "typing") ccType(ts, ["\x1B", "\x1B"], { mode: "prompt" });
+    else if (cc.mode === "transcript") ccType(ts, ["\x1B"], { mode: "prompt" });
+    return true;
+  }
   document.addEventListener("focusin", (e) => onFocusPane(e.target), true);
   document.addEventListener("mousedown", (e) => onFocusPane(e.target), true);
   function cmActiveView() {
@@ -29186,6 +29267,7 @@
     const v = cmActiveView();
     if (v) cmFindSet(v, searchText, replace2, flags);
     else if (activeTermSearch) {
+      ccFindSet(activeTermSearch, searchText);
     } else domFindSet(searchText, flags);
   }
   function findNext2() {
@@ -29196,8 +29278,10 @@
     }
     const v = cmActiveView();
     if (v) cmStep(v, 1);
-    else if (activeTermSearch) activeTermSearch.find(true, lastFind.searchText, termSearchOptions(lastFind.flags));
-    else domStep(1);
+    else if (activeTermSearch) {
+      if (!ccFindStep(activeTermSearch, true, lastFind.searchText))
+        activeTermSearch.find(true, lastFind.searchText, termSearchOptions(lastFind.flags));
+    } else domStep(1);
   }
   function findPrev() {
     const mv = monacoActiveView();
@@ -29207,8 +29291,13 @@
     }
     const v = cmActiveView();
     if (v) cmStep(v, -1);
-    else if (activeTermSearch) activeTermSearch.find(false, lastFind.searchText, termSearchOptions(lastFind.flags));
-    else domStep(-1);
+    else if (activeTermSearch) {
+      if (!ccFindStep(activeTermSearch, false, lastFind.searchText))
+        activeTermSearch.find(false, lastFind.searchText, termSearchOptions(lastFind.flags));
+    } else domStep(-1);
+  }
+  function findClose() {
+    if (!cmActiveView() && !monacoActiveView() && activeTermSearch) ccFindClose(activeTermSearch);
   }
   function replaceNext2() {
     const mv = monacoActiveView();
@@ -29250,6 +29339,7 @@
     findSet,
     findNext: findNext2,
     findPrev,
+    findClose,
     replaceNext: replaceNext2,
     replaceAll: replaceAll2,
     loadTerminalSearch,
