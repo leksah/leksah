@@ -731,18 +731,15 @@ function loadTerminalSearch(term, el) {
     if (!SA || !term) return
     const search = new SA()
     term.loadAddon(search)
-    // On the alternate screen (Claude Code's fullscreen UI, vim, less…) a
-    // match's highlight is the background of the cells it was found in, and
-    // the program redraws those rows in place — scrolling its own view, or a
-    // spinner ticking — so the colour stays on rows that now say something
-    // else.  The addon re-finds its matches only once output has been quiet
-    // for 200ms, which a busy program never is.  So on the alternate screen
-    // the same search runs again (incrementally: the current match stays
-    // current if it is still there) at most every 80ms while output arrives.
-    // (The normal screen's highlights follow its scrollback, so the addon's
-    // own refresh is enough there.)
+    // The addon re-finds its matches once output has been quiet for 200ms
+    // (on the alternate screen a match's highlight is the background of the
+    // cells it was found in, which a program redrawing in place leaves on
+    // rows that now say something else until then).  Re-finding more often
+    // than that while output arrives makes every highlight flicker, so it is
+    // left to the addon; Claude Code's fullscreen UI — the busy case — is
+    // searched with its own search instead (ccFindSet below).
     //
-    // Either way the search must read the text as it is now: the addon keeps
+    // The search must read the text as it is now, though: the addon keeps
     // each line's text in a cache it drops only on a line feed, a cursor move
     // or a resize — not when a program rewrites lines in place and puts the
     // cursor back where it was (a fullscreen UI's redraw, a progress bar), so
@@ -754,20 +751,9 @@ function loadTerminalSearch(term, el) {
       const cache = search._lineCache && search._lineCache.value
       if (cache && typeof cache._destroyLinesCache === "function") cache._destroyLinesCache()
     }
-    let last = null, timer = 0
-    const refind = () => {
-      timer = 0
-      if (!last || term.buffer.active.type !== "alternate") return
-      search.findNext(last.text, { ...last.opts, incremental: true }, { noScroll: true })
-    }
-    term.onWriteParsed(() => {
-      dropLineCache()
-      if (last && !timer && term.buffer.active.type === "alternate") timer = setTimeout(refind, 80)
-    })
-    const find = (forward, text, opts) => {
-      last = text ? { text, opts } : null
-      return forward ? search.findNext(text, opts) : search.findPrevious(text, opts)
-    }
+    term.onWriteParsed(dropLineCache)
+    const find = (forward, text, opts) =>
+      forward ? search.findNext(text, opts) : search.findPrevious(text, opts)
     if (el) el._leksahTermSearch = { term, search, find }
   } catch (e) { /* terminal find unavailable */ }
 }
@@ -797,7 +783,8 @@ function termSearchOptions(flags) {
 // code has typed something, when the screen has not caught up yet (a key
 // sent too soon after another is dropped: steps are CC_GAP apart).
 const CC_GAP = 150
-const ccRule = /^─{20,}$/
+// (the rule above the prompt box ends with the session's title, if it has one)
+const ccRule = /^─{20,}/
 function ccScreenState(term) {
   const b = term.buffer.active
   if (b.type !== "alternate") return null

@@ -28935,20 +28935,8 @@
         const cache = search2._lineCache && search2._lineCache.value;
         if (cache && typeof cache._destroyLinesCache === "function") cache._destroyLinesCache();
       };
-      let last2 = null, timer = 0;
-      const refind = () => {
-        timer = 0;
-        if (!last2 || term.buffer.active.type !== "alternate") return;
-        search2.findNext(last2.text, { ...last2.opts, incremental: true }, { noScroll: true });
-      };
-      term.onWriteParsed(() => {
-        dropLineCache();
-        if (last2 && !timer && term.buffer.active.type === "alternate") timer = setTimeout(refind, 80);
-      });
-      const find2 = (forward, text, opts) => {
-        last2 = text ? { text, opts } : null;
-        return forward ? search2.findNext(text, opts) : search2.findPrevious(text, opts);
-      };
+      term.onWriteParsed(dropLineCache);
+      const find2 = (forward, text, opts) => forward ? search2.findNext(text, opts) : search2.findPrevious(text, opts);
       if (el) el._leksahTermSearch = { term, search: search2, find: find2 };
     } catch (e) {
     }
@@ -28967,7 +28955,7 @@
     };
   }
   var CC_GAP = 150;
-  var ccRule = /^─{20,}$/;
+  var ccRule = /^─{20,}/;
   function ccScreenState(term) {
     const b = term.buffer.active;
     if (b.type !== "alternate") return null;
