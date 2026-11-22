@@ -16,7 +16,8 @@ module IDE.Web.Widget.AgentMenu
   , continueRecentEntry
   ) where
 
-import Control.Monad (filterM)
+import Control.Concurrent (forkIO)
+import Control.Monad (filterM, void)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -26,6 +27,8 @@ import Reflex (Dynamic, Reflex, ffor)
 import IDE.Utils.RemotePath (isRemotePath, parseRemotePath)
 import IDE.Web.RemoteCli (remoteAvailableClis)
 import IDE.Web.AgentCli (AgentCli(..), allClis, cliLabel)
+import IDE.App (appNote, withApp)
+import IDE.Web.Agent (agentResume)
 import IDE.Web.AgentFace (agentFaceSvg)
 import IDE.Web.AgentGlyph (cliGlyph)
 import IDE.Web.Agy (agyAvailable)
@@ -78,25 +81,40 @@ newSessionEntries :: (IO () -> a) -> Text -> [AgentCli] -> FilePath
 newSessionEntries wrap suffix clis dir =
   [ MenuEntry [cliGlyph c] ("New " <> cliLabel c <> " Session" <> suffix)
       (splitTarget dir (STCliNew c dir), wrap (runClaudeCmd (CliNew c dir)))
-  | c <- clisFor dir clis ]
+  | c <- clis ]
 
 -- | "Continue Recent Session ▸": the sessions that ran in @dir@ and are not
 -- running, newest first, whichever CLI ran them; choosing one resumes it.
 -- Looked for when the menu opens ('recentSessions').  Nothing when no agent
--- CLI is on PATH.
+-- CLI is on PATH.  A directory on a shared host has no list (its sessions
+-- are recorded there, not here): "Continue Last Claude Session" instead,
+-- which continues the newest one there (@claude -c@).
 continueRecentEntry :: (IO () -> a) -> Text -> [AgentCli] -> FilePath
                     -> [MenuEntry (Maybe SplitTarget, a)]
-continueRecentEntry wrap suffix clis dir =
-  [ MenuSubmenu [] ("Continue Recent Session" <> suffix) "No recent sessions here" $
-      map entry . filter ((`elem` clis) . rsCli) <$> recentSessions 12 dir
-  | not (null (clisFor dir clis)) ]
+continueRecentEntry wrap suffix clis dir
+  | isRemotePath dir =
+      [ MenuEntry [cliGlyph CliClaude] ("Continue Last Claude Session" <> suffix)
+          (Nothing, wrap (runClaudeCmd (ClaudeContinue dir)))
+      | CliClaude `elem` clis ]
+  | otherwise =
+      [ MenuSubmenu [] ("Continue Recent Session" <> suffix) "No recent sessions here" $
+          map entry <$> recentSessions clis 12 dir
+      | not (null clis) ]
   where
+    -- An agent leksah named comes back as that agent ('agentResume': its
+    -- role, the agent that started it and the manager's brief, and no longer
+    -- marked suspended); any other session as a plain resume of its CLI.
     entry r = MenuEntry
       -- (an unnamed one keeps the face's place, so the badges line up)
       [ maybe "" agentFaceSvg (rsName r), cliGlyph (rsCli r) ]
       (labelOf r)
-      ( splitTarget dir (STCliResume (rsCli r) dir (rsId r))
-      , wrap (runClaudeCmd (CliResume (rsCli r) dir (rsId r))) )
+      $ case rsName r of
+          Just n  -> ( Nothing
+                     , wrap . void . forkIO $ agentResume (rsId r) >>= either
+                         (\e -> withApp (`appNote` (n <> " could not be resumed: " <> e)))
+                         (const (return ())) )
+          Nothing -> ( splitTarget dir (STCliResume (rsCli r) dir (rsId r))
+                     , wrap (runClaudeCmd (CliResume (rsCli r) dir (rsId r))) )
     labelOf r = T.intercalate " · " $ filter (not . T.null)
       [ maybe "" id (rsName r)
       , if T.null (rsLabel r)
@@ -104,10 +122,6 @@ continueRecentEntry wrap suffix clis dir =
           else clip 48 (rsLabel r)
       , rsAge r ]
     clip k t = if T.length t > k then T.stripEnd (T.take (k - 1) t) <> "…" else t
-
--- | The CLIs the caller found for the directory ('availableClisFor').
-clisFor :: FilePath -> [AgentCli] -> [AgentCli]
-clisFor _ clis = clis
 
 -- | A split target, for a directory on this machine (a split runs locally).
 splitTarget :: FilePath -> SplitTarget -> Maybe SplitTarget
